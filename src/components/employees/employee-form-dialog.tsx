@@ -6,20 +6,26 @@ import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES } from "@/data/employees";
 
-type FormState = Omit<Employee, "salary"> & { salary: string };
+export interface EmployeeFormValues {
+  id: string; name: string; email: string; mobile: string; salary: number;
+  joiningDate: string; department: Department; designation: string; role: Role;
+  manager: string; status: EmploymentStatus; password?: string;
+}
+
+type FormState = Omit<EmployeeFormValues, "salary"> & { salary: string };
 
 const EMPTY: FormState = {
   id: "", name: "", email: "", mobile: "", salary: "", joiningDate: "",
-  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active",
+  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active", password: "",
 };
 
 export function EmployeeFormDialog({
-  open, onClose, onSave, initial,
-}: { open: boolean; onClose: () => void; onSave: (data: Omit<Employee, never>) => void; initial: Employee | null }) {
+  open, onClose, onSave, initial, saving,
+}: { open: boolean; onClose: () => void; onSave: (data: EmployeeFormValues) => void; initial: Employee | null; saving?: boolean }) {
   const [form, setForm] = useState<FormState>(EMPTY);
 
   useEffect(() => {
-    setForm(initial ? { ...initial, salary: String(initial.salary) } : EMPTY);
+    setForm(initial ? { ...initial, salary: String(initial.salary), password: "" } : EMPTY);
   }, [initial, open]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -29,7 +35,7 @@ export function EmployeeFormDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSave({ ...form, salary: Number(form.salary) });
+          onSave({ ...form, salary: Number(form.salary) || 0 });
         }}
         className="space-y-4"
       >
@@ -57,16 +63,20 @@ export function EmployeeFormDialog({
               <option>Active</option><option>Inactive</option>
             </select>
           </Field>
-          <Field label="Profile Photo"><input type="file" className="w-full text-sm text-ink-muted" /></Field>
+          {!initial && (
+            <Field label="Initial Password">
+              <input required type="text" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="e.g. Ahmed@123" className={inputCls} />
+            </Field>
+          )}
         </div>
         {!initial && (
-          <div className="rounded-xl bg-surface p-3 text-xs text-ink-faint">
-            A temporary password will be generated here once real authentication is connected.
-          </div>
+          <p className="text-xs text-ink-faint">Share this password with the employee directly. They cannot see or change it from their own panel.</p>
         )}
         <div className="flex justify-end gap-2 pt-1">
           <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
-          <PrimaryButton type="submit">{initial ? "Save changes" : "Add employee"}</PrimaryButton>
+          <PrimaryButton type="submit" disabled={saving}>
+            {saving ? "Saving…" : initial ? "Save changes" : "Add employee"}
+          </PrimaryButton>
         </div>
       </form>
     </Modal>
