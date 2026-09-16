@@ -5,37 +5,36 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { useSession } from "@/context/session-context";
-import { employees } from "@/data/employees";
+
+const DEMO_ACCOUNTS = [
+  { email: "ahmed@yes2broker.com", password: "Ahmed@123", label: "Ahmed Khan", role: "Employee" },
+  { email: "priya@yes2broker.com", password: "Priya@123", label: "Priya Shah", role: "HR" },
+  { email: "zubair@yes2broker.com", password: "Zubair@123", label: "Zubair Merchant", role: "Admin" },
+];
 
 export default function LoginPage() {
-  const { login, loginAs } = useSession();
+  const { login } = useSession();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const demoAccounts = [
-    employees.find((e) => e.id === "EMP001")!,
-    employees.find((e) => e.id === "EMP002")!,
-    employees.find((e) => e.id === "EMP003")!,
-  ];
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const match = login(email);
+  const attemptLogin = async (loginEmail: string, loginPassword: string) => {
+    setError("");
+    setSubmitting(true);
+    const match = await login(loginEmail, loginPassword);
+    setSubmitting(false);
     if (!match) {
-      setError("No matching account. Try one of the demo accounts below.");
+      setError("Incorrect email or password.");
       return;
     }
     router.push("/dashboard");
   };
 
-  const handleDemoLogin = (id: string) => {
-    const acc = employees.find((emp) => emp.id === id);
-    if (acc) {
-      loginAs(acc);
-      router.push("/dashboard");
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    attemptLogin(email, password);
   };
 
   return (
@@ -76,9 +75,10 @@ export default function LoginPage() {
             {error && <p className="text-xs text-status-danger">{error}</p>}
             <button
               type="submit"
-              className="w-full rounded-xl bg-ink px-3.5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink/90 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:ring-offset-2"
+              disabled={submitting}
+              className="w-full rounded-xl bg-ink px-3.5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink/90 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:ring-offset-2 disabled:opacity-60"
             >
-              Log in
+              {submitting ? "Logging in…" : "Log in"}
             </button>
           </form>
           <p className="mt-4 flex items-center gap-1.5 text-xs text-ink-faint">
@@ -87,15 +87,15 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-6 rounded-card border border-surface-border bg-white p-4 shadow-card">
-          <p className="mb-2.5 text-xs font-medium text-ink-muted">Demo accounts (prototype only)</p>
+          <p className="mb-2.5 text-xs font-medium text-ink-muted">Demo accounts (from Supabase)</p>
           <div className="space-y-1">
-            {demoAccounts.map((acc) => (
+            {DEMO_ACCOUNTS.map((acc) => (
               <button
-                key={acc.id}
-                onClick={() => handleDemoLogin(acc.id)}
+                key={acc.email}
+                onClick={() => attemptLogin(acc.email, acc.password)}
                 className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm text-ink hover:bg-surface"
               >
-                <span>{acc.name}</span>
+                <span>{acc.label}</span>
                 <span className="text-xs text-ink-faint">{acc.role}</span>
               </button>
             ))}
