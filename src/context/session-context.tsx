@@ -3,18 +3,19 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Employee } from "@/types";
-import { employees } from "@/data/employees";
+import { supabase } from "@/lib/supabase";
+import { mapEmployeeRow } from "@/lib/employee-mapper";
 
 interface SessionContextValue {
   user: Employee | null;
   loading: boolean;
-  login: (email: string) => Employee | null;
+  login: (email: string, password: string) => Promise<Employee | null>;
   loginAs: (employee: Employee) => void;
   logout: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
-const STORAGE_KEY = "y2b-mock-session";
+const STORAGE_KEY = "y2b-session";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Employee | null>(null);
@@ -23,22 +24,37 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const found = employees.find((e) => e.id === stored);
-      if (found) setUser(found);
+      try {
+        setUser(JSON.parse(stored));
+      } catch {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
     }
     setLoading(false);
   }, []);
 
   const loginAs = (employee: Employee) => {
-    window.localStorage.setItem(STORAGE_KEY, employee.id);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(employee));
     setUser(employee);
   };
 
-  // Mock authentication: matches by email only, ignores password.
-  const login = (email: string) => {
-    const match = employees.find((e) => e.email.toLowerCase() === email.toLowerCase());
-    if (match) loginAs(match);
-    return match ?? null;
+  // Real login: calls the login_employee() Postgres function.
+  // Passwords are checked inside Supabase and never leave it.
+  const login = async (email: string, password: string) => {
+    const { data, error } = await supabase.rpc("login_employee", {
+      p_email: email,
+      p_password: password,
+    });
+
+    if (error) {
+      console.error("Login error:", error.message);
+      return null;
+    }
+    if (!data || data.length === 0) return null;
+
+    const employee = mapEmployeeRow(data[0]);
+    loginAs(employee);
+    return employee;
   };
 
   const logout = () => {
@@ -59,7 +75,6 @@ export function useSession() {
   return ctx;
 }
 
-/** Convenience redirect hook for pages that require a logged-in user. */
 export function useRequireSession() {
   const { user, loading } = useSession();
   const router = useRouter();
