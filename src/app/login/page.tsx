@@ -71,16 +71,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-ink-muted">Email</label>
+              <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-ink-muted">Email or employee code</label>
               <input
                 id="email"
-                type="email"
+                type="text"
                 required
                 autoFocus
+                autoCapitalize="none"
+                spellCheck={false}
                 autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@yes2broker.com"
+                placeholder="you@example.com or EMP001"
                 className="w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>

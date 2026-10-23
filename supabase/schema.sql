@@ -17,9 +17,9 @@ revoke all on schema private from public, anon, authenticated;
 create table if not exists employees (
   id text primary key,
   name text not null,
-  email text unique not null,
+  email text unique,
   mobile text,
-  department text not null check (department in ('Sales','Tech','HR','Admin')),
+  department text not null,
   role text not null check (role in ('Employee','HR','Admin')),
   designation text,
   salary numeric,
@@ -28,6 +28,14 @@ create table if not exists employees (
   status text not null default 'Active' check (status in ('Active','Inactive')),
   password_hash text not null
 );
+
+-- Upgrades for databases created before these columns/rules existed.
+alter table employees alter column email drop not null;
+-- ISO weekday of the employee's weekly off: 1 = Monday ... 7 = Sunday, null = none.
+alter table employees add column if not exists week_off smallint default 7 check (week_off between 1 and 7);
+alter table employees drop constraint if exists employees_department_check;
+alter table employees add constraint employees_department_check
+  check (department in ('Sales','Tech','HR','Admin','Management'));
 
 create unique index if not exists employees_email_lower_idx on employees (lower(email));
 
@@ -143,11 +151,10 @@ revoke all on employees, sessions, attendance, leave_requests, tasks, daily_repo
   from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- Seed accounts. CHANGE THESE PASSWORDS after your first login
--- (Admin -> Employees -> key icon).
+-- No accounts are created here. Load your team with a seed file (see
+-- README), or create the first Admin by hand:
+--
+--   insert into employees (id, name, email, department, role, password_hash)
+--   values ('EMP001', 'Your Name', 'you@example.com', 'Admin', 'Admin',
+--           extensions.crypt('a-strong-password', extensions.gen_salt('bf')));
 -- ---------------------------------------------------------------------------
-insert into employees (id, name, email, mobile, department, role, designation, salary, joining_date, manager, status, password_hash) values
-('EMP001','Ahmed Khan','ahmed@yes2broker.com','+91 98765 43210','Sales','Employee','Sales Executive',35000,'2025-03-12','Karan Mehta','Active', extensions.crypt('Ahmed@123', extensions.gen_salt('bf'))),
-('EMP002','Priya Shah','priya@yes2broker.com','+91 91234 56780','HR','HR','HR Manager',52000,'2023-06-01','Zubair Merchant','Active', extensions.crypt('Priya@123', extensions.gen_salt('bf'))),
-('EMP003','Zubair Merchant','zubair@yes2broker.com','+91 99887 66554','Admin','Admin','Operations Head',68000,'2021-01-15','—','Active', extensions.crypt('Zubair@123', extensions.gen_salt('bf')))
-on conflict (id) do nothing;

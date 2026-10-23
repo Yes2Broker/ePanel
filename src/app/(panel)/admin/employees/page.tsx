@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { EmployeeFormDialog, EmployeeFormValues } from "@/components/employees/employee-form-dialog";
 import { ResetPasswordDialog } from "@/components/employees/reset-password-dialog";
 import { useSession } from "@/context/session-context";
-import { DEPARTMENTS, ROLES } from "@/lib/constants";
+import { DEPARTMENTS, ROLES, weekOffLabel } from "@/lib/constants";
 import { Employee } from "@/types";
 import { formatINR, formatDate } from "@/lib/utils";
 import { api, errorMessage } from "@/lib/api";
@@ -132,7 +132,7 @@ export default function AdminEmployeesPage() {
                       <Avatar name={e.name} />
                       <div>
                         <p className="font-medium text-ink">{e.name}</p>
-                        <p className="text-xs text-ink-faint">{e.id} · {e.email}</p>
+                        <p className="text-xs text-ink-faint">{e.id}{e.email && ` · ${e.email}`}</p>
                       </div>
                     </div>
                   </td>
@@ -170,7 +170,7 @@ export default function AdminEmployeesPage() {
             {[["Full Name", viewing.name], ["Employee ID", viewing.id], ["Email", viewing.email], ["Mobile", viewing.mobile],
               ["Department", viewing.department], ["Role", viewing.role], ["Designation", viewing.designation],
               ["Salary", formatINR(viewing.salary)], ["Date of Joining", viewing.joiningDate ? formatDate(viewing.joiningDate) : ""],
-              ["Reporting Manager", viewing.manager], ["Status", viewing.status]].map(([label, value]) => (
+              ["Reporting Manager", viewing.manager], ["Weekly Off", weekOffLabel(viewing.weekOff)], ["Status", viewing.status]].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-ink-faint">{label}</p>
                 <p className="mt-0.5 font-medium text-ink">{value || "—"}</p>

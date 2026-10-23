@@ -27,9 +27,11 @@ language sql immutable as $$ select 'Asia/Kolkata' $$;
 create or replace function private.late_after() returns time
 language sql immutable as $$ select time '10:15' $$;
 
--- Sunday is the weekly off.
-create or replace function private.is_working_day(d date) returns boolean
-language sql immutable as $$ select extract(isodow from d) <> 7 $$;
+-- Each employee has their own weekly off (employees.week_off, ISO weekday:
+-- 1 = Monday ... 7 = Sunday; null = no weekly off).
+drop function if exists private.is_working_day(date);
+create or replace function private.is_working_day(d date, p_week_off smallint) returns boolean
+language sql immutable as $$ select p_week_off is null or extract(isodow from d) <> p_week_off $$;
 
 create or replace function private.session_days() returns int
 language sql immutable as $$ select 7 $$;
@@ -61,10 +63,10 @@ $$;
 create or replace function private.employee_json(e public.employees) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
-    'id', e.id, 'name', e.name, 'email', e.email, 'mobile', coalesce(e.mobile, ''),
+    'id', e.id, 'name', e.name, 'email', coalesce(e.email, ''), 'mobile', coalesce(e.mobile, ''),
     'department', e.department, 'role', e.role, 'designation', coalesce(e.designation, ''),
     'salary', coalesce(e.salary, 0), 'joiningDate', coalesce(e.joining_date::text, ''),
-    'manager', coalesce(e.manager, ''), 'status', e.status
+    'manager', coalesce(e.manager, ''), 'status', e.status, 'weekOff', e.week_off
   )
 $$;
 
@@ -143,7 +145,7 @@ language sql stable set search_path = public as $$
     'employeeName', (select name from employees where id = l.employee_id),
     'type', l.leave_type, 'startDate', l.start_date, 'endDate', l.end_date,
     'days', (select count(*) from generate_series(l.start_date, l.end_date, interval '1 day') d
-             where private.is_working_day(d::date)),
+             where private.is_working_day(d::date, (select week_off from employees where id = l.employee_id))),
     'reason', l.reason, 'status', l.status, 'reviewNote', coalesce(l.review_note, ''),
     'reviewedBy', (select name from employees where id = l.reviewed_by),
     'reviewedAt', l.reviewed_at, 'createdAt', l.created_at
@@ -177,7 +179,7 @@ create or replace function private.attendance_rate(p_employee_id text, p_from da
 language sql stable set search_path = public, private as $$
   with days as (
     select d::date as d from generate_series(p_from, p_to, interval '1 day') d
-    where private.is_working_day(d::date)
+    where private.is_working_day(d::date, (select week_off from employees where id = p_employee_id))
   ), joined as (
     select a.status from days left join attendance a on a.employee_id = p_employee_id and a.work_date = days.d
     where days.d < private.today() or a.work_date is not null -- today only counts once they're in
@@ -194,6 +196,7 @@ $$;
 -- ===========================================================================
 -- Auth
 -- ===========================================================================
+-- p_email accepts either the email address or the employee code (EMP004).
 create or replace function public.login_employee(p_email text, p_password text) returns jsonb
 language plpgsql volatile security definer set search_path = public, extensions, private as $$
 declare
@@ -203,7 +206,7 @@ begin
   delete from sessions where expires_at < now();
 
   select * into v_emp from employees
-  where lower(email) = lower(trim(p_email))
+  where (lower(email) = lower(trim(p_email)) or id = upper(trim(p_email)))
     and password_hash = crypt(p_password, password_hash);
 
   if not found then
@@ -278,19 +281,22 @@ begin
   if length(coalesce(p_password, '')) < 8 then
     raise exception 'Initial password must be at least 8 characters.' using errcode = '22023';
   end if;
-  if exists (select 1 from employees where lower(email) = lower(trim(p_data ->> 'email'))) then
+  if nullif(trim(p_data ->> 'email'), '') is not null
+     and exists (select 1 from employees where lower(email) = lower(trim(p_data ->> 'email'))) then
     raise exception 'An employee with this email already exists.' using errcode = '23505';
   end if;
   if exists (select 1 from employees where id = upper(trim(p_data ->> 'id'))) then
     raise exception 'An employee with this ID already exists.' using errcode = '23505';
   end if;
 
-  insert into employees (id, name, email, mobile, department, role, designation, salary, joining_date, manager, status, password_hash)
+  insert into employees (id, name, email, mobile, department, role, designation, salary, joining_date, manager, status, week_off, password_hash)
   values (
-    upper(trim(p_data ->> 'id')), trim(p_data ->> 'name'), lower(trim(p_data ->> 'email')), p_data ->> 'mobile',
+    upper(trim(p_data ->> 'id')), trim(p_data ->> 'name'), nullif(lower(trim(p_data ->> 'email')), ''), p_data ->> 'mobile',
     p_data ->> 'department', p_data ->> 'role', p_data ->> 'designation',
     nullif(p_data ->> 'salary', '')::numeric, coalesce(nullif(p_data ->> 'joiningDate', '')::date, private.today()),
-    p_data ->> 'manager', coalesce(p_data ->> 'status', 'Active'), crypt(p_password, gen_salt('bf'))
+    p_data ->> 'manager', coalesce(p_data ->> 'status', 'Active'),
+    case when p_data ? 'weekOff' then (p_data ->> 'weekOff')::smallint else 7 end,
+    crypt(p_password, gen_salt('bf'))
   ) returning * into v_emp;
   return private.employee_json(v_emp);
 end $$;
@@ -312,15 +318,16 @@ begin
   if v_me.id = p_id and (p_data ->> 'role' <> v_old.role or p_data ->> 'status' <> 'Active') then
     raise exception 'You can''t change your own role or deactivate yourself.' using errcode = '42501';
   end if;
-  if exists (select 1 from employees where lower(email) = lower(trim(p_data ->> 'email')) and id <> p_id) then
+  if nullif(trim(p_data ->> 'email'), '') is not null
+     and exists (select 1 from employees where lower(email) = lower(trim(p_data ->> 'email')) and id <> p_id) then
     raise exception 'Another employee already uses this email.' using errcode = '23505';
   end if;
 
   update employees set
-    name = trim(p_data ->> 'name'), email = lower(trim(p_data ->> 'email')), mobile = p_data ->> 'mobile',
+    name = trim(p_data ->> 'name'), email = nullif(lower(trim(p_data ->> 'email')), ''), mobile = p_data ->> 'mobile',
     department = p_data ->> 'department', role = p_data ->> 'role', designation = p_data ->> 'designation',
     salary = nullif(p_data ->> 'salary', '')::numeric, joining_date = nullif(p_data ->> 'joiningDate', '')::date,
-    manager = p_data ->> 'manager', status = p_data ->> 'status'
+    manager = p_data ->> 'manager', status = p_data ->> 'status', week_off = case when p_data ? 'weekOff' then (p_data ->> 'weekOff')::smallint else v_old.week_off end
   where id = p_id
   returning * into v_emp;
 
@@ -439,7 +446,7 @@ begin
       end order by d.d desc)
     from (select g::date as d from generate_series(v_from, v_to, interval '1 day') g) d
     left join attendance a on a.employee_id = v_emp.id and a.work_date = d.d
-    where (private.is_working_day(d.d) and d.d >= v_tracked_from) or a.work_date is not null
+    where (private.is_working_day(d.d, v_emp.week_off) and d.d >= v_tracked_from) or a.work_date is not null
   ), '[]'::jsonb);
 end $$;
 
@@ -452,7 +459,7 @@ begin
       jsonb_build_object('employee', private.employee_json(e)) ||
       case when a.work_date is not null then private.attendance_json(a)
            else jsonb_build_object('date', p_date, 'checkIn', null, 'checkOut', null, 'minutes', null, 'note', '',
-                                   'status', case when p_date < private.today() and private.is_working_day(p_date)
+                                   'status', case when p_date < private.today() and private.is_working_day(p_date, e.week_off)
                                                    and p_date >= private.rate_start(e, p_date) then 'Absent' end)
       end order by e.name)
     from employees e
@@ -572,7 +579,7 @@ begin
     insert into attendance (employee_id, work_date, status, note, updated_by)
     select v_row.employee_id, d::date, 'Leave', v_row.leave_type || ' leave', v_me.id
     from generate_series(v_row.start_date, v_row.end_date, interval '1 day') d
-    where private.is_working_day(d::date)
+    where private.is_working_day(d::date, (select week_off from employees where id = v_row.employee_id))
     on conflict (employee_id, work_date) do update
       set status = 'Leave', note = excluded.note, updated_by = excluded.updated_by, updated_at = now()
       where attendance.check_in is null;
@@ -755,12 +762,12 @@ declare
 begin
   return jsonb_build_object(
     'today', (select private.attendance_json(a) from attendance a where a.employee_id = v_emp.id and a.work_date = v_today),
-    'isWorkingDay', private.is_working_day(v_today),
+    'isWorkingDay', private.is_working_day(v_today, v_emp.week_off),
     'month', jsonb_build_object(
       'present', (select count(*) from attendance where employee_id = v_emp.id and work_date between v_month_start and v_today and status in ('Present','Late','Half Day')),
       'late', (select count(*) from attendance where employee_id = v_emp.id and work_date between v_month_start and v_today and status = 'Late'),
       'leave', (select count(*) from attendance where employee_id = v_emp.id and work_date between v_month_start and v_today and status = 'Leave'),
-      'workingDays', (select count(*) from generate_series(private.rate_start(v_emp, v_month_start), v_today, interval '1 day') d where private.is_working_day(d::date)),
+      'workingDays', (select count(*) from generate_series(private.rate_start(v_emp, v_month_start), v_today, interval '1 day') d where private.is_working_day(d::date, v_emp.week_off)),
       'rate', private.attendance_rate(v_emp.id, private.rate_start(v_emp, v_month_start), v_today)
     ),
     'tasks', jsonb_build_object(
@@ -804,16 +811,20 @@ begin
     'pendingLeaves', (select count(*) from leave_requests where status = 'Pending'),
     'reportsToday', (select count(*) from daily_reports where report_date = v_today and status in ('Submitted','Approved')),
     'pendingReports', (select count(*) from daily_reports where status = 'Submitted'),
-    -- Last 7 working days, oldest first.
+    -- Last 7 days, oldest first: share of the people due in that day who came in
+    -- (anyone on their weekly off that day isn't counted).
     'weeklyTrend', coalesce((
       select jsonb_agg(jsonb_build_object('date', d, 'day', to_char(d, 'Dy'), 'rate',
-               case when v_active = 0 then 0 else round(100.0 * (
-                 select count(*) from attendance a join employees e on e.id = a.employee_id
-                 where e.status = 'Active' and a.work_date = d and a.status in ('Present','Late','Half Day')
-               ) / v_active)::int end) order by d)
-      from (select g::date as d from generate_series(v_today - 13, v_today, interval '1 day') g
-            where private.is_working_day(g::date) and g::date >= private.tracking_start()
-            order by g desc limit 7) days
+               case when due = 0 then 0 else round(100.0 * came / due)::int end) order by d)
+      from (
+        select g::date as d,
+          (select count(*) from employees e where e.status = 'Active' and private.is_working_day(g::date, e.week_off)) as due,
+          (select count(*) from attendance a join employees e on e.id = a.employee_id
+           where e.status = 'Active' and private.is_working_day(g::date, e.week_off)
+             and a.work_date = g::date and a.status in ('Present','Late','Half Day')) as came
+        from generate_series(v_today - 6, v_today, interval '1 day') g
+        where g::date >= private.tracking_start()
+      ) days
     ), '[]'::jsonb),
     -- Attendance rate per month of the current year, up to today.
     'monthlyTrend', coalesce((

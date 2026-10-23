@@ -4,19 +4,19 @@ import { useEffect, useState } from "react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Employee, Department, Role, EmploymentStatus } from "@/types";
-import { DEPARTMENTS, ROLES } from "@/lib/constants";
+import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
 
 export interface EmployeeFormValues {
-  id: string; name: string; email: string; mobile: string; salary: number;
+  id: string; name: string; email: string; mobile: string; salary: number | "";
   joiningDate: string; department: Department; designation: string; role: Role;
-  manager: string; status: EmploymentStatus; password?: string;
+  manager: string; status: EmploymentStatus; weekOff: number | null; password?: string;
 }
 
 type FormState = Omit<EmployeeFormValues, "salary"> & { salary: string };
 
 const EMPTY: FormState = {
   id: "", name: "", email: "", mobile: "", salary: "", joiningDate: "",
-  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active", password: "",
+  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active", weekOff: 7, password: "",
 };
 
 export function EmployeeFormDialog({
@@ -25,7 +25,7 @@ export function EmployeeFormDialog({
   const [form, setForm] = useState<FormState>(EMPTY);
 
   useEffect(() => {
-    setForm(initial ? { ...initial, salary: String(initial.salary), password: "" } : EMPTY);
+    setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
   }, [initial, open]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -35,14 +35,14 @@ export function EmployeeFormDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSave({ ...form, salary: Number(form.salary) || 0 });
+          onSave({ ...form, salary: form.salary.trim() === "" ? "" : Number(form.salary) });
         }}
         className="space-y-4"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full Name"><input required value={form.name} onChange={(e) => set("name", e.target.value)} className={inputCls} /></Field>
           <Field label="Employee ID"><input required disabled={!!initial} value={form.id} onChange={(e) => set("id", e.target.value)} className={inputCls} /></Field>
-          <Field label="Email"><input type="email" required value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
+          <Field label="Email (optional)"><input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
           <Field label="Mobile Number"><input value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
           <Field label="Salary"><input type="number" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
           <Field label="Date of Joining"><input type="date" value={form.joiningDate} onChange={(e) => set("joiningDate", e.target.value)} className={inputCls} /></Field>
@@ -58,6 +58,12 @@ export function EmployeeFormDialog({
             </select>
           </Field>
           <Field label="Reporting Manager"><input value={form.manager} onChange={(e) => set("manager", e.target.value)} className={inputCls} /></Field>
+          <Field label="Weekly Off">
+            <select value={form.weekOff ?? ""} onChange={(e) => set("weekOff", e.target.value ? Number(e.target.value) : null)} className={inputCls}>
+              {WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}
+              <option value="">No weekly off</option>
+            </select>
+          </Field>
           <Field label="Employment Status">
             <select value={form.status} onChange={(e) => set("status", e.target.value as EmploymentStatus)} className={inputCls}>
               <option>Active</option><option>Inactive</option>

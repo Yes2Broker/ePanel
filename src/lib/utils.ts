@@ -15,7 +15,7 @@ export function initials(name: string) {
 }
 
 export function formatINR(value: number) {
-  return `₹ ${value.toLocaleString("en-IN")}`;
+  return value ? `₹ ${value.toLocaleString("en-IN")}` : "—";
 }
 
 // All dates and times are shown in office time, whatever the viewer's

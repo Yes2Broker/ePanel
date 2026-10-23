@@ -1,4 +1,4 @@
-export type Department = "Sales" | "Tech" | "HR" | "Admin";
+export type Department = "Sales" | "Tech" | "HR" | "Admin" | "Management";
 export type Role = "Employee" | "HR" | "Admin";
 export type EmploymentStatus = "Active" | "Inactive";
 
@@ -14,6 +14,7 @@ export interface Employee {
   joiningDate: string;
   manager: string;
   status: EmploymentStatus;
+  weekOff: number | null; // ISO weekday 1 = Monday ... 7 = Sunday; null = no weekly off
 }
 
 export const MODULE_KEYS = [

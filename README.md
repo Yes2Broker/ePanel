@@ -42,12 +42,15 @@ npm install
 In your Supabase project, open **SQL Editor → New query** and run these two
 files, in this order:
 
-1. `supabase/schema.sql` — tables + the three starter accounts
+1. `supabase/schema.sql` — tables and security
 2. `supabase/functions.sql` — everything the app calls
+3. your team seed file (`seed_team.sql`, kept out of Git because it holds
+   starting passwords) — removes the prototype's demo accounts and adds
+   your employees
 
 Both are safe to run again. Whenever `functions.sql` changes, re-run it.
 
-> **Upgrading from the earlier prototype?** Just run both files. `functions.sql`
+> **Upgrading from the earlier prototype?** Just run all three. `functions.sql`
 > removes the old `list_employees` / `create_employee` / `update_employee` /
 > `reset_employee_password` functions, which could be called by anyone
 > without logging in. Existing employees and passwords are kept.
@@ -75,16 +78,12 @@ npm run dev      # development, http://localhost:3000
 npm run build && npm start   # production
 ```
 
-### 6. Starter accounts
+### 6. Signing in
 
-| Email | Password | Role |
-| --- | --- | --- |
-| `zubair@yes2broker.com` | `Zubair@123` | Admin |
-| `priya@yes2broker.com` | `Priya@123` | HR |
-| `ahmed@yes2broker.com` | `Ahmed@123` | Employee (Sales) |
-
-**Change these passwords straight away** (Profile → Change Password, or
-Employees → key icon). New passwords must be at least 8 characters.
+Everyone signs in with **either their email or their employee code**
+(e.g. `EMP004`) — email is optional for people who don't have one.
+Passwords must be at least 8 characters when set from the panel; anyone can
+change theirs from Profile → Change Password, and HR/Admin can reset it.
 
 ## How security works
 
@@ -107,7 +106,8 @@ At the top of `supabase/functions.sql`, under **Office settings**:
 - `private.tz()` — office timezone (`Asia/Kolkata`). Keep `OFFICE_TZ` in
   `src/lib/utils.ts` the same.
 - `private.late_after()` — Late cut-off (`10:15`).
-- `private.is_working_day()` — weekly off (Sunday).
+- Weekly off is **per employee** (Employees → Edit → Weekly Off). Their
+  weekly off doesn't count as an absence and isn't counted in leave days.
 - `private.session_days()` — how long a login lasts (7 days).
 
 Re-run `functions.sql` after editing.
@@ -157,6 +157,6 @@ reports keep their answers.
 - Builder Data, Inquiry Form and Analytics modules (their permission
   toggles exist and are marked "Coming soon").
 - Email / push notifications for approvals and reminders.
-- Public holidays (only the weekly off is excluded from attendance).
+- Public holidays (only each person's weekly off is excluded from attendance).
 - Leave balances / yearly quotas per leave type.
 - Self-service "forgot password" (HR/Admin resets it today).

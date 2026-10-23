@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { initials, formatINR, formatDate } from "@/lib/utils";
+import { weekOffLabel } from "@/lib/constants";
 
 function Row({ label, value, locked }: { label: string; value: React.ReactNode; locked?: boolean }) {
   return (
@@ -62,6 +63,7 @@ export default function ProfilePage() {
           <Row label="Date of Joining" value={user.joiningDate ? formatDate(user.joiningDate) : ""} locked />
           <Row label="Salary" value={formatINR(user.salary)} locked />
           <Row label="Reporting Manager" value={user.manager} locked />
+          <Row label="Weekly Off" value={weekOffLabel(user.weekOff)} locked />
           <Row label="Employment Status" value={<StatusPill status={user.status} />} />
         </div>
       </Card>
