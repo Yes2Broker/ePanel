@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/context/session-context";
+import { PreferencesProvider } from "@/context/preferences-context";
+import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "Yes2Broker | Employee Panel",
@@ -14,7 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <PreferencesProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </PreferencesProvider>
+        </SessionProvider>
       </body>
     </html>
   );

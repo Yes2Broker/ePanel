@@ -3,14 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Headphones, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Role } from "@/types";
-import { navForRole } from "@/lib/nav";
+import { navFor } from "@/lib/nav";
+import { useSession } from "@/context/session-context";
+import { usePreferences } from "@/context/preferences-context";
 
-export function Sidebar({ role, mobileOpen, onClose }: { role: Role; mobileOpen: boolean; onClose: () => void }) {
+export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
-  const nav = navForRole(role);
+  const { user, permissions } = useSession();
+  const { prefs } = usePreferences();
+  if (!user) return null;
+  const nav = navFor(user, permissions);
+  // Compact mode only applies on desktop; the mobile drawer always shows labels.
+  const compact = prefs.compactSidebar;
 
   return (
     <>
@@ -19,48 +24,41 @@ export function Sidebar({ role, mobileOpen, onClose }: { role: Role; mobileOpen:
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-surface px-5 py-6 transition-transform lg:static lg:z-auto lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-surface px-5 py-6 transition-transform lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0",
+          compact && "lg:w-[76px] lg:px-4",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="mb-8 flex items-center gap-2 px-1">
-          <div className="h-7 w-7 overflow-hidden rounded-lg">
+        <div className={cn("mb-8 flex items-center gap-2 px-1", compact && "lg:justify-center lg:px-0")}>
+          <div className="h-7 w-7 shrink-0 overflow-hidden rounded-lg">
             <Image src="/assets/logo.webp" alt="Yes2Broker" width={28} height={28} className="h-full w-full object-cover" />
           </div>
-          <span className="text-[15px] font-semibold text-ink">Yes2Broker</span>
+          <span className={cn("text-[15px] font-semibold text-ink", compact && "lg:hidden")}>Yes2Broker</span>
         </div>
 
         <nav className="flex-1 space-y-1">
           {nav.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            // "/admin" must match exactly, otherwise it would also light up on /admin/employees.
+            const isActive = item.href === "/admin" ? pathname === "/admin" : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
+                title={compact ? item.label : undefined}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                  isActive ? "font-semibold text-ink" : "font-normal text-ink-faint hover:text-ink-muted"
+                  compact && "lg:justify-center",
+                  isActive ? "bg-white font-semibold text-ink shadow-card" : "font-normal text-ink-faint hover:text-ink-muted"
                 )}
               >
-                <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.25 : 1.75} />
-                {item.label}
+                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
+                <span className={cn(compact && "lg:hidden")}>{item.label}</span>
               </Link>
             );
           })}
         </nav>
-
-        <div className="space-y-1 pt-4">
-          <button className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-ink-faint hover:text-ink-muted">
-            <Headphones className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            Support
-          </button>
-          <Link href="/settings" className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-ink-faint hover:text-ink-muted">
-            <Settings className="h-[18px] w-[18px]" strokeWidth={1.75} />
-            Settings
-          </Link>
-        </div>
       </aside>
     </>
   );

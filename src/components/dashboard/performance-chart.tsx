@@ -4,37 +4,41 @@ import {
   BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip, Cell,
 } from "recharts";
 import { Card } from "@/components/ui/card";
-import { ChevronDown } from "lucide-react";
 
-export function PerformanceChart({ data }: { data: { month: string; score: number }[] }) {
-  const avg = Math.round(data.reduce((s, d) => s + d.score, 0) / data.length);
-  const peak = data.reduce((max, d) => (d.score > max.score ? d : max), data[0]);
+/** Company-wide attendance rate per month of the current year. */
+export function PerformanceChart({ data }: { data: { month: string; rate: number | null }[] }) {
+  const points = data.filter((d): d is { month: string; rate: number } => d.rate != null);
+  const avg = points.length ? Math.round(points.reduce((s, d) => s + d.rate, 0) / points.length) : 0;
+  const peak = points.reduce<{ month: string; rate: number } | null>((max, d) => (!max || d.rate > max.rate ? d : max), null);
 
   return (
     <Card className="p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink">Team Performance</h3>
-        <button className="flex items-center gap-1 text-xs font-medium text-ink-muted">
-          This year <ChevronDown className="h-3.5 w-3.5" />
-        </button>
+        <h3 className="text-sm font-semibold text-ink">Monthly Attendance</h3>
+        <span className="text-xs font-medium text-ink-muted">This year</span>
       </div>
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 24, right: 8, left: -20, bottom: 0 }}>
-            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#A3A49C" }} />
-            <YAxis domain={[50, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#A3A49C" }} />
-            <ReferenceLine y={avg} stroke="#16171A" strokeDasharray="4 4" strokeWidth={1} label={{ value: `Avg ${avg}%`, position: "insideTopLeft", fontSize: 11, fill: "#16171A" }} />
-            <Tooltip
-              cursor={{ fill: "rgba(0,0,0,0.03)" }}
-              contentStyle={{ borderRadius: 12, border: "1px solid #E7E7E1", fontSize: 12 }}
-            />
-            <Bar dataKey="score" radius={[6, 6, 0, 0]} maxBarSize={28}>
-              {data.map((d) => (
-                <Cell key={d.month} fill={d.month === peak.month ? "#E8E24A" : "#EFEFEA"} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {points.length === 0 ? (
+          <p className="flex h-full items-center justify-center text-sm text-ink-faint">Data will appear once attendance is recorded.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={points} margin={{ top: 24, right: 8, left: -20, bottom: 0 }}>
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#A3A49C" }} />
+              <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#A3A49C" }} />
+              <ReferenceLine y={avg} stroke="#16171A" strokeDasharray="4 4" strokeWidth={1} label={{ value: `Avg ${avg}%`, position: "insideTopLeft", fontSize: 11, fill: "#16171A" }} />
+              <Tooltip
+                cursor={{ fill: "rgba(0,0,0,0.03)" }}
+                formatter={(v) => [`${v}%`, "Attendance"]}
+                contentStyle={{ borderRadius: 12, border: "1px solid #E7E7E1", fontSize: 12 }}
+              />
+              <Bar dataKey="rate" radius={[6, 6, 0, 0]} maxBarSize={28}>
+                {points.map((d) => (
+                  <Cell key={d.month} fill={d.month === peak?.month ? "#E8E24A" : "#EFEFEA"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </Card>
   );
