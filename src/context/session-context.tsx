@@ -1,69 +1,118 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Employee } from "@/types";
-import { supabase } from "@/lib/supabase";
-import { mapEmployeeRow } from "@/lib/employee-mapper";
+import { Employee, Permissions } from "@/types";
+import { api, ApiError, setSessionExpiredHandler, setSessionToken } from "@/lib/api";
 
 interface SessionContextValue {
   user: Employee | null;
+  permissions: Permissions | null;
+  isManager: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<Employee | null>;
-  loginAs: (employee: Employee) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<Employee>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+interface StoredSession {
+  token: string;
+  employee: Employee;
+  permissions: Permissions;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 const STORAGE_KEY = "y2b-session";
 
+function readStored(): StoredSession | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.token ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(session: StoredSession | null) {
+  try {
+    if (session) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    else window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage blocked (private mode) — session just won't survive a refresh
+  }
+}
+
+export function homePathFor(user: Employee) {
+  return user.role === "Admin" || user.role === "HR" ? "/admin" : "/dashboard";
+}
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<Employee | null>(null);
+  const [session, setSession] = useState<StoredSession | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-    setLoading(false);
+  const apply = useCallback((next: StoredSession | null) => {
+    setSessionToken(next?.token ?? null);
+    writeStored(next);
+    setSession(next);
   }, []);
 
-  const loginAs = (employee: Employee) => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(employee));
-    setUser(employee);
-  };
-
-  // Real login: calls the login_employee() Postgres function.
-  // Passwords are checked inside Supabase and never leave it.
-  const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.rpc("login_employee", {
-      p_email: email,
-      p_password: password,
-    });
-
-    if (error) {
-      console.error("Login error:", error.message);
-      return null;
+  // Restore the saved session, then confirm with the server that it's still
+  // valid and pick up any profile/permission changes made by HR.
+  useEffect(() => {
+    setSessionExpiredHandler(() => apply(null));
+    const stored = readStored();
+    if (!stored) {
+      setLoading(false);
+      return;
     }
-    if (!data || data.length === 0) return null;
+    apply(stored);
+    setLoading(false);
+    api.me()
+      .then((me) => apply({ token: stored.token, ...me }))
+      .catch(() => {
+        // An expired session is cleared by the handler; network errors keep
+        // the cached session so the panel still opens.
+      });
+    return () => setSessionExpiredHandler(null);
+  }, [apply]);
 
-    const employee = mapEmployeeRow(data[0]);
-    loginAs(employee);
-    return employee;
+  const login = async (email: string, password: string) => {
+    const result = await api.login(email, password);
+    if (!result) throw new ApiError("Incorrect email or password.");
+    apply(result);
+    return result.employee;
   };
 
-  const logout = () => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // the local sign-out below is what matters
+    }
+    apply(null);
   };
+
+  const refresh = async () => {
+    if (!session) return;
+    const me = await api.me();
+    apply({ token: session.token, ...me });
+  };
+
+  const user = session?.employee ?? null;
 
   return (
-    <SessionContext.Provider value={{ user, loading, login, loginAs, logout }}>
+    <SessionContext.Provider
+      value={{
+        user,
+        permissions: session?.permissions ?? null,
+        isManager: user?.role === "Admin" || user?.role === "HR",
+        loading,
+        login,
+        logout,
+        refresh,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   );
@@ -76,10 +125,10 @@ export function useSession() {
 }
 
 export function useRequireSession() {
-  const { user, loading } = useSession();
+  const session = useSession();
   const router = useRouter();
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, user, router]);
-  return { user, loading };
+    if (!session.loading && !session.user) router.replace("/login");
+  }, [session.loading, session.user, router]);
+  return session;
 }

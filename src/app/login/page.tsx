@@ -1,30 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
-import { useSession } from "@/context/session-context";
+import { homePathFor, useSession } from "@/context/session-context";
+import { errorMessage } from "@/lib/api";
 
 export default function LoginPage() {
-  const { login } = useSession();
+  const { user, loading, login } = useSession();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Already signed in — skip the form.
+  useEffect(() => {
+    if (!loading && user) router.replace(homePathFor(user));
+  }, [loading, user, router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSubmitting(true);
-    const match = await login(email, password);
-    setSubmitting(false);
-    if (!match) {
-      setError("Incorrect email or password.");
-      return;
+    try {
+      const employee = await login(email, password);
+      router.replace(homePathFor(employee));
+    } catch (err) {
+      setError(errorMessage(err));
+      setSubmitting(false);
     }
-    router.push("/dashboard");
   };
 
   return (
@@ -44,7 +50,7 @@ export default function LoginPage() {
             <Image src="/assets/logo.webp" alt="Yes2Broker" width={80} height={80} className="h-full w-full object-cover" />
           </div>
           <p className="max-w-xs text-center text-sm leading-relaxed text-white/50">
-            One panel for attendance, tasks, reports and everything your team needs — in one place.
+            One panel for attendance, leave, tasks, reports and everything your team needs — in one place.
           </p>
         </div>
       </div>
@@ -65,11 +71,13 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-ink-muted">Email</label>
+              <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-ink-muted">Email</label>
               <input
+                id="email"
                 type="email"
                 required
                 autoFocus
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yes2broker.com"
@@ -77,17 +85,19 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-ink-muted">Password</label>
+              <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-ink-muted">Password</label>
               <input
+                id="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
-            {error && <p className="text-xs text-status-danger">{error}</p>}
+            {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
             <button
               type="submit"
               disabled={submitting}
@@ -98,7 +108,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-ink-faint lg:justify-start">
-            <Lock className="h-3 w-3" /> Need to reset your password? Contact HR or Admin.
+            <Lock className="h-3 w-3" /> Forgot your password? Contact HR or Admin to reset it.
           </p>
         </div>
       </div>
