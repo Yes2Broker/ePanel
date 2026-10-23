@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarCheck, ListTodo, FileText, CalendarOff, Circle, AlertCircle } from "lucide-react";
+import { CalendarCheck, ListTodo, FileText, CalendarOff, Circle, AlertCircle, Briefcase, BadgeCheck, CalendarDays, UserRound } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { CheckInCard } from "@/components/attendance/check-in-card";
+import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { Card } from "@/components/ui/card";
 import { PriorityPill, StatusPill } from "@/components/ui/pills";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
@@ -12,12 +13,22 @@ import { usePreferences } from "@/context/preferences-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { formatDate, todayISO } from "@/lib/utils";
-import { reportStatusLabel } from "@/lib/constants";
+import { reportStatusLabel, weekOffLabel } from "@/lib/constants";
+import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
+
+const on = {
+  attendance: isFeatureEnabled("attendance"),
+  leave: isFeatureEnabled("leave"),
+  reports: isFeatureEnabled("reports"),
+  tasks: isFeatureEnabled("tasks"),
+};
+const anyFeatureOn = FEATURE_KEYS.some(isFeatureEnabled);
 
 export default function EmployeeDashboardPage() {
   const { user, permissions } = useSession();
   const { prefs } = usePreferences();
-  const { data, setData, loading, error, reload } = useApi(() => api.employeeDashboard());
+  // Everything this call returns belongs to a feature, so skip it while they're all off.
+  const { data, setData, loading, error, reload } = useApi(() => (anyFeatureOn ? api.employeeDashboard() : Promise.resolve(null)));
   if (!user) return null;
 
   const firstName = user.name.split(" ")[0];
@@ -28,41 +39,58 @@ export default function EmployeeDashboardPage() {
 
   return (
     <div className="space-y-6 pt-4">
-      <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Here's what's on your plate today." />
+      <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel." />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <SummaryCard icon={BadgeCheck} label="Employee ID" value={user.id} />
+        <SummaryCard icon={Briefcase} label="Department" value={user.department} note={user.designation || undefined} />
+        <SummaryCard icon={CalendarDays} label="Weekly Off" value={weekOffLabel(user.weekOff)} />
+        <SummaryCard icon={UserRound} label="Reporting To" value={user.manager || "—"} href="/profile" />
+      </div>
+
+      <ComingSoonCard />
 
       <ErrorBanner message={error} onRetry={reload} />
-      {loading && !data && <Loading />}
+      {anyFeatureOn && loading && !data && <Loading />}
 
       {data && (
         <>
-          {permissions?.attendance && (
+          {on.attendance && permissions?.attendance && (
             <CheckInCard today={data.today} isWorkingDay={data.isWorkingDay} onChange={(row) => setData({ ...data, today: row })} />
           )}
 
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <SummaryCard
-              icon={CalendarCheck} label="Attendance"
-              value={data.month.rate == null ? "—" : `${data.month.rate}%`}
-              note={`${data.month.present}/${data.month.workingDays} days this month${data.month.late ? ` · ${data.month.late} late` : ""}`}
-            />
-            <SummaryCard
-              icon={ListTodo} label="My Tasks" value={data.tasks.pending}
-              note={data.tasks.overdue ? `${data.tasks.overdue} overdue` : `${data.tasks.completed} completed`}
-            />
-            <SummaryCard
-              icon={FileText} label="Today's Report"
-              value={data.reportFiledToday ? "Filed" : "Pending"}
-              note={canReport ? (data.reportFiledToday ? "Thanks — all done" : "Submit before you leave") : "Not required for you"}
-            />
-            <SummaryCard
-              icon={CalendarOff} label="Leave"
-              value={data.pendingLeaves ? `${data.pendingLeaves} pending` : data.upcomingLeave ? "Upcoming" : "None"}
-              note={data.upcomingLeave ? `${formatDate(data.upcomingLeave.startDate)} – ${formatDate(data.upcomingLeave.endDate)}` : "No upcoming leave"}
-            />
+            {on.attendance && (
+              <SummaryCard
+                icon={CalendarCheck} label="Attendance"
+                value={data.month.rate == null ? "—" : `${data.month.rate}%`}
+                note={`${data.month.present}/${data.month.workingDays} days this month${data.month.late ? ` · ${data.month.late} late` : ""}`}
+              />
+            )}
+            {on.tasks && (
+              <SummaryCard
+                icon={ListTodo} label="My Tasks" value={data.tasks.pending}
+                note={data.tasks.overdue ? `${data.tasks.overdue} overdue` : `${data.tasks.completed} completed`}
+              />
+            )}
+            {on.reports && (
+              <SummaryCard
+                icon={FileText} label="Today's Report"
+                value={data.reportFiledToday ? "Filed" : "Pending"}
+                note={canReport ? (data.reportFiledToday ? "Thanks — all done" : "Submit before you leave") : "Not required for you"}
+              />
+            )}
+            {on.leave && (
+              <SummaryCard
+                icon={CalendarOff} label="Leave"
+                value={data.pendingLeaves ? `${data.pendingLeaves} pending` : data.upcomingLeave ? "Upcoming" : "None"}
+                note={data.upcomingLeave ? `${formatDate(data.upcomingLeave.startDate)} – ${formatDate(data.upcomingLeave.endDate)}` : "No upcoming leave"}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {prefs.dashboard.tasks && permissions?.tasks && (
+            {on.tasks && prefs.dashboard.tasks && permissions?.tasks && (
               <Card className="p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-ink">Upcoming Tasks</h3>
@@ -92,7 +120,7 @@ export default function EmployeeDashboardPage() {
               </Card>
             )}
 
-            {prefs.dashboard.reports && canReport && (
+            {on.reports && prefs.dashboard.reports && canReport && (
               <Card className="p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-ink">Recent Reports</h3>
@@ -116,7 +144,7 @@ export default function EmployeeDashboardPage() {
               </Card>
             )}
 
-            {prefs.dashboard.leave && data.upcomingLeave && (
+            {on.leave && prefs.dashboard.leave && data.upcomingLeave && (
               <Card className="p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-ink">Upcoming Leave</h3>
