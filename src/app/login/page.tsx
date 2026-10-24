@@ -54,9 +54,9 @@ export default function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="flex items-center justify-center bg-surface px-4 py-12">
+      <div className="flex items-center justify-center bg-surface px-4 pb-[max(3rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))]">
         <div className="w-full max-w-sm">
-          <div className="mb-10 flex flex-col items-center lg:hidden">
+          <div className="mb-8 flex flex-col items-center lg:hidden">
             <LogoIcon size={64} className="rounded-2xl shadow-card" />
           </div>
 
@@ -79,7 +79,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com or EMP001"
-                className="w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
+                className="min-h-12 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink sm:min-h-11 sm:text-sm placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
             <div>
@@ -92,14 +92,14 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
+                className="min-h-12 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink sm:min-h-11 sm:text-sm placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
             {error && <p className="text-xs text-status-danger" role="alert">{error}</p>}
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-xl bg-ink px-3.5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink/90 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:ring-offset-2 disabled:opacity-60"
+              className="min-h-12 w-full rounded-xl bg-ink px-3.5 py-2.5 text-base font-medium text-white sm:min-h-11 sm:text-sm transition-colors hover:bg-ink/90 focus:outline-none focus:ring-2 focus:ring-brand-dark focus:ring-offset-2 disabled:opacity-60"
             >
               {submitting ? "Signing in…" : "Sign in"}
             </button>

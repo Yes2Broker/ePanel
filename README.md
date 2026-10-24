@@ -9,7 +9,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 
 **Employees**
 - **Dashboard** — your details, today's report status and recent reports.
-- **Daily Reports** — Normal and/or Sole Selling report, summary popup, WhatsApp share and image download (details below).
+- **Daily Reports** — Normal and/or Sole Selling report, summary popup and image download (details below).
 - **Attendance** — coming soon.
 - **Profile** — view details and change your own password.
 - **Settings** — compact sidebar and which dashboard sections to show (per device).
@@ -109,7 +109,8 @@ change theirs from Profile → Change Password, and HR/Admin can reset it.
   with an "Overdue" tag and must be acted on. Imported old visits never block
   anyone; HR/Admin close them in bulk on the **Old visits** tab.
 - **The popup** shows Today vs MTD (1st of that month up to the report's date)
-  with both conversion %s, a WhatsApp button and **Download image** — also for
+  with both conversion %s and **Download image** (on phones **Save image**,
+  which opens the share sheet to save to Photos or send anywhere) — also for
   any past report.
 - **HR / Admin**: Team tab (Today / MTD per person and project, every report,
   file or fix any day), Projects tab, full change history on each report.
@@ -137,10 +138,30 @@ merge. No SQL is needed, because the database side is already in place.
   token; only its SHA-256 hash is stored. Every other function takes that
   token, resolves it to an active employee, and checks role and module
   permission before doing anything.
-- Sessions last 7 days. Resetting a password, changing your own password,
-  or deactivating an employee signs them out (other devices, for a
-  password change).
+- A login lasts 30 days from the last time the panel was opened (opening
+  it extends it), and never more than 90 days from signing in. Log out,
+  resetting a password, changing your own password, or deactivating an
+  employee signs them out at once (other devices, for a password change).
 - Internal helpers live in a `private` schema that the API doesn't expose.
+
+## Phones, tablets and the installed app
+
+- **Phones (below 768px):** a bottom bar like a native app. Employees get
+  Dashboard, Reports, Builder Data ↗ (if allowed) and Profile; HR and Admin
+  get Dashboard, Reports, Employees and **More** (everything else, plus
+  Install app and Log out). The bar hides while the keyboard is open.
+  Popups open as bottom sheets.
+- **Tablets:** an icon-only sidebar. **Desktop (1024px+):** the full sidebar.
+- **Install as an app:** `public/manifest.webmanifest` + the service worker
+  at `/sw.js` (`src/app/sw.js/route.ts`). It caches only the app shell and
+  static files (JS, CSS, icons) — never API or database responses — and
+  shows `/offline` without internet. "Install app" is in the avatar menu,
+  the More sheet, Settings and a dashboard banner (phones; hidden for 14 days
+  when dismissed). iPhone gets a Share → Add to Home Screen guide. After a
+  deploy, open apps show "New version available – Refresh".
+- **Hidden from search engines:** `noindex, nofollow, noarchive, nosnippet`
+  meta on every page, an `X-Robots-Tag` header on every response
+  (`next.config.mjs`), and `public/robots.txt` disallowing everything. No sitemap.
 
 ## Office rules you may want to change
 
@@ -151,7 +172,8 @@ At the top of `supabase/functions.sql`, under **Office settings**:
 - `private.late_after()` — Late cut-off (`10:15`).
 - Weekly off is **per employee** (Employees → Edit → Weekly Off). Their
   weekly off doesn't count as an absence.
-- `private.session_days()` — how long a login lasts (7 days).
+- `private.session_days()` / `private.session_max_days()` — how long a login
+  lasts without opening the panel (30 days), and at most (90 days).
 
 Re-run `functions.sql` after editing.
 

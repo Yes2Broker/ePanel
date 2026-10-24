@@ -2,36 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, History, Pencil, X } from "lucide-react";
+import { Download, History, Pencil } from "lucide-react";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
-import { Loading } from "@/components/ui/page";
+import { Loading, Skeleton } from "@/components/ui/page";
+import { Modal } from "@/components/ui/modal";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { SalesReportDetail } from "@/types";
-import { shortDate, time12, visitStatusLabel, whatsappUrl } from "@/lib/report-format";
+import { shortDate, time12, visitStatusLabel } from "@/lib/report-format";
 import { formatDateTime } from "@/lib/utils";
 
-function WhatsAppIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
-      <path d="M17.5 14.4c-.3-.1-1.7-.8-2-.9-.3-.1-.5-.1-.7.1-.2.3-.8.9-.9 1.1-.2.2-.3.2-.6.1-.3-.1-1.2-.5-2.3-1.4-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3zM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2z" />
-    </svg>
-  );
-}
-
-/** Today vs MTD popup — the same table, lists and WhatsApp text as the old forms. */
+/** Today vs MTD popup — the same table and lists as the old forms. */
 export function ReportSummary({
   report, onClose, showHistory, editHref,
 }: { report: SalesReportDetail; onClose: () => void; showHistory?: boolean; editHref?: string | null }) {
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
+  const image = useReportImage(captureRef, report);
   const sole = report.type === "Sole Selling";
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !historyOpen) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [historyOpen, onClose]);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
     ["Calls Made", report.today.calls, report.mtd.calls],
@@ -44,18 +32,32 @@ export function ReportSummary({
     ["Closure Conversion%", report.today.closureConversion, report.mtd.closureConversion],
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Daily Report">
-      <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
-      <div className="relative z-10 max-h-[92vh] w-full max-w-[400px] overflow-y-auto rounded-t-card bg-white shadow-lg sm:rounded-card">
-        <div className="sticky top-0 flex items-center justify-between border-b border-surface-border bg-white px-5 py-3.5">
-          <div>
-            <h3 className="text-base font-semibold text-ink">Daily Report</h3>
-            <p className="text-xs text-ink-faint">{report.title}</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-ink-faint hover:bg-surface" aria-label="Close"><X className="h-4 w-4" /></button>
+  const footer = (
+    <div className="space-y-2">
+      <SecondaryButton onClick={image.save} disabled={image.busy} className="w-full justify-center py-2.5">
+        <Download className="h-4 w-4" />
+        {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
+      </SecondaryButton>
+      {(editHref || showHistory) && (
+        <div className="flex gap-2">
+          {editHref && (
+            <Link href={editHref} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-surface-border px-4 py-2 text-sm font-medium text-ink hover:bg-surface">
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Link>
+          )}
+          {showHistory && (
+            <SecondaryButton className="flex-1 justify-center" onClick={() => setHistoryOpen(true)}>
+              <History className="h-3.5 w-3.5" /> History{report.changeCount ? ` (${report.changeCount})` : ""}
+            </SecondaryButton>
+          )}
         </div>
+      )}
+    </div>
+  );
 
+  return (
+    <>
+      <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
         <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-ink">Name: {report.employeeName}</p>
@@ -95,53 +97,74 @@ export function ReportSummary({
           )}
         </div>
 
-        <div className="sticky bottom-0 space-y-2 border-t border-surface-border bg-white px-5 py-3">
-          <div className="flex gap-2">
-            <a href={whatsappUrl(report)} target="_blank" rel="noopener noreferrer"
-               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1fa855] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a9049]">
-              <WhatsAppIcon /> Share on WhatsApp
-            </a>
-            <SecondaryButton onClick={() => downloadImage(captureRef.current, report, setSaving)} disabled={saving} className="justify-center px-3.5" aria-label="Download image">
-              <Download className="h-4 w-4" /> {saving ? "Saving…" : <><span className="sm:hidden">Download</span><span className="hidden sm:inline">Download image</span></>}
-            </SecondaryButton>
-          </div>
-          {(editHref || showHistory) && (
-            <div className="flex gap-2">
-              {editHref && (
-                <Link href={editHref} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-surface-border px-4 py-2 text-sm font-medium text-ink hover:bg-surface">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Link>
-              )}
-              {showHistory && (
-                <SecondaryButton className="flex-1 justify-center" onClick={() => setHistoryOpen(true)}>
-                  <History className="h-3.5 w-3.5" /> History{report.changeCount ? ` (${report.changeCount})` : ""}
-                </SecondaryButton>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      </Modal>
       {historyOpen && <HistoryPanel reportId={report.id} onClose={() => setHistoryOpen(false)} />}
-    </div>
+    </>
   );
 }
 
-/** Saves the popup's report area (table + lists) as a PNG. */
-async function downloadImage(node: HTMLElement | null, report: SalesReportDetail, setSaving: (v: boolean) => void) {
-  if (!node) return;
-  setSaving(true);
-  try {
-    const { toPng } = await import("html-to-image");
-    const url = await toPng(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${report.title.replace(/[^\w]+/g, "-")}-${report.employeeName.replace(/\s+/g, "-")}-${report.date}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    setSaving(false);
-  }
+const isPhone = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
+/**
+ * The popup's report area (table + lists) as a PNG. Phones get the share sheet
+ * (save to Photos, send anywhere); everything else downloads the file.
+ * The image is drawn as soon as the popup opens: iPhones only allow the share
+ * sheet straight after a tap, so there's no time to draw it then.
+ */
+function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDetail) {
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<Promise<File | null> | null>(null);
+  const name = `${report.title.replace(/[^\w]+/g, "-")}-${report.employeeName.replace(/\s+/g, "-")}-${report.date}.png`;
+
+  const render = () => {
+    if (!fileRef.current) {
+      fileRef.current = (async () => {
+        if (!ref.current) return null;
+        const { toBlob } = await import("html-to-image");
+        const blob = await toBlob(ref.current, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
+        return blob ? new File([blob], name, { type: "image/png" }) : null;
+      })().catch(() => null);
+    }
+    return fileRef.current;
+  };
+
+  useEffect(() => {
+    fileRef.current = null;
+    if (isPhone()) {
+      const t = window.setTimeout(render, 300);
+      return () => window.clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const file = await render();
+      if (!file) return;
+      if (isPhone() && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: report.title });
+          return;
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return; // they closed the share sheet
+          // not allowed here: download it instead
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { save, busy };
 }
 
 function Section({ title, items }: { title: string; items: string[] }) {
@@ -157,38 +180,24 @@ function Section({ title, items }: { title: string; items: string[] }) {
 
 function HistoryPanel({ reportId, onClose }: { reportId: string; onClose: () => void }) {
   const { data, loading, error } = useApi(() => api.reportHistory(reportId), [reportId]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[55] flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Change history">
-      <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
-      <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-card bg-white shadow-lg sm:rounded-card">
-        <div className="sticky top-0 flex items-center justify-between border-b border-surface-border bg-white px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-ink">Change history</h3>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-ink-faint hover:bg-surface" aria-label="Close"><X className="h-4 w-4" /></button>
-        </div>
-        <div className="px-5 py-4">
-          {loading && !data && <Loading />}
-          {error && <p className="text-sm text-status-danger">{error}</p>}
-          {data && data.length === 0 && <p className="py-6 text-center text-sm text-ink-faint">No changes recorded for this report.</p>}
-          <ol className="space-y-3">
-            {(data ?? []).map((c, i) => (
-              <li key={i} className="border-l-2 border-brand pl-3 text-sm">
-                <p className="text-xs text-ink-faint">{formatDateTime(c.at)} · {c.by ?? "—"}</p>
-                <p className="font-medium text-ink">{c.field}</p>
-                {c.field !== "Report" ? (
-                  <p className="text-ink-muted"><span className="line-through decoration-ink-faint">{c.old ?? "—"}</span> → <span className="text-ink">{c.new ?? "—"}</span></p>
-                ) : <p className="text-ink-muted">{c.new}</p>}
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div className="border-t border-surface-border px-5 py-3"><PrimaryButton className="w-full justify-center" onClick={onClose}>Close</PrimaryButton></div>
-      </div>
-    </div>
+    <Modal open onClose={onClose} title="Change history" size="lg"
+      footer={<PrimaryButton className="w-full justify-center" onClick={onClose}>Close</PrimaryButton>}>
+      {loading && !data && <Loading />}
+      {error && <p className="text-sm text-status-danger">{error}</p>}
+      {data && data.length === 0 && <p className="py-6 text-center text-sm text-ink-faint">No changes recorded for this report.</p>}
+      <ol className="space-y-3">
+        {(data ?? []).map((c, i) => (
+          <li key={i} className="break-words border-l-2 border-brand pl-3 text-sm">
+            <p className="text-xs text-ink-faint">{formatDateTime(c.at)} · {c.by ?? "—"}</p>
+            <p className="font-medium text-ink">{c.field}</p>
+            {c.field !== "Report" ? (
+              <p className="text-ink-muted"><span className="line-through decoration-ink-faint">{c.old ?? "—"}</span> → <span className="text-ink">{c.new ?? "—"}</span></p>
+            ) : <p className="text-ink-muted">{c.new}</p>}
+          </li>
+        ))}
+      </ol>
+    </Modal>
   );
 }
 
@@ -197,20 +206,11 @@ export function ReportSummaryById({
   reportId, onClose, isManager,
 }: { reportId: string; onClose: () => void; isManager: boolean }) {
   const { data, error } = useApi(() => api.getReport(reportId), [reportId]);
-  if (error) {
+  if (error || !data) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
-        <div className="relative z-10 rounded-card bg-white p-5 text-sm text-status-danger shadow-lg">{error}</div>
-      </div>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-ink/40" />
-        <div className="relative z-10 rounded-card bg-white px-8 shadow-lg"><Loading /></div>
-      </div>
+      <Modal open onClose={onClose} title="Daily Report" size="sm">
+        {error ? <p className="text-sm text-status-danger">{error}</p> : <ReportSkeleton />}
+      </Modal>
     );
   }
   return (
@@ -220,5 +220,14 @@ export function ReportSummaryById({
       showHistory={isManager}
       editHref={data.canEdit ? `/reports/edit/${data.id}` : null}
     />
+  );
+}
+
+function ReportSkeleton() {
+  return (
+    <div className="space-y-3" aria-label="Loading report">
+      <Skeleton className="h-4 w-40" />
+      {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { Skeleton } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
 
 /** Which sole selling projects one employee may report for (Permissions page). */
@@ -27,9 +28,9 @@ export function SoleSellingProjects({ employeeId }: { employeeId: string }) {
   };
 
   return (
-    <div className="mb-2 ml-3 rounded-xl border border-surface-border bg-surface/60 px-3 py-2.5">
+    <div className="mb-2 rounded-xl sm:ml-3 border border-surface-border bg-surface/60 px-3 py-2.5">
       <p className="mb-2 text-xs font-medium text-ink-muted">Projects this person reports for</p>
-      {projects.loading || assigned.loading ? <p className="text-xs text-ink-faint">Loading…</p>
+      {projects.loading || assigned.loading ? <div className="flex gap-2"><Skeleton className="h-10 w-24 rounded-full" /><Skeleton className="h-10 w-28 rounded-full" /></div>
         : active.length === 0 ? (
           <p className="text-xs text-ink-faint">No active projects. <Link href="/reports?tab=projects" className="underline">Add one</Link>.</p>
         ) : (
@@ -37,7 +38,7 @@ export function SoleSellingProjects({ employeeId }: { employeeId: string }) {
             {active.map((p) => {
               const on = ids.includes(p.id);
               return (
-                <label key={p.id} className={cn("flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm",
+                <label key={p.id} className={cn("flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm",
                   on ? "border-ink bg-ink text-white" : "border-surface-border bg-white text-ink-muted")}>
                   <input type="checkbox" className="sr-only" checked={on} onChange={(e) => toggle(p.id, e.target.checked)} />
                   {on ? "✓ " : ""}{p.name}

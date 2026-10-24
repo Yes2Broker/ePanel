@@ -23,21 +23,44 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
   const hasStats = showAttendance || showReports;
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-ink">Employee Overview</h3>
           <p className="text-xs text-ink-faint">{hasStats ? "This month" : `${employees.length} active`}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex w-full items-center gap-3 sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" className="w-40 rounded-pill border border-surface-border bg-surface py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" aria-label="Search employees" className="min-h-10 w-full rounded-pill border border-surface-border bg-surface py-1.5 pl-8 pr-3 text-base focus:outline-none focus:ring-2 focus:ring-brand sm:w-40 sm:text-xs" />
           </div>
-          <Link href="/admin/employees" className="text-xs font-medium text-ink-muted hover:text-ink">Manage</Link>
+          <Link href="/admin/employees" className="flex min-h-10 items-center text-xs font-medium text-ink-muted hover:text-ink">Manage</Link>
         </div>
       </div>
-      <div className="max-h-[420px] overflow-auto">
+      {/* Phones: one card per person. */}
+      <ul className="divide-y divide-surface-border md:hidden">
+        {visible.map((e) => {
+          const s = byId.get(e.id);
+          return (
+            <li key={e.id} className="flex items-center gap-3 py-3">
+              <Avatar name={e.name} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-ink">{e.name}</p>
+                <p className="truncate text-xs text-ink-faint">{e.id} · {e.department} · {e.role}</p>
+                {(showReports || showAttendance) && s && (
+                  <p className="text-xs text-ink-muted">
+                    {showReports && `${s.reportsThisMonth} reports`}
+                    {showAttendance && ` · ${s.attendanceRate == null ? "—" : `${s.attendanceRate}%`} attendance`}
+                  </p>
+                )}
+              </div>
+              {e.mobile && <a href={`tel:${e.mobile}`} className="flex min-h-11 shrink-0 items-center rounded-full bg-surface px-3 text-xs text-ink-muted">{e.mobile}</a>}
+            </li>
+          );
+        })}
+        {visible.length === 0 && <li className="py-8 text-center text-sm text-ink-faint">No matching employees.</li>}
+      </ul>
+      <div className="hidden max-h-[420px] overflow-auto md:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="text-xs font-medium uppercase tracking-wide text-ink-faint">

@@ -26,7 +26,7 @@ export function ReportFormPage({ load, backHref }: { load: () => Promise<ReportF
 
   return (
     <div className="pt-2">
-      <Link href={backHref} className="mb-3 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link href={backHref} className="mb-1 inline-flex min-h-11 items-center gap-1 text-sm text-ink-muted hover:text-ink md:mb-3 md:min-h-0">
         <ArrowLeft className="h-4 w-4" /> Daily Reports
       </Link>
       <ErrorBanner message={error} onRetry={reload} />

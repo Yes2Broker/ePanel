@@ -41,10 +41,10 @@ export function EmployeeFormDialog({
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full Name"><input required value={form.name} onChange={(e) => set("name", e.target.value)} className={inputCls} /></Field>
-          <Field label="Employee ID"><input required disabled={!!initial} value={form.id} onChange={(e) => set("id", e.target.value)} className={inputCls} /></Field>
-          <Field label="Email (optional)"><input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
-          <Field label="Mobile Number"><input value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
-          <Field label="Salary"><input type="number" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
+          <Field label="Employee ID"><input required disabled={!!initial} autoCapitalize="characters" value={form.id} onChange={(e) => set("id", e.target.value)} className={inputCls} /></Field>
+          <Field label="Email (optional)"><input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
+          <Field label="Mobile Number"><input type="tel" inputMode="tel" autoComplete="off" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
+          <Field label="Salary"><input type="number" inputMode="numeric" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
           <Field label="Date of Joining"><input type="date" value={form.joiningDate} onChange={(e) => set("joiningDate", e.target.value)} className={inputCls} /></Field>
           <Field label="Department">
             <select value={form.department} onChange={(e) => set("department", e.target.value as Department)} className={inputCls}>
@@ -71,16 +71,16 @@ export function EmployeeFormDialog({
           </Field>
           {!initial && (
             <Field label="Initial Password">
-              <input required minLength={8} type="text" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="At least 8 characters" className={inputCls} />
+              <input required minLength={8} type="text" autoCapitalize="none" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="At least 8 characters" className={inputCls} />
             </Field>
           )}
         </div>
         {!initial && (
           <p className="text-xs text-ink-faint">Share this password with the employee directly. They can change it later from their Profile.</p>
         )}
-        <div className="flex justify-end gap-2 pt-1">
-          <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
-          <PrimaryButton type="submit" disabled={saving}>
+        <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:justify-end">
+          <SecondaryButton type="button" onClick={onClose} className="justify-center">Cancel</SecondaryButton>
+          <PrimaryButton type="submit" disabled={saving} className="justify-center">
             {saving ? "Saving…" : initial ? "Save changes" : "Add employee"}
           </PrimaryButton>
         </div>

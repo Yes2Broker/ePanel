@@ -49,15 +49,15 @@ export function StaleVisits() {
     <div className="space-y-4">
       <Card className="space-y-3 p-4">
         <p className="text-sm text-ink-muted">Visits imported from the old sheets whose date has passed with no Done, Reschedule or Cancel. They don&apos;t block anyone&apos;s report. Close them here; visits created in the panel must be handled by the person in their next report.</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={person} onChange={(e) => setPerson(e.target.value)} className={selectCls} aria-label="Person">
+        <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+          <select value={person} onChange={(e) => setPerson(e.target.value)} className={cn(selectCls, "col-span-2 md:col-auto")} aria-label="Person">
             <option value="">Everyone</option>
             {people.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Cancel reason (optional)" aria-label="Cancel reason"
-            className="min-w-0 flex-1 rounded-pill border border-surface-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-          <PrimaryButton disabled={busy || !count} onClick={() => close("Done")}>Mark {count || ""} Done</PrimaryButton>
-          <SecondaryButton disabled={busy || !count} onClick={() => close("Cancelled")}>Mark {count || ""} Cancelled</SecondaryButton>
+            className="col-span-2 min-h-10 min-w-0 flex-1 rounded-pill border border-surface-border bg-white px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand md:col-auto md:text-sm" />
+          <PrimaryButton disabled={busy || !count} onClick={() => close("Done")} className="justify-center">Mark {count || ""} Done</PrimaryButton>
+          <SecondaryButton disabled={busy || !count} onClick={() => close("Cancelled")} className="justify-center">Mark {count || ""} Cancelled</SecondaryButton>
         </div>
       </Card>
       <ErrorBanner message={error} onRetry={reload} />
@@ -65,7 +65,28 @@ export function StaleVisits() {
         {loading && !data ? <Loading /> : visible.length === 0 ? (
           <p className="py-10 text-center text-sm text-ink-faint">No old pending visits.</p>
         ) : (
-          <table className="w-full text-sm">
+          <>
+          {/* Phones: a tappable row per visit. */}
+          <ul className="divide-y divide-surface-border md:hidden">
+            <li>
+              <label className="flex min-h-12 items-center gap-3 bg-surface px-4 text-xs font-medium text-ink-muted">
+                <input type="checkbox" className="h-5 w-5" checked={allOn} onChange={(e) => toggleAll(e.target.checked)} /> Select all ({visible.length})
+              </label>
+            </li>
+            {visible.map((v) => (
+              <li key={v.id}>
+                <label className={cn("flex items-center gap-3 px-4 py-3", selected.has(v.id) && "bg-brand-soft")}>
+                  <input type="checkbox" className="h-5 w-5 shrink-0" checked={selected.has(v.id)} onChange={(e) => toggle(v.id, e.target.checked)} aria-label={`Select ${v.client}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-ink">{v.client}</span>
+                    <span className="block truncate text-xs text-ink-faint">{v.employeeName} · {v.type === "Normal" ? "Normal" : v.projectName}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-ink-muted">{formatDate(v.date)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <table className="hidden w-full text-sm md:table">
             <thead>
               <tr className="bg-surface text-left text-xs text-ink-faint">
                 <th className="w-10 px-4 py-2"><input type="checkbox" checked={allOn} onChange={(e) => toggleAll(e.target.checked)} aria-label="Select all" /></th>
@@ -87,6 +108,7 @@ export function StaleVisits() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </Card>
     </div>

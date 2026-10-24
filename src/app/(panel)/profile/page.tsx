@@ -16,8 +16,8 @@ import { weekOffLabel } from "@/lib/constants";
 function Row({ label, value, locked }: { label: string; value: React.ReactNode; locked?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-surface-border py-3 last:border-0">
-      <span className="text-sm text-ink-faint">{label}</span>
-      <span className="flex items-center gap-1.5 text-right text-sm font-medium text-ink">
+      <span className="shrink-0 text-sm text-ink-faint">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-right text-sm font-medium text-ink [overflow-wrap:anywhere]">
         {value || "—"} {locked && <Lock className="h-3 w-3 shrink-0 text-ink-faint" />}
       </span>
     </div>
@@ -32,7 +32,7 @@ export default function ProfilePage() {
     <div className="max-w-3xl space-y-6 pt-4">
       <PageHeader title="My Profile" subtitle="Contact HR or Admin to update these details." />
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-ink text-lg font-medium text-white">
             {initials(user.name)}
@@ -44,7 +44,7 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <h3 className="mb-1 text-sm font-semibold text-ink">Personal Information</h3>
         <div className="mt-2">
           <Row label="Full Name" value={user.name} locked />
@@ -54,7 +54,7 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-4 sm:p-5">
         <h3 className="mb-1 text-sm font-semibold text-ink">Employment Information</h3>
         <div className="mt-2">
           <Row label="Department" value={user.department} locked />
@@ -99,7 +99,7 @@ function ChangePasswordCard() {
   };
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <h3 className="text-sm font-semibold text-ink">Change Password</h3>
       <p className="mt-0.5 text-xs text-ink-faint">Forgot your current password? HR or Admin can reset it for you.</p>
       <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-3">

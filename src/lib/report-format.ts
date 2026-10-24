@@ -1,4 +1,3 @@
-import { SalesReportDetail } from "@/types";
 import { OFFICE_TZ } from "@/lib/utils";
 
 const utcDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00Z`);
@@ -9,7 +8,7 @@ export function shortDate(iso: string | null | undefined) {
   return utcDate(iso).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "2-digit" });
 }
 
-/** "Sat 24 Oct 2026" — the date line in the form and WhatsApp text. */
+/** "Sat 24 Oct 2026" — the date line in the report form. */
 export function longDate(iso: string) {
   return utcDate(iso).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
@@ -31,36 +30,4 @@ export function nowHHMM() {
 export function visitStatusLabel(v: { status: string; rescheduleDate: string | null }) {
   if (v.status === "Pending" && v.rescheduleDate) return `Rescheduled to ${shortDate(v.rescheduleDate)}`;
   return v.status;
-}
-
-/** The text sent to WhatsApp — same layout as the old forms. */
-export function whatsappText(r: SalesReportDetail) {
-  const sole = r.type === "Sole Selling";
-  const done = r.doneVisits.length ? r.doneVisits.map((v) => `• ${v.client} (${time12(v.time)})`).join("\n") : "-";
-  const sched = r.scheduledDetails.length ? r.scheduledDetails.map((v) => `• ${v.client}`).join("\n") : "-";
-  const lines = [
-    sole ? `*Sole Selling Report – ${r.projectName ?? ""}*` : "*Daily Sales Report*",
-    `*Date:* ${longDate(r.date)}`,
-    `*Name:* ${r.employeeName}`,
-    "",
-    `*Leads:* ${r.today.leads}`,
-    `*Calls:* ${r.today.calls}`,
-    `*Positive:* ${r.today.positive}`,
-    `*Scheduled Count:* ${r.today.scheduled}`,
-    `*Done Count:* ${r.today.done}`,
-    ...(sole ? [`*Walk In:* ${r.today.walkIn}`] : []),
-    `*Tokens:* ${r.today.tokens}`,
-    "",
-    "*Visits Done*",
-    done,
-    ...(sole ? ["", "*Walk Ins*", r.walkIns.length ? r.walkIns.map((w) => `• ${w}`).join("\n") : "-"] : []),
-    "",
-    "*Visits Scheduled*",
-    sched,
-  ];
-  return lines.join("\n");
-}
-
-export function whatsappUrl(r: SalesReportDetail) {
-  return "https://wa.me/?text=" + encodeURIComponent(whatsappText(r));
 }

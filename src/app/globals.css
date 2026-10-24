@@ -22,3 +22,42 @@ body {
 ::-webkit-scrollbar-thumb {
   @apply bg-ink/10 rounded-full;
 }
+
+/* Height of the phone bottom navigation (0 when it isn't shown). The panel
+   layout sets data-nav on <html>; it's dropped while the keyboard is open. */
+:root {
+  --nav-h: 0px;
+}
+@media (max-width: 767px) {
+  html[data-nav="on"] {
+    --nav-h: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Never let a stray wide element push the page sideways. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Native-feeling taps on phones. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Fields scrolled into view (keyboard) stop above the bottom nav / sticky bars. */
+input,
+select,
+textarea {
+  scroll-margin-bottom: calc(var(--nav-h) + 6rem);
+}
+
+@layer utilities {
+  /* Popup height on phones: full screen minus the notch. 100vh first for
+     browsers without dvh (older Samsung Internet). */
+  .max-h-sheet {
+    max-height: calc(100vh - 0.75rem);
+    max-height: calc(100dvh - env(safe-area-inset-top) - 0.75rem);
+  }
+}
