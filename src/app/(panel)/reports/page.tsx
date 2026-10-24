@@ -87,7 +87,7 @@ function MyReports({ options, loading, error, reload }: { options: ReportOption[
           return (
             <Link key={`${o.type}-${o.projectId}`} href={href} className="block rounded-card focus:outline-none focus:ring-2 focus:ring-brand">
               <Card className="flex items-center gap-3 p-4 transition-colors hover:bg-surface">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand"><Icon className="h-4 w-4 text-ink" /></div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-soft"><Icon className="h-4 w-4 text-brand" /></div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-ink">{o.title}</p>
                   {o.todayReportId

@@ -49,8 +49,8 @@ export function CheckInCard({
   return (
     <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="flex items-center gap-4">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand">
-          <Clock className="h-5 w-5 text-ink" />
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-soft">
+          <Clock className="h-5 w-5 text-brand" />
         </div>
         <div>
           <p className="text-2xl font-semibold leading-none text-ink">

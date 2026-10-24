@@ -217,6 +217,12 @@ export default function ImportPage() {
     return <div className="pt-4"><EmptyState icon={FileUp} title="Only an Admin can import data" /></div>;
   }
 
+  // "Chirag Rawat (OLD05)" — also for people being created as inactive in step 2.
+  const personLabel = (id: string) => {
+    const known = empById.get(id)?.name;
+    const created = foundNames.find(([k]) => { const c = choiceFor(k); return c.mode === "create" && c.id.trim().toUpperCase() === id; })?.[1];
+    return `${known ?? created ?? id} (${id})`;
+  };
   const anyFile = Object.keys(files).length > 0;
   const ready = anyFile && unresolved.length === 0 && missingProject.length === 0;
   const createdIds = new Set(foundNames.flatMap(([k]) => { const c = choiceFor(k); return c.mode === "create" ? [c.id.trim().toUpperCase()] : []; }));
@@ -304,8 +310,8 @@ export default function ImportPage() {
           <ul className="divide-y divide-surface-border">
             {soleEmployees.map((id) => (
               <li key={id} className="flex flex-wrap items-center gap-2 py-2.5">
-                <span className="min-w-[10rem] flex-1 text-sm font-medium text-ink">{empById.get(id)?.name ?? id}</span>
-                <select aria-label={`Project for ${empById.get(id)?.name ?? id}`} value={projectOf(id)} onChange={(e) => setProjectFor((p) => ({ ...p, [id]: e.target.value }))}
+                <span className="min-w-[10rem] flex-1 text-sm font-medium text-ink">{personLabel(id)}</span>
+                <select aria-label={`Project for ${personLabel(id)}`} value={projectOf(id)} onChange={(e) => setProjectFor((p) => ({ ...p, [id]: e.target.value }))}
                   className={cn(selectCls, !projectOf(id) && "border-status-danger")}>
                   <option value="">Choose project…</option>
                   {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "Closed" ? " (closed)" : ""}</option>)}
@@ -363,7 +369,7 @@ export default function ImportPage() {
                   {built.reports.slice(0, 15).map((r) => (
                     <tr key={r.key as string} className="border-t border-surface-border">
                       <td className="px-2 py-1.5">{formatDate(r.date as string)}</td>
-                      <td className="px-2 py-1.5">{empById.get(r.employeeId as string)?.name ?? `${r.employeeId} (new)`}</td>
+                      <td className="px-2 py-1.5">{personLabel(r.employeeId as string)}</td>
                       <td className="px-2 py-1.5">{r.type === "Normal" ? "Normal" : activeProjects.find((p) => p.id === r.projectId)?.name}</td>
                       {(["leads", "calls", "positive", "scheduled", "done", "walkIn", "tokens"] as const).map((k) => <td key={k} className="px-2 py-1.5">{r[k] as number}</td>)}
                     </tr>

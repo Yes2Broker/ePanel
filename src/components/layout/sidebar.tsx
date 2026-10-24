@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -8,6 +7,7 @@ import { navFor } from "@/lib/nav";
 import { useSession } from "@/context/session-context";
 import { usePreferences } from "@/context/preferences-context";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
+import { FullLogo, LogoIcon } from "@/components/ui/logo";
 
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
@@ -30,11 +30,15 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className={cn("mb-8 flex items-center gap-2 px-1", compact && "lg:justify-center lg:px-0")}>
-          <div className="h-7 w-7 shrink-0 overflow-hidden rounded-lg">
-            <Image src="/assets/logo.webp" alt="Yes2Broker" width={28} height={28} className="h-full w-full object-cover" />
+        {/* Phones: square icon. Desktop: full logo, or the icon when the sidebar is compact. */}
+        <div className="mb-8 px-1">
+          <div className="flex items-center gap-2.5 lg:hidden">
+            <LogoIcon size={36} />
+            <span className="text-[15px] font-semibold text-brand">Yes2Broker</span>
           </div>
-          <span className={cn("text-[15px] font-semibold text-ink", compact && "lg:hidden")}>Yes2Broker</span>
+          {compact
+            ? <div className="hidden justify-center lg:flex"><LogoIcon size={40} /></div>
+            : <div className="hidden lg:block"><FullLogo className="max-w-[210px]" priority /></div>}
         </div>
 
         <nav className="flex-1 space-y-1">

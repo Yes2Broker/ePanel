@@ -1,8 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import {
-  AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, LeaveRequest,
-  LeaveStatus, LeaveType, ModuleKey, Permissions, PersonalTask,
-  TaskPriority, TaskStatus, TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
+  AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, ModuleKey, Permissions,
+  TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType, StaleVisit,
 } from "@/types";
 
@@ -79,24 +78,6 @@ export const api = {
       p_employee_id: args.employeeId, p_date: args.date, p_status: args.status,
       p_check_in: args.checkIn || null, p_check_out: args.checkOut || null, p_note: args.note,
     }),
-
-  // Leave
-  requestLeave: (type: LeaveType, start: string, end: string, reason: string) =>
-    rpc<LeaveRequest>("request_leave", { p_type: type, p_start: start, p_end: end, p_reason: reason }),
-  myLeaves: () => rpc<LeaveRequest[]>("my_leaves"),
-  cancelLeave: (id: string) => rpc<void>("cancel_leave", { p_id: id }),
-  listLeaveRequests: (status: LeaveStatus | null) => rpc<LeaveRequest[]>("list_leave_requests", { p_status: status }),
-  reviewLeave: (id: string, approve: boolean, note: string) =>
-    rpc<LeaveRequest>("review_leave", { p_id: id, p_approve: approve, p_note: note }),
-
-  // Tasks
-  listTasks: () => rpc<PersonalTask[]>("list_tasks"),
-  saveTask: (id: string | null, t: { title: string; description: string; priority: TaskPriority; dueDate: string }) =>
-    rpc<PersonalTask>("save_task", {
-      p_id: id, p_title: t.title, p_description: t.description, p_priority: t.priority, p_due_date: t.dueDate || null,
-    }),
-  setTaskStatus: (id: string, status: TaskStatus) => rpc<PersonalTask>("set_task_status", { p_id: id, p_status: status }),
-  deleteTask: (id: string) => rpc<void>("delete_task", { p_id: id }),
 
   // Sales daily reports (Normal + Sole Selling)
   listProjects: () => rpc<Project[]>("list_projects"),

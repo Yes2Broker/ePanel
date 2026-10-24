@@ -10,9 +10,7 @@ import { FeatureKey, isFeatureEnabled } from "@/lib/features";
 
 // Only sections whose feature is launched can be shown or hidden.
 const DASHBOARD_SECTIONS = ([
-  { key: "tasks", label: "Upcoming tasks" },
   { key: "reports", label: "Recent reports" },
-  { key: "leave", label: "Upcoming leave" },
 ] satisfies { key: keyof Preferences["dashboard"] & FeatureKey; label: string }[]).filter((s) => isFeatureEnabled(s.key));
 
 export default function SettingsPage() {

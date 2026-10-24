@@ -8,8 +8,8 @@ export function SummaryCard({
   const body = (
     <Card className="h-full p-4 transition-colors">
       <div className="mb-3 flex items-center gap-2.5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand">
-          <Icon className="h-3.5 w-3.5 text-ink" strokeWidth={2.25} />
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft">
+          <Icon className="h-3.5 w-3.5 text-brand" strokeWidth={2.25} />
         </div>
         <span className="text-sm text-ink-muted">{label}</span>
         {href && <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-ink-faint" />}

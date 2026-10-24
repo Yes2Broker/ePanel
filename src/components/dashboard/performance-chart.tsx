@@ -33,7 +33,7 @@ export function PerformanceChart({ data }: { data: { month: string; rate: number
               />
               <Bar dataKey="rate" radius={[6, 6, 0, 0]} maxBarSize={28}>
                 {points.map((d) => (
-                  <Cell key={d.month} fill={d.month === peak?.month ? "#E8E24A" : "#EFEFEA"} />
+                  <Cell key={d.month} fill={d.month === peak?.month ? "#273992" : "#E9ECF8"} />
                 ))}
               </Bar>
             </BarChart>

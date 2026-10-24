@@ -11,7 +11,6 @@ import { isFeatureEnabled } from "@/lib/features";
 // Stats columns appear only once their feature is launched (src/lib/features.ts).
 const showAttendance = isFeatureEnabled("attendance");
 const showReports = isFeatureEnabled("reports");
-const showTasks = isFeatureEnabled("tasks");
 
 /** Active employees, plus this month's stats for whichever features are live. */
 export function PerformanceTable({ employees, stats }: { employees: Employee[]; stats?: EmployeeStat[] }) {
@@ -21,7 +20,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
   const visible = q
     ? employees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.id.toLowerCase().includes(q))
     : employees;
-  const hasStats = showAttendance || showReports || showTasks;
+  const hasStats = showAttendance || showReports;
 
   return (
     <Card className="p-5">
@@ -47,7 +46,6 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
               <th className="pb-2.5 pr-3">Mobile</th>
               {showAttendance && <th className="pb-2.5 pr-3">Attendance</th>}
               {showReports && <th className="pb-2.5 pr-3">Reports</th>}
-              {showTasks && <th className="pb-2.5 pr-3">Tasks done</th>}
               {showAttendance && <th className="pb-2.5">Today</th>}
             </tr>
           </thead>
@@ -80,7 +78,6 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
                     </td>
                   )}
                   {showReports && <td className="py-3 pr-3 text-ink-muted">{s?.reportsThisMonth ?? "—"}</td>}
-                  {showTasks && <td className="py-3 pr-3 text-ink-muted">{s?.tasksCompleted ?? "—"}</td>}
                   {showAttendance && (
                     <td className="py-3">
                       <span className={s?.checkedInToday ? "text-xs font-medium text-status-success" : "text-xs text-ink-faint"}>

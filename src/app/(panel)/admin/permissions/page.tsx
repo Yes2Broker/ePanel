@@ -67,7 +67,7 @@ export default function AdminPermissionsPage() {
                     onClick={() => setSelectedId(e.id)}
                     className={cn("flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm", selectedId === e.id ? "bg-ink text-white" : "text-ink hover:bg-surface")}
                   >
-                    <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium", selectedId === e.id ? "bg-brand text-ink" : "bg-status-neutralBg text-ink-muted")}>
+                    <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium", selectedId === e.id ? "bg-white text-ink" : "bg-status-neutralBg text-ink-muted")}>
                       {initials(e.name)}
                     </div>
                     <div className="min-w-0">
