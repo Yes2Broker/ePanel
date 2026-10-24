@@ -3,7 +3,7 @@ import {
   AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, LeaveRequest,
   LeaveStatus, LeaveType, ModuleKey, Permissions, PersonalTask,
   TaskPriority, TaskStatus, TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
-  SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
+  SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType, StaleVisit,
 } from "@/types";
 
 /**
@@ -129,6 +129,9 @@ export const api = {
   setReportEmailRecipients: (emails: string[]) => rpc<string[]>("set_report_email_recipients", { p_emails: emails }),
   listEmployeeAliases: () => rpc<{ alias: string; employeeId: string }[]>("list_employee_aliases"),
   importReports: (data: unknown) => rpc<Record<string, number>>("import_reports", { p_data: data }),
+  listStaleVisits: () => rpc<StaleVisit[]>("list_stale_visits"),
+  closeStaleVisits: (ids: string[], status: "Done" | "Cancelled", reason: string) =>
+    rpc<number>("close_stale_visits", { p_ids: ids, p_status: status, p_reason: reason }),
 
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),

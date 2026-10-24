@@ -96,9 +96,14 @@ change theirs from Profile → Change Password, and HR/Admin can reset it.
   calls, tokens, visits scheduled today (client + date), an action for every
   visit due today (Done + time / Reschedule from tomorrow / Cancel + reason),
   future visits done today, and walk-ins on Sole Selling. Site Visit Done =
-  visits done + future visits done (+ walk-ins on Sole Selling).
+  visits done + future visits done; walk-ins are their own number and aren't
+  in any conversion %. Conversions show one decimal (e.g. 1.1%).
+- **Overdue visits** (date passed with no action) show in Today's Visits
+  with an "Overdue" tag and must be acted on. Imported old visits never block
+  anyone; HR/Admin close them in bulk on the **Old visits** tab.
 - **The popup** shows Today vs MTD (1st of that month up to the report's date)
-  with both conversion %s and a WhatsApp button — also for any past report.
+  with both conversion %s, a WhatsApp button and **Download image** — also for
+  any past report.
 - **HR / Admin**: Team tab (Today / MTD per person and project, every report,
   file or fix any day), Projects tab, full change history on each report.
   Admin only: 10 PM email recipients and **Import old data** (CSV from the old

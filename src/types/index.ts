@@ -200,7 +200,7 @@ export interface ReportFormData {
   report: SalesReportRow | null;
   scheduled: { id: string; client: string; date: string; locked: boolean }[];
   todayVisits: {
-    id: string; client: string; visitDate: string; rescheduleDate: string | null; bookedOn: string; bookedHere: boolean;
+    id: string; client: string; visitDate: string; rescheduleDate: string | null; bookedOn: string; bookedHere: boolean; overdue: boolean;
     action: { action: VisitActionType; time: string | null; date: string | null; reason: string | null; frozen: boolean } | null;
   }[];
   futureVisits: { id: string; client: string; date: string }[];
@@ -220,6 +220,17 @@ export interface ReportPayload {
   actions: { visitId?: string; tempId?: string; action: VisitActionType; time?: string; date?: string; reason?: string }[];
   futureDone: { visitId: string; time: string }[];
   walkIns: string[];
+}
+
+export interface StaleVisit {
+  id: string;
+  client: string;
+  employeeId: string;
+  employeeName: string;
+  type: SalesReportType;
+  projectName: string | null;
+  bookedOn: string;
+  date: string;
 }
 
 export interface TeamSummaryGroup {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { History, Pencil, X } from "lucide-react";
+import { Download, History, Pencil, X } from "lucide-react";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Loading } from "@/components/ui/page";
 import { api } from "@/lib/api";
@@ -24,6 +24,8 @@ export function ReportSummary({
   report, onClose, showHistory, editHref,
 }: { report: SalesReportDetail; onClose: () => void; showHistory?: boolean; editHref?: string | null }) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const captureRef = useRef<HTMLDivElement>(null);
   const sole = report.type === "Sole Selling";
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !historyOpen) onClose(); };
@@ -34,7 +36,7 @@ export function ReportSummary({
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
     ["Calls Made", report.today.calls, report.mtd.calls],
     ["Meaningful Conversations Done", report.today.positive, report.mtd.positive],
-    ["Site Visit Scheduled for the month", report.today.scheduled, report.mtd.scheduled],
+    ["Site Visits Scheduled", report.today.scheduled, report.mtd.scheduled],
     ["Site Visit Done", report.today.done, report.mtd.done],
     ...(sole ? [["Walk In Done", report.today.walkIn, report.mtd.walkIn] as [string, number, number]] : []),
     ["Bookings", report.today.tokens, report.mtd.tokens],
@@ -54,8 +56,11 @@ export function ReportSummary({
           <button onClick={onClose} className="rounded-lg p-1.5 text-ink-faint hover:bg-surface" aria-label="Close"><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="space-y-4 px-5 py-4">
-          <p className="text-sm font-semibold text-ink">Name: {report.employeeName}</p>
+        <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-ink">Name: {report.employeeName}</p>
+            {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
+          </div>
           <table className="w-full overflow-hidden rounded-xl border border-surface-border text-sm">
             <thead>
               <tr className="bg-ink text-left text-xs text-white">
@@ -91,10 +96,15 @@ export function ReportSummary({
         </div>
 
         <div className="sticky bottom-0 space-y-2 border-t border-surface-border bg-white px-5 py-3">
-          <a href={whatsappUrl(report)} target="_blank" rel="noopener noreferrer"
-             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1fa855] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a9049]">
-            <WhatsAppIcon /> Share on WhatsApp
-          </a>
+          <div className="flex gap-2">
+            <a href={whatsappUrl(report)} target="_blank" rel="noopener noreferrer"
+               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1fa855] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1a9049]">
+              <WhatsAppIcon /> Share on WhatsApp
+            </a>
+            <SecondaryButton onClick={() => downloadImage(captureRef.current, report, setSaving)} disabled={saving} className="justify-center px-3.5" aria-label="Download image">
+              <Download className="h-4 w-4" /> {saving ? "Saving…" : <><span className="sm:hidden">Download</span><span className="hidden sm:inline">Download image</span></>}
+            </SecondaryButton>
+          </div>
           {(editHref || showHistory) && (
             <div className="flex gap-2">
               {editHref && (
@@ -114,6 +124,24 @@ export function ReportSummary({
       {historyOpen && <HistoryPanel reportId={report.id} onClose={() => setHistoryOpen(false)} />}
     </div>
   );
+}
+
+/** Saves the popup's report area (table + lists) as a PNG. */
+async function downloadImage(node: HTMLElement | null, report: SalesReportDetail, setSaving: (v: boolean) => void) {
+  if (!node) return;
+  setSaving(true);
+  try {
+    const { toPng } = await import("html-to-image");
+    const url = await toPng(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${report.title.replace(/[^\w]+/g, "-")}-${report.employeeName.replace(/\s+/g, "-")}-${report.date}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setSaving(false);
+  }
 }
 
 function Section({ title, items }: { title: string; items: string[] }) {

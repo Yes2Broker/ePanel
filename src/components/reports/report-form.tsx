@@ -71,12 +71,15 @@ export function ReportForm({
   const todayItems = useMemo(() => {
     const fromServer = form.todayVisits.filter((v) => !v.bookedHere).map((v) => ({
       key: v.id, visitId: v.id as string | undefined, tempId: undefined as string | undefined, client: v.client,
-      note: v.rescheduleDate ? `Rescheduled from ${shortDate(v.visitDate)}` : `Booked ${shortDate(v.bookedOn)}`,
+      note: v.overdue
+        ? `Was due ${shortDate(v.rescheduleDate ?? v.visitDate)}`
+        : v.rescheduleDate ? `Rescheduled from ${shortDate(v.visitDate)}` : `Booked ${shortDate(v.bookedOn)}`,
+      overdue: v.overdue,
       frozen: frozenIds.has(v.id),
     }));
     const bookedHere = sched.filter((s) => s.date === date).map((s) => ({
       key: s.key, visitId: s.id, tempId: s.id ? undefined : s.key, client: s.client.trim() || "New visit",
-      note: "Booked in this report", frozen: !!s.id && frozenIds.has(s.id),
+      note: "Booked in this report", overdue: false, frozen: !!s.id && frozenIds.has(s.id),
     }));
     return [...fromServer, ...bookedHere];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +234,10 @@ export function ReportForm({
               return (
                 <div key={item.key} className="space-y-2 border-b border-surface-border pb-3 last:border-0 last:pb-0">
                   <div>
-                    <p className="font-semibold text-ink">{item.client}</p>
+                    <p className="flex items-center gap-2 font-semibold text-ink">
+                      {item.client}
+                      {item.overdue && !item.frozen && <span className="rounded-full bg-status-dangerBg px-2 py-0.5 text-[11px] font-medium text-status-danger">Overdue</span>}
+                    </p>
                     <p className="text-xs text-ink-faint">{item.note}</p>
                   </div>
                   {item.frozen ? (

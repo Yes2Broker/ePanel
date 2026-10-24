@@ -23,7 +23,8 @@ function shortName(full: string) {
   const parts = full.trim().split(/\s+/);
   return parts.length === 1 ? parts[0] : `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 }
-const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "0%");
+// One decimal, same as the panel: 1.1%, 0.7%, 0.0%.
+const pct = (a: number, b: number) => `${b ? (Math.round((a / b) * 1000) / 10).toFixed(1) : "0.0"}%`;
 
 export function dateLabel(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
@@ -69,7 +70,7 @@ const LEGEND: [string, string][] = [
 
 export function buildHtml(g: Group, date: string) {
   const heading = g.type === "Normal" ? "📊 Sales Performance Report" : `📊 ${esc(g.title)}`;
-  const legend = LEGEND.map(([k, v]) => `<div style="padding:4px 0;font-size:12px;color:#4a5568;border-bottom:1px solid #f0f0f0;"><b style="color:${ACCENT};display:inline-block;min-width:38px;">${k}</b> = ${v}${g.type === "Sole Selling" && k === "SVD" ? " (incl. walk-ins)" : ""}</div>`).join("");
+  const legend = LEGEND.map(([k, v]) => `<div style="padding:4px 0;font-size:12px;color:#4a5568;border-bottom:1px solid #f0f0f0;"><b style="color:${ACCENT};display:inline-block;min-width:38px;">${k}</b> = ${v}</div>`).join("");
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#f0f4f8;font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;}</style></head><body>`
     + `<div style="max-width:600px;margin:0 auto;">`
     + `<div style="background:${ACCENT};padding:20px 16px 16px;text-align:center;margin-bottom:12px;"><div style="font-size:20px;font-weight:800;color:#fff;">${heading}</div><div style="margin-top:4px;font-size:12px;color:#bfdbfe;">${dateLabel(date)} &nbsp;&middot;&nbsp; Generated at 10:00 PM</div></div>`

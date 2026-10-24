@@ -7,9 +7,12 @@
 --   * "Visit Scheduled Today" = the visits booked in the report (client + date >= report date).
 --   * Every visit due on the report date needs an action: Done (time, not in the
 --     future) / Reschedule (from the next day) / Cancel (reason required).
+--     Visits whose date has passed without an action are "overdue" and need
+--     one too (imported old visits excepted: HR/Admin close those in bulk).
 --   * "Future visit done today" picks from the person's upcoming visits + time.
---   * Site Visit Done = visits marked Done + future visits done (+ walk-ins on Sole Selling).
---   * Site Visit Conversion % = done / calls, Closure Conversion % = tokens / done.
+--   * Site Visit Done = visits marked Done + future visits done. Walk-ins are
+--     counted separately and are not part of Site Visit Done or any conversion.
+--   * Site Visit Conversion % = done / calls, Closure Conversion % = tokens / done (1 decimal).
 
 -- ===========================================================================
 -- Tables
@@ -79,6 +82,9 @@ create table if not exists site_visits (
   created_at timestamptz not null default now()
 );
 create index if not exists site_visits_owner_idx on site_visits (employee_id, report_type, project_id, status);
+-- Set when HR/Admin close an old visit in bulk (outside any report).
+alter table site_visits add column if not exists closed_by text references employees(id);
+alter table site_visits add column if not exists closed_at timestamptz;
 
 -- What happened to a visit in a report: Done (today's visit or a future visit
 -- done early), Reschedule or Cancel. prev_* lets an edit undo it cleanly.
@@ -162,9 +168,17 @@ revoke all on private.app_secrets from public, anon, authenticated;
 create or replace function private.now_time() returns text
 language sql stable as $$ select to_char(now() at time zone private.tz(), 'HH24:MI') $$;
 
--- "12%" style percentage, "0%" when the denominator is 0 (same as the old forms).
+-- "12.5%" style percentage with one decimal; "0.0%" when the denominator is 0.
 create or replace function private.pct(a numeric, b numeric) returns text
-language sql immutable as $$ select case when coalesce(b, 0) = 0 then '0%' else round(a * 100.0 / b)::int || '%' end $$;
+language sql immutable as $$ select case when coalesce(b, 0) = 0 then '0.0%' else to_char(round(a * 100.0 / b, 1), 'FM999990.0') || '%' end $$;
+
+-- A visit that must be acted on in a report for p_date: due that day, or
+-- overdue (date passed with no action). Imported old visits never block.
+create or replace function private.visit_needs_action(v public.site_visits, p_date date) returns boolean
+language sql immutable as $$
+  select v.status = 'Pending' and (coalesce(v.reschedule_date, v.visit_date) = p_date
+         or (coalesce(v.reschedule_date, v.visit_date) < p_date and v.source = 'panel'))
+$$;
 
 create or replace function private.project_json(p public.projects) returns jsonb
 language sql stable as $$ select jsonb_build_object('id', p.id, 'name', p.name, 'status', p.status) $$;
@@ -250,13 +264,13 @@ begin
 end $$;
 
 -- Re-derive the visit counts of a panel report from its visits / walk-ins.
+-- Site Visit Done never includes walk-ins.
 create or replace function private.recompute_report(p_id uuid) returns void
 language sql volatile set search_path = public as $$
   update sales_reports r set
     scheduled = (select count(*) from site_visits v where v.booked_report_id = r.id),
     walk_in = case when r.report_type = 'Sole Selling' then (select count(*) from walk_ins w where w.report_id = r.id) else 0 end,
     done = (select count(*) from visit_actions a where a.report_id = r.id and a.action = 'done')
-         + case when r.report_type = 'Sole Selling' then (select count(*) from walk_ins w where w.report_id = r.id) else 0 end
   where r.id = p_id and r.source = 'panel'
 $$;
 
@@ -472,13 +486,14 @@ begin
       select jsonb_agg(jsonb_build_object(
                'id', v.id, 'client', v.client_name, 'visitDate', v.visit_date, 'rescheduleDate', v.reschedule_date,
                'bookedOn', v.booked_on, 'bookedHere', r.id is not null and v.booked_report_id = r.id,
+               'overdue', coalesce(v.reschedule_date, v.visit_date) < v_date,
                'action', (select jsonb_build_object('action', a.action, 'time', a.done_time, 'date', a.new_date,
                                                     'reason', a.reason, 'frozen', private.action_frozen(a))
                           from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'today'))
                order by v.booked_on, v.created_at)
       from site_visits v
       where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
-        and ((v.status = 'Pending' and coalesce(v.reschedule_date, v.visit_date) = v_date)
+        and (private.visit_needs_action(v, v_date)
              or (r.id is not null and exists (select 1 from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'today')))
     ), '[]'::jsonb),
     -- Upcoming visits that can be marked "future visit done".
@@ -673,10 +688,10 @@ begin
   end loop;
 
   -- ---------- today's visit actions ----------
-  -- Every visit still due on the report date needs an action (as in the old form).
+  -- Every visit due (or overdue) on the report date needs an action.
   select coalesce(array_agg(v.id), '{}') into v_eligible from site_visits v
   where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
-    and v.status = 'Pending' and coalesce(v.reschedule_date, v.visit_date) = v_date;
+    and private.visit_needs_action(v, v_date);
 
   for v_item in select * from jsonb_array_elements(coalesce(p_payload -> 'actions', '[]'::jsonb)) loop
     v_id := coalesce(nullif(v_temp ->> (v_item ->> 'tempId'), ''), nullif(v_item ->> 'visitId', ''))::uuid;
@@ -728,7 +743,7 @@ begin
   end loop;
   select count(*) into n from unnest(v_eligible) e where not (e = any (v_seen));
   if n > 0 then
-    raise exception 'Select an action (Done / Reschedule / Cancel) for every visit due today.' using errcode = '22023';
+    raise exception 'Select an action (Done / Reschedule / Cancel) for every visit due today, including overdue ones.' using errcode = '22023';
   end if;
 
   -- ---------- future visits done today ----------
@@ -1088,6 +1103,54 @@ begin
 end $$;
 
 -- ===========================================================================
+-- Old pending visits (HR / Admin)
+-- Imported visits whose date has passed without Done / Reschedule / Cancel.
+-- They don't block anyone's report; HR/Admin close them here in bulk.
+-- ===========================================================================
+create or replace function public.list_stale_visits(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', v.id, 'client', v.client_name, 'employeeId', v.employee_id,
+             'employeeName', (select name from employees where id = v.employee_id),
+             'type', v.report_type, 'projectName', (select name from projects where id = v.project_id),
+             'bookedOn', v.booked_on, 'date', coalesce(v.reschedule_date, v.visit_date))
+           order by (select name from employees where id = v.employee_id), coalesce(v.reschedule_date, v.visit_date))
+    from site_visits v
+    where v.status = 'Pending' and v.source = 'import' and coalesce(v.reschedule_date, v.visit_date) < private.today()
+  ), '[]'::jsonb);
+end $$;
+
+create or replace function public.close_stale_visits(p_token text, p_ids uuid[], p_status text, p_reason text) returns int
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  v_me employees := private.require_manager(p_token);
+  n int;
+begin
+  if p_status not in ('Done','Cancelled') then
+    raise exception 'Choose Done or Cancelled.' using errcode = '22023';
+  end if;
+  update site_visits set status = p_status, closed_by = v_me.id, closed_at = now(),
+    cancel_reason = case when p_status = 'Cancelled' then coalesce(nullif(trim(p_reason), ''), 'Closed by ' || v_me.name) else cancel_reason end
+  where id = any (coalesce(p_ids, '{}')) and status = 'Pending' and source = 'import';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Keep stored counts in line with the rules above (e.g. walk-ins no longer in
+-- Site Visit Done). Only panel reports; imported numbers are left as imported.
+do $$
+declare
+  r record;
+begin
+  for r in select id from sales_reports where source = 'panel' loop
+    perform private.recompute_report(r.id);
+  end loop;
+end $$;
+
+-- ===========================================================================
 -- Grants
 -- ===========================================================================
 revoke execute on all functions in schema private from public, anon, authenticated;
@@ -1104,7 +1167,7 @@ begin
       'report_options','report_form','save_sales_report','get_report','report_history',
       'my_sales_reports','list_sales_reports','team_report_summary',
       'get_report_email_recipients','set_report_email_recipients','report_email_payload','report_email_payload_admin',
-      'list_employee_aliases','import_reports'
+      'list_employee_aliases','import_reports','list_stale_visits','close_stale_visits'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);

@@ -50,6 +50,9 @@ export default function ImportPage() {
   const [names, setNames] = useState<Record<string, NameChoice>>({});
   const [projectFor, setProjectFor] = useState<Record<string, string>>({});
   const [walkInStatuses, setWalkInStatuses] = useState<Record<string, boolean>>({});
+  // Site Visit Done never includes walk-ins in the panel. If the old Sole Selling
+  // sheet's "Site Visit Done" did include them, they're taken out on import.
+  const [soleDoneHasWalkIns, setSoleDoneHasWalkIns] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<Record<string, number> | null>(null);
 
@@ -143,7 +146,9 @@ export default function ImportPage() {
 
         if (slot.kind === "summary") {
           const k = `${employeeId}|${date}|${type}|${projectId}`;
-          const nums = { leads: toCount(r[2]), calls: toCount(r[3]), positive: toCount(r[4]), scheduled: toCount(r[5]), done: toCount(r[6]), tokens: toCount(r[7]), walkIn: type === "Sole Selling" ? toCount(r[8]) : 0 };
+          const walkIn = type === "Sole Selling" ? toCount(r[8]) : 0;
+          const done = type === "Sole Selling" && soleDoneHasWalkIns ? Math.max(0, toCount(r[6]) - walkIn) : toCount(r[6]);
+          const nums = { leads: toCount(r[2]), calls: toCount(r[3]), positive: toCount(r[4]), scheduled: toCount(r[5]), done, tokens: toCount(r[7]), walkIn };
           const prev = reports.get(k);
           if (prev) {
             // The old form allowed several submissions a day; they're added together (as the old MTD did).
@@ -176,7 +181,7 @@ export default function ImportPage() {
       dates: reportList.map((r) => r.date as string).sort(),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files, order, names, projectFor, walkInStatuses, emps, aliases.data, assignments.data]);
+  }, [files, order, names, projectFor, walkInStatuses, soleDoneHasWalkIns, emps, aliases.data, assignments.data]);
 
   const runImport = async () => {
     setImporting(true);
@@ -306,6 +311,15 @@ export default function ImportPage() {
             ))}
           </ul>
           {activeProjects.length === 0 && <p className="text-xs text-status-danger">Add the projects first (Daily Reports → Projects).</p>}
+          {files["sole-summary"] && (
+            <label className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-ink">
+              <input type="checkbox" className="mt-0.5" checked={soleDoneHasWalkIns} onChange={(e) => setSoleDoneHasWalkIns(e.target.checked)} />
+              <span>
+                In the old Sole Selling Sheet1, <b>Site Visit Done already includes Walk In</b> — take walk-ins out.
+                <span className="mt-0.5 block text-xs text-ink-faint">In the panel, Site Visit Done never includes walk-ins. Check one old day: if its Site Visit Done equals the visits done plus the walk-ins, tick this.</span>
+              </span>
+            </label>
+          )}
           {soleStatuses.length > 0 && (
             <div className="rounded-xl bg-surface p-3 text-sm">
               <p className="mb-2 text-xs text-ink-muted">Rows in Sole Selling “Visits Done” with these Status values are walk-ins (shown in the Walk In list, not as visits):</p>

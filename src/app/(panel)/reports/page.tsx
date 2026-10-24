@@ -10,13 +10,14 @@ import { ReportSummaryById } from "@/components/reports/report-summary";
 import { TeamReports } from "@/components/reports/team-reports";
 import { ProjectsPanel } from "@/components/reports/projects-panel";
 import { EmailSettings } from "@/components/reports/email-settings";
+import { StaleVisits } from "@/components/reports/stale-visits";
 import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { ReportOption } from "@/types";
 import { formatDate, todayISO } from "@/lib/utils";
 
-type Tab = "mine" | "team" | "projects" | "email";
+type Tab = "mine" | "team" | "visits" | "projects" | "email";
 
 function ReportsInner() {
   const { user, isManager } = useSession();
@@ -29,7 +30,7 @@ function ReportsInner() {
 
   const tabs: { value: Tab; label: string }[] = [
     ...(canFile || !isManager ? [{ value: "mine" as Tab, label: "My reports" }] : []),
-    ...(isManager ? [{ value: "team" as Tab, label: "Team" }, { value: "projects" as Tab, label: "Projects" }] : []),
+    ...(isManager ? [{ value: "team" as Tab, label: "Team" }, { value: "visits" as Tab, label: "Old visits" }, { value: "projects" as Tab, label: "Projects" }] : []),
     ...(isAdmin ? [{ value: "email" as Tab, label: "10 PM email" }] : []),
   ];
   const requested = q.get("tab") as Tab | null;
@@ -42,7 +43,7 @@ function ReportsInner() {
     <div className="space-y-5 pt-4">
       <PageHeader
         title="Daily Reports"
-        subtitle={tab === "team" ? "Your team's reports, with today and month-to-date totals." : tab === "projects" ? "Sole selling projects." : tab === "email" ? "Who gets the 10 PM report emails." : "File today's report and look back at past ones."}
+        subtitle={tab === "team" ? "Your team's reports, with today and month-to-date totals." : tab === "projects" ? "Sole selling projects." : tab === "visits" ? "Close old imported visits that were never marked." : tab === "email" ? "Who gets the 10 PM report emails." : "File today's report and look back at past ones."}
         actions={isAdmin && (
           <Link href="/reports/import" className="inline-flex items-center gap-1.5 rounded-xl border border-surface-border bg-white px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface">
             <Upload className="h-4 w-4" /> Import old data
@@ -52,6 +53,7 @@ function ReportsInner() {
       {tabs.length > 1 && <Tabs tabs={tabs} value={tab} onChange={setTab} />}
       {tab === "mine" && <MyReports options={options.data} loading={options.loading} error={options.error} reload={options.reload} />}
       {tab === "team" && isManager && <TeamReports />}
+      {tab === "visits" && isManager && <StaleVisits />}
       {tab === "projects" && isManager && <ProjectsPanel />}
       {tab === "email" && isAdmin && <EmailSettings />}
       {openId && (
