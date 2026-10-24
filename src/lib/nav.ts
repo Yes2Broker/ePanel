@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, CalendarCheck, FileText, User, Settings,
-  Users, ShieldCheck, LucideIcon,
+  Users, ShieldCheck, Building2, BarChart3, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
 import { FeatureKey, isFeatureEnabled } from "@/lib/features";
@@ -10,7 +10,11 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   comingSoon?: boolean;
+  external?: boolean; // another Yes2Broker site, opened in a new tab
 }
+
+export const BUILDER_DATA_URL = "https://yes2broker.github.io/Builder-Data/";
+export const ANALYTICS_URL = "https://analytics.yes2broker.in/";
 
 export function navFor(user: Employee, permissions: Permissions | null): NavItem[] {
   const can = (key: keyof Permissions) => !!permissions?.[key];
@@ -24,18 +28,21 @@ export function navFor(user: Employee, permissions: Permissions | null): NavItem
   const attendance = feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, isManager || can("attendance"));
   const reports = feature("reports", { href: "/reports", label: "Daily Reports", icon: FileText }, isManager || can("normalReport") || can("soleSelling"));
 
+  const builderData = can("builderData") && { href: BUILDER_DATA_URL, label: "Builder Data", icon: Building2, external: true };
+  const analytics = user.role === "Admin" && can("analytics") && { href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true };
+
   const items: (NavItem | false)[] = isManager
     ? [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
         { href: "/admin/employees", label: "Employees", icon: Users },
-        attendance, reports,
+        attendance, reports, builderData, analytics,
         { href: "/admin/permissions", label: "Permissions", icon: ShieldCheck },
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ]
     : [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        attendance, reports,
+        attendance, reports, builderData, analytics,
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ];

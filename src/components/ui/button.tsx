@@ -41,6 +41,8 @@ export function Toggle({ checked, onChange, disabled }: { checked: boolean; onCh
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(

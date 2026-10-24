@@ -22,7 +22,6 @@ export const MODULE_KEYS = [
   "normalReport",
   "soleSelling",
   "builderData",
-  "inquiryForm",
   "analytics",
 ] as const;
 

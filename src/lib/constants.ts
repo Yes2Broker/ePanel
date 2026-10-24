@@ -11,11 +11,12 @@ export function weekOffLabel(weekOff: number | null) {
 
 export const ATTENDANCE_STATUSES = ["Present", "Late", "Half Day", "Absent", "Leave"] as const;
 
-export const MODULES: { key: ModuleKey; label: string; comingSoon?: boolean }[] = [
+// adminOnly: can only be switched on for employees whose role is Admin
+// (the database enforces this too).
+export const MODULES: { key: ModuleKey; label: string; comingSoon?: boolean; adminOnly?: boolean }[] = [
   { key: "attendance", label: "Attendance" },
   { key: "normalReport", label: "Normal Daily Report" },
   { key: "soleSelling", label: "Sole Selling Daily Report" },
-  { key: "builderData", label: "Builder Data", comingSoon: true },
-  { key: "inquiryForm", label: "Inquiry Form", comingSoon: true },
-  { key: "analytics", label: "Analytics", comingSoon: true },
+  { key: "builderData", label: "Builder Data" },
+  { key: "analytics", label: "Analytics", adminOnly: true },
 ];
