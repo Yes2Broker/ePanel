@@ -57,7 +57,7 @@ $$;
 
 create or replace function private.modules() returns text[]
 language sql immutable as $$
-  select array['attendance','tasks','normalReport','soleSelling','builderData','inquiryForm','analytics']
+  select array['attendance','tasks','normalReport','soleSelling','builderData','analytics']
 $$;
 
 create or replace function private.employee_json(e public.employees) returns jsonb
@@ -77,14 +77,17 @@ language sql stable as $$
     when 'tasks' then true
     when 'normalReport' then e.department in ('Sales','Admin')
     when 'soleSelling' then e.department = 'Sales'
-    when 'analytics' then e.role <> 'Employee'
+    when 'builderData' then e.department <> 'Tech'
+    when 'analytics' then e.role = 'Admin'
     else false
   end
 $$;
 
 create or replace function private.permissions_json(e public.employees) returns jsonb
 language sql stable set search_path = public, private as $$
-  select jsonb_object_agg(m.module, coalesce(p.enabled, private.default_permission(e, m.module)))
+  -- Analytics is for Admins only, whatever is saved.
+  select jsonb_object_agg(m.module, coalesce(p.enabled, private.default_permission(e, m.module))
+                                    and (m.module <> 'analytics' or e.role = 'Admin'))
   from unnest(private.modules()) as m(module)
   left join employee_permissions p on p.employee_id = e.id and p.module = m.module
 $$;
@@ -379,6 +382,10 @@ begin
   perform private.require_manager(p_token);
   if not (p_module = any (private.modules())) then
     raise exception 'Unknown module %', p_module using errcode = '22023';
+  end if;
+  if p_module = 'analytics' and p_enabled
+     and not exists (select 1 from employees where id = p_employee_id and role = 'Admin') then
+    raise exception 'Analytics can only be turned on for Admins.' using errcode = '42501';
   end if;
   insert into employee_permissions (employee_id, module, enabled) values (p_employee_id, p_module, p_enabled)
   on conflict (employee_id, module) do update set enabled = excluded.enabled;

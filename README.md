@@ -20,6 +20,12 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 - **Daily Reports → Team / Old visits / Projects** — totals, every report, history, file or fix any day.
 - **Permissions** — turn modules on/off per employee, and assign Sole Selling projects.
 
+**Links to other Yes2Broker sites** (open in a new tab, marked ↗ in the sidebar):
+- **Builder Data** — https://yes2broker.github.io/Builder-Data/ — shown to
+  people with the Builder Data permission (on by default, except the Tech department).
+- **Analytics** — https://analytics.yes2broker.in/ — Admins only; the
+  permission can't be switched on for any other role.
+
 HR can manage everyone except Admin accounts; only an Admin can create,
 edit or reset another Admin.
 
@@ -35,13 +41,14 @@ npm install
 
 ### 2. Create the database
 
-In your Supabase project, open **SQL Editor → New query** and run these two
+In your Supabase project, open **SQL Editor → New query** and run these
 files, in this order:
 
 1. `supabase/schema.sql` — tables and security
 2. `supabase/functions.sql` — everything the app calls
 3. `supabase/reports.sql` — Daily Reports (projects, reports, visits, history, import, email data)
-4. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
+4. `supabase/builder_data_defaults.sql` — one-time Builder Data defaults (runs only once, however often you paste it)
+5. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
 Your team was loaded once from a separate seed file kept out of Git.
 
 Both are safe to run again. Whenever `functions.sql` changes, re-run it.
@@ -185,7 +192,5 @@ src/components/              UI building blocks and feature dialogs
 
 ## Not built yet
 
-- Builder Data, Inquiry Form and Analytics modules (their permission
-  toggles exist and are marked "Coming soon").
 - Public holidays (only each person's weekly off is excluded from attendance).
 - Self-service "forgot password" (HR/Admin resets it today).

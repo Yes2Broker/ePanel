@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navFor } from "@/lib/nav";
 import { useSession } from "@/context/session-context";
@@ -45,13 +46,15 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           {nav.map((item) => {
             const Icon = item.icon;
             // "/admin" must match exactly, otherwise it would also light up on /admin/employees.
-            const isActive = item.href === "/admin" ? pathname === "/admin" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive = !item.external && (item.href === "/admin" ? pathname === "/admin" : pathname === item.href || pathname.startsWith(`${item.href}/`));
+            const LinkTag = item.external ? "a" : Link;
             return (
-              <Link
+              <LinkTag
                 key={item.href}
                 href={item.href}
                 onClick={onClose}
-                title={compact ? `${item.label}${item.comingSoon ? " (coming soon)" : ""}` : undefined}
+                {...(item.external && { target: "_blank", rel: "noopener noreferrer" })}
+                title={compact ? `${item.label}${item.comingSoon ? " (coming soon)" : item.external ? " (opens in a new tab)" : ""}` : undefined}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
                   compact && "lg:justify-center",
@@ -61,10 +64,13 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
               >
                 <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
                 <span className={cn("flex flex-1 items-center justify-between gap-2", compact && "lg:hidden")}>
-                  <span className="whitespace-nowrap">{item.label}</span>
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    {item.label}
+                    {item.external && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="opens in a new tab" />}
+                  </span>
                   {item.comingSoon && <ComingSoonBadge />}
                 </span>
-              </Link>
+              </LinkTag>
             );
           })}
         </nav>
