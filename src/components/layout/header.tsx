@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, LogOut, User } from "lucide-react";
 import { Employee } from "@/types";
 import { initials, formatDate, todayISO } from "@/lib/utils";
+import { LogoIcon } from "@/components/ui/logo";
 import { useSession } from "@/context/session-context";
 import { useRouter } from "next/navigation";
 
@@ -29,6 +30,7 @@ export function Header({ user, onMenuClick }: { user: Employee; onMenuClick: () 
         <button onClick={onMenuClick} className="rounded-full bg-white p-2 shadow-card lg:hidden" aria-label="Open menu">
           <Menu className="h-4 w-4 text-ink" />
         </button>
+        <LogoIcon size={34} className="lg:hidden" />
         <span className="hidden rounded-full bg-white px-3.5 py-2 text-xs font-medium text-ink-muted shadow-card sm:inline">
           {formatDate(todayISO(), { weekday: true })}
         </span>

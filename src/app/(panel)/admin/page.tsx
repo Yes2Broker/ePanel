@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, UserCheck, CalendarOff, FileText, Building2 } from "lucide-react";
+import { Users, UserCheck, FileText, Building2 } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { TopPerformers } from "@/components/dashboard/top-performers";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
@@ -17,7 +17,6 @@ import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
 
 const on = {
   attendance: isFeatureEnabled("attendance"),
-  leave: isFeatureEnabled("leave"),
   reports: isFeatureEnabled("reports"),
 };
 // The stats call only feeds feature widgets, so skip it while every feature is off.
@@ -57,10 +56,9 @@ export default function AdminDashboardPage() {
           {on.attendance && data && (
             <SummaryCard
               icon={UserCheck} label="Present Today" value={`${data.presentToday}/${data.activeEmployees}`}
-              note={`${data.lateToday} late · ${data.onLeaveToday} on leave`} href="/attendance"
+              note={`${data.lateToday} late`} href="/attendance"
             />
           )}
-          {on.leave && data && <SummaryCard icon={CalendarOff} label="Leave Requests" value={data.pendingLeaves} note="awaiting approval" href="/leave" />}
           {on.reports && data && <SummaryCard icon={FileText} label="Reports Today" value={data.reportsToday} note="filed today" href="/reports" />}
         </div>
       )}

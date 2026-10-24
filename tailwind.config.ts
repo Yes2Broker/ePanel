@@ -23,9 +23,9 @@ const config: Config = {
         },
         // Brand accent — the single yellow highlight color used sparingly
         brand: {
-          DEFAULT: "#E8E24A",
-          dark: "#C9C400",
-          soft: "#F6F5C9",
+          DEFAULT: "#273992", // Yes2Broker logo blue
+          dark: "#1D2B73",
+          soft: "#E9ECF8",
         },
         status: {
           success: "#1E9E6B",

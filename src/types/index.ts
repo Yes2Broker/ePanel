@@ -19,7 +19,6 @@ export interface Employee {
 
 export const MODULE_KEYS = [
   "attendance",
-  "tasks",
   "normalReport",
   "soleSelling",
   "builderData",
@@ -29,19 +28,6 @@ export const MODULE_KEYS = [
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 export type Permissions = Record<ModuleKey, boolean>;
-
-export type TaskPriority = "Low" | "Medium" | "High";
-export type TaskStatus = "Pending" | "Completed";
-
-export interface PersonalTask {
-  id: string;
-  title: string;
-  description: string;
-  priority: TaskPriority;
-  status: TaskStatus;
-  dueDate: string;
-  createdAt: string;
-}
 
 export type AttendanceStatus = "Present" | "Late" | "Half Day" | "Absent" | "Leave";
 
@@ -58,41 +44,18 @@ export interface TeamAttendanceRow extends AttendanceRecord {
   employee: Employee;
 }
 
-export type LeaveType = "Casual" | "Sick" | "Earned" | "Unpaid";
-export type LeaveStatus = "Pending" | "Approved" | "Rejected" | "Cancelled";
-
-export interface LeaveRequest {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  type: LeaveType;
-  startDate: string;
-  endDate: string;
-  days: number;
-  reason: string;
-  status: LeaveStatus;
-  reviewNote: string;
-  reviewedBy: string | null;
-  reviewedAt: string | null;
-  createdAt: string;
-}
-
 export interface EmployeeDashboard {
   today: AttendanceRecord | null;
   isWorkingDay: boolean;
   month: { present: number; late: number; leave: number; workingDays: number; rate: number | null };
-  tasks: { pending: number; completed: number; overdue: number; upcoming: PersonalTask[] };
   recentReports: { id: string; date: string; type: SalesReportType; title: string }[];
   reportFiledToday: boolean;
-  pendingLeaves: number;
-  upcomingLeave: LeaveRequest | null;
 }
 
 export interface EmployeeStat {
   employee: Employee;
   attendanceRate: number | null;
   reportsThisMonth: number;
-  tasksCompleted: number;
   checkedInToday: boolean;
 }
 
@@ -102,7 +65,6 @@ export interface AdminDashboard {
   presentToday: number;
   lateToday: number;
   onLeaveToday: number;
-  pendingLeaves: number;
   reportsToday: number;
   pendingReports: number;
   weeklyTrend: { date: string; day: string; rate: number }[];

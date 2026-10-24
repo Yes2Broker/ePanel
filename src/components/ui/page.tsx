@@ -55,7 +55,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { valu
         >
           {t.label}
           {!!t.count && (
-            <span className={cn("rounded-full px-1.5 text-xs", value === t.value ? "bg-brand text-ink" : "bg-status-warningBg text-status-warning")}>{t.count}</span>
+            <span className={cn("rounded-full px-1.5 text-xs", value === t.value ? "bg-white text-ink" : "bg-status-warningBg text-status-warning")}>{t.count}</span>
           )}
         </button>
       ))}

@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, CalendarCheck, CalendarOff, ListTodo, FileText, User, Settings,
+  LayoutDashboard, CalendarCheck, FileText, User, Settings,
   Users, ShieldCheck, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
@@ -22,23 +22,20 @@ export function navFor(user: Employee, permissions: Permissions | null): NavItem
     isFeatureEnabled(key) ? allowed && item : { ...item, comingSoon: true };
 
   const attendance = feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, isManager || can("attendance"));
-  const leave = feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, true);
   const reports = feature("reports", { href: "/reports", label: "Daily Reports", icon: FileText }, isManager || can("normalReport") || can("soleSelling"));
-  const tasks = feature("tasks", { href: "/tasks", label: "My Tasks", icon: ListTodo }, can("tasks"));
 
   const items: (NavItem | false)[] = isManager
     ? [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
         { href: "/admin/employees", label: "Employees", icon: Users },
-        attendance, leave, reports,
+        attendance, reports,
         { href: "/admin/permissions", label: "Permissions", icon: ShieldCheck },
-        tasks,
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ]
     : [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        attendance, leave, tasks, reports,
+        attendance, reports,
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ];

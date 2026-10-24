@@ -13,8 +13,8 @@ export function ComingSoonPage({ feature }: { feature: FeatureKey | null }) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center pt-4">
       <div className="max-w-sm text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand">
-          <Sparkles className="h-5 w-5 text-ink" />
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-soft">
+          <Sparkles className="h-5 w-5 text-brand" />
         </div>
         <h1 className="text-xl font-semibold text-ink">{label} is coming soon</h1>
         <p className="mt-1.5 text-sm text-ink-faint">We&apos;re getting this ready. It will appear here as soon as it&apos;s launched.</p>
@@ -29,8 +29,8 @@ export function ComingSoonCard() {
   if (pending.length === 0) return null;
   return (
     <Card className="flex flex-wrap items-center gap-3 p-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand">
-        <Sparkles className="h-4 w-4 text-ink" />
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft">
+        <Sparkles className="h-4 w-4 text-brand" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-ink">Coming soon</p>

@@ -30,7 +30,7 @@ export function WeeklyTrendChart({ data }: { data: { date: string; day: string; 
                 strokeWidth={2}
                 dot={(props: any) =>
                   props.payload.date === peak?.date ? (
-                    <Dot key={props.payload.date} cx={props.cx} cy={props.cy} r={4} fill="#E8E24A" stroke="#16171A" strokeWidth={1.5} />
+                    <Dot key={props.payload.date} cx={props.cx} cy={props.cy} r={4} fill="#273992" stroke="#16171A" strokeWidth={1.5} />
                   ) : (
                     <Dot key={props.payload.date} cx={props.cx} cy={props.cy} r={2.5} fill="#16171A" />
                   )

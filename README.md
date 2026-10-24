@@ -1,31 +1,27 @@
 # Yes2Broker Employee Panel
 
-The internal panel for Yes2Broker staff: attendance check-in/out, leave
-requests, personal tasks, daily reports, and an HR/Admin side for managing
-employees, approvals and module access. Built with Next.js (App Router),
+The internal panel for Yes2Broker staff: daily reports (Normal + Sole
+Selling) today, attendance next, and an HR/Admin side for managing
+employees and module access. Built with Next.js (App Router),
 TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 
 ## What each role gets
 
 **Employees**
-- **Dashboard** — live check-in/out, this month's attendance rate, upcoming tasks, recent reports, upcoming leave.
-- **Attendance** — check in / check out; month-by-month history. Check-ins after 10:15 AM are marked Late.
-- **Leave** — request Casual / Sick / Earned / Unpaid leave, see status and HR's note, cancel while pending.
-- **My Tasks** — private to-do list with priority and due dates (overdue tasks are highlighted).
-- **Daily Reports** — Normal and Sole Selling report forms; save a draft or submit; fix and resubmit if HR sends one back.
+- **Dashboard** — your details, today's report status and recent reports.
+- **Daily Reports** — Normal and/or Sole Selling report, summary popup, WhatsApp share and image download (details below).
+- **Attendance** — coming soon.
 - **Profile** — view details and change your own password.
 - **Settings** — compact sidebar and which dashboard sections to show (per device).
 
 **HR and Admin** get all of the above, plus:
-- **Dashboard** — who's in today, pending leave and reports, monthly and daily attendance charts, per-employee overview.
+- **Dashboard** — team overview with reports filed today.
 - **Employees** — add, edit, deactivate, reset passwords.
-- **Attendance → Team** — everyone's check-in for any date, with corrections (status, times, note).
-- **Leave → Approvals** — approve or reject with a note. Approved days show as Leave in attendance.
-- **Daily Reports → Team reports** — review, approve, or send back with feedback.
-- **Permissions** — turn modules on/off per employee. The sidebar and the database both respect this.
+- **Daily Reports → Team / Old visits / Projects** — totals, every report, history, file or fix any day.
+- **Permissions** — turn modules on/off per employee, and assign Sole Selling projects.
 
 HR can manage everyone except Admin accounts; only an Admin can create,
-edit or reset another Admin. Nobody can review their own leave or report.
+edit or reset another Admin.
 
 ## Setup
 
@@ -68,8 +64,12 @@ Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from
 ### 4. Brand assets
 
 ```
-public/assets/logo.webp   -> sidebar + login screen logo
-public/assets/fav.jpg     -> browser favicon
+public/brand/yes2broker-logo.webp  -> full logo (login page, desktop sidebar)
+public/brand/y2b-icon.png          -> square Y2B icon (phones, compact sidebar)
+public/favicon.ico                 -> 16/32/48 favicon
+public/apple-touch-icon.png        -> 180×180 home-screen icon (iPhone)
+public/icon-192.png, icon-512.png  -> Android / install icons
+public/manifest.webmanifest        -> app name + theme colour (#273992)
 ```
 
 ### 5. Run
@@ -115,9 +115,9 @@ change theirs from Profile → Change Password, and HR/Admin can reset it.
 
 ## Launching features one at a time
 
-Attendance, Leave and My Tasks are switched off for now and show "Coming
-soon" (sidebar, dashboards, permissions page and their URLs). Daily Reports
-is live.
+Attendance is switched off for now and shows "Coming soon" (sidebar,
+dashboards, permissions page and its URLs). Daily Reports is live. Leave
+and personal tasks are not part of this panel.
 To launch one, set its `enabled` to `true` in **`src/lib/features.ts`** and
 merge. No SQL is needed, because the database side is already in place.
 
@@ -143,7 +143,7 @@ At the top of `supabase/functions.sql`, under **Office settings**:
   `src/lib/utils.ts` the same.
 - `private.late_after()` — Late cut-off (`10:15`).
 - Weekly off is **per employee** (Employees → Edit → Weekly Off). Their
-  weekly off doesn't count as an absence and isn't counted in leave days.
+  weekly off doesn't count as an absence.
 - `private.session_days()` — how long a login lasts (7 days).
 
 Re-run `functions.sql` after editing.
@@ -160,8 +160,6 @@ src/app/                     pages (App Router)
   (panel)/layout.tsx         sidebar + header shell, sign-in and /admin guards
   (panel)/dashboard/         employee dashboard
   (panel)/attendance/        my attendance + team view (HR/Admin)
-  (panel)/leave/             my leave + approvals (HR/Admin)
-  (panel)/tasks/             personal tasks
   (panel)/reports/           my reports + team reports (HR/Admin)
   (panel)/profile/           profile + change password
   (panel)/settings/          per-device preferences
@@ -181,18 +179,13 @@ src/context/
 src/components/              UI building blocks and feature dialogs
 ```
 
-**Changing a report form:** edit `REPORT_FIELDS` in `src/lib/constants.ts`.
-Answers are stored as JSON, so no database change is needed and old
-reports keep their answers.
-
 **Design system:** every colour, radius and font comes from
-`tailwind.config.ts` (`surface`, `ink`, `brand`, `status`).
+`tailwind.config.ts` (`surface`, `ink`, `brand`, `status`). The accent
+(`brand`) is the logo blue, `#273992`.
 
 ## Not built yet
 
 - Builder Data, Inquiry Form and Analytics modules (their permission
   toggles exist and are marked "Coming soon").
-- Email / push notifications for approvals and reminders.
 - Public holidays (only each person's weekly off is excluded from attendance).
-- Leave balances / yearly quotas per leave type.
 - Self-service "forgot password" (HR/Admin resets it today).

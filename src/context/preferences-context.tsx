@@ -5,12 +5,12 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 /** Per-device display preferences. Kept in localStorage only. */
 export interface Preferences {
   compactSidebar: boolean;
-  dashboard: { tasks: boolean; reports: boolean; leave: boolean };
+  dashboard: { reports: boolean };
 }
 
 const DEFAULTS: Preferences = {
   compactSidebar: false,
-  dashboard: { tasks: true, reports: true, leave: true },
+  dashboard: { reports: true },
 };
 
 const STORAGE_KEY = "y2b-preferences";

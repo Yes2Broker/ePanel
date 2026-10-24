@@ -8,9 +8,7 @@ import { ModuleKey } from "@/types";
  */
 export const FEATURES = {
   attendance: { label: "Attendance", enabled: false },
-  leave: { label: "Leave", enabled: false },
   reports: { label: "Daily Reports", enabled: true },
-  tasks: { label: "My Tasks", enabled: false },
 } as const;
 
 export type FeatureKey = keyof typeof FEATURES;
@@ -24,9 +22,7 @@ export function isFeatureEnabled(key: FeatureKey) {
 /** URL prefixes owned by each feature, including any /admin variants. */
 export const FEATURE_ROUTES: Record<FeatureKey, string[]> = {
   attendance: ["/attendance", "/admin/attendance"],
-  leave: ["/leave", "/admin/leave"],
   reports: ["/reports", "/admin/reports"],
-  tasks: ["/tasks", "/admin/tasks"],
 };
 
 /** The feature a path belongs to, if any. Matches the prefix and anything below it. */
@@ -40,7 +36,6 @@ export function featureForPath(pathname: string): FeatureKey | null {
 /** Which feature each permission module belongs to. Modules not listed are always "Coming soon". */
 export const MODULE_FEATURE: Partial<Record<ModuleKey, FeatureKey>> = {
   attendance: "attendance",
-  tasks: "tasks",
   normalReport: "reports",
   soleSelling: "reports",
 };

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { homePathFor, useSession } from "@/context/session-context";
 import { errorMessage } from "@/lib/api";
+import { FullLogo, LogoIcon } from "@/components/ui/logo";
 
 export default function LoginPage() {
   const { user, loading, login } = useSession();
@@ -36,21 +36,19 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Branding panel — desktop only */}
-      <div className="relative hidden overflow-hidden bg-ink lg:flex lg:flex-col lg:items-center lg:justify-center">
+      <div className="relative hidden overflow-hidden border-r border-surface-border bg-white lg:flex lg:flex-col lg:items-center lg:justify-center">
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          className="pointer-events-none absolute inset-0 opacity-[0.08]"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+              "radial-gradient(circle at 1px 1px, #273992 1px, transparent 0)",
             backgroundSize: "28px 28px",
           }}
         />
-        <div className="relative flex flex-col items-center">
-          <div className="mb-6 h-20 w-20 overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/10">
-            <Image src="/assets/logo.webp" alt="Yes2Broker" width={80} height={80} className="h-full w-full object-cover" />
-          </div>
-          <p className="max-w-xs text-center text-sm leading-relaxed text-white/50">
-            One panel for attendance, leave, tasks, reports and everything your team needs — in one place.
+        <div className="relative flex w-full max-w-md flex-col items-center px-10">
+          <FullLogo className="mb-8" priority />
+          <p className="max-w-xs text-center text-sm leading-relaxed text-ink-muted">
+            One panel for everything your team needs, in one place.
           </p>
         </div>
       </div>
@@ -59,9 +57,7 @@ export default function LoginPage() {
       <div className="flex items-center justify-center bg-surface px-4 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-10 flex flex-col items-center lg:hidden">
-            <div className="h-14 w-14 overflow-hidden rounded-2xl shadow-card">
-              <Image src="/assets/logo.webp" alt="Yes2Broker" width={56} height={56} className="h-full w-full object-cover" />
-            </div>
+            <LogoIcon size={64} className="rounded-2xl shadow-card" />
           </div>
 
           <div className="mb-6 text-center lg:text-left">
