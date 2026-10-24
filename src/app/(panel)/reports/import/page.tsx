@@ -364,12 +364,12 @@ export default function ImportPage() {
           {built.reports.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-xs">
-                <thead><tr className="text-left text-ink-faint">{["Date", "Person", "Report", "FL", "CM", "P", "SVS", "SVD", "WI", "B"].map((h) => <th key={h} className="px-2 py-1.5 font-medium">{h}</th>)}</tr></thead>
+                <thead><tr className="text-left text-ink-faint">{["Person", "Date", "Report", "FL", "CM", "P", "SVS", "SVD", "WI", "B"].map((h, i) => <th key={h} className={i === 0 ? "sticky left-0 bg-white px-2 py-1.5 font-medium" : "px-2 py-1.5 font-medium"}>{h}</th>)}</tr></thead>
                 <tbody>
                   {built.reports.slice(0, 15).map((r) => (
                     <tr key={r.key as string} className="border-t border-surface-border">
-                      <td className="px-2 py-1.5">{formatDate(r.date as string)}</td>
-                      <td className="px-2 py-1.5">{personLabel(r.employeeId as string)}</td>
+                      <td className="sticky left-0 max-w-[8rem] truncate bg-white px-2 py-1.5 font-medium sm:max-w-none">{personLabel(r.employeeId as string)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5">{formatDate(r.date as string)}</td>
                       <td className="px-2 py-1.5">{r.type === "Normal" ? "Normal" : activeProjects.find((p) => p.id === r.projectId)?.name}</td>
                       {(["leads", "calls", "positive", "scheduled", "done", "walkIn", "tokens"] as const).map((k) => <td key={k} className="px-2 py-1.5">{r[k] as number}</td>)}
                     </tr>

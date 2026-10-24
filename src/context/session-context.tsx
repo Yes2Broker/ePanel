@@ -77,6 +77,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [apply]);
 
+  // The installed app can stay open for days: when it comes back to the screen
+  // (at most hourly), re-check the session. That keeps the login alive (see
+  // get_me) and picks up permission changes.
+  const token = session?.token;
+  useEffect(() => {
+    if (!token) return;
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 60 * 60 * 1000) return;
+      last = Date.now();
+      api.me().then((me) => apply({ token, ...me })).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [token, apply]);
+
   const login = async (email: string, password: string) => {
     const result = await api.login(email, password);
     if (!result) throw new ApiError("Incorrect email or password.");

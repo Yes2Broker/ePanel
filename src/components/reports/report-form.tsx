@@ -11,7 +11,7 @@ import { addDays, cn } from "@/lib/utils";
 import { longDate, nowHHMM, shortDate, time12 } from "@/lib/report-format";
 
 const inputCls =
-  "w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
+  "min-h-11 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
 
 interface SchedRow { key: string; id?: string; client: string; date: string; locked: boolean }
 interface ActionState { action: VisitActionType | ""; time: string; date: string; reason: string }
@@ -179,11 +179,11 @@ export function ReportForm({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="mx-auto max-w-xl space-y-4 pb-24">
+    <form onSubmit={submit} noValidate className="mx-auto max-w-xl space-y-4">
       <Card className="p-4 sm:p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">{report ? "Edit report" : "New report"}</p>
         <h1 className="mt-0.5 text-lg font-semibold text-ink">{form.title}</h1>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div className="mt-3 grid grid-cols-1 gap-3 text-sm min-[400px]:grid-cols-2">
           <div><p className="text-xs text-ink-faint">Date</p><p className="font-medium text-ink">{longDate(date)}</p></div>
           <div><p className="text-xs text-ink-faint">Name</p><p className="font-medium text-ink">{form.employee.name}</p></div>
         </div>
@@ -195,7 +195,7 @@ export function ReportForm({
       </div>
 
       <Card className="p-4 sm:p-5">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
           <NumField label="Today Leads" value={num.leads} onChange={(v) => setNumField("leads", v)} required />
           <NumField label="Today Calls" value={num.calls} onChange={(v) => setNumField("calls", v)} required />
           <NumField label="Positive Calls" value={num.positive} onChange={(v) => setNumField("positive", v)} required />
@@ -206,7 +206,7 @@ export function ReportForm({
             ? <NumField label="Walk In" value={num.walkInCount} onChange={(v) => setNumField("walkInCount", v)} />
             : <NumField label="Walk In" value={walkInCount} onChange={onWalkInCount} />)}
           {imported && <NumField label="Site Visit Done" value={num.doneCount} onChange={(v) => setNumField("doneCount", v)} required />}
-          <div className={cn(!sole && !imported && "col-span-2")}>
+          <div className={cn(!sole && !imported && "min-[400px]:col-span-2")}>
             <NumField label="Tokens" value={num.tokens} onChange={(v) => setNumField("tokens", v)} required />
           </div>
         </div>
@@ -216,12 +216,12 @@ export function ReportForm({
         <>
           <Section title="Today's Scheduled Visits" empty={sched.length === 0 ? "Enter \"Visit Scheduled Today\" above to add visits." : null}>
             {sched.map((s, i) => (
-              <div key={s.key} className="grid grid-cols-[1fr_auto] gap-2">
+              <div key={s.key} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                 <input aria-label={`Scheduled visit ${i + 1} client name`} placeholder="Client Name" value={s.client} disabled={s.locked}
                   onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, client: e.target.value } : r)))} className={inputCls} />
                 <input aria-label={`Scheduled visit ${i + 1} date`} type="date" min={date} value={s.date} disabled={s.locked}
-                  onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, date: e.target.value } : r)))} className={cn(inputCls, "w-[9.5rem]")} />
-                {s.locked && <p className="col-span-2 -mt-1 flex items-center gap-1 text-xs text-ink-faint"><Lock className="h-3 w-3" /> Already acted on in a later report</p>}
+                  onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, date: e.target.value } : r)))} className={cn(inputCls, "min-[400px]:w-[9.5rem]")} />
+                {s.locked && <p className="-mt-1 min-[400px]:col-span-2 flex items-center gap-1 text-xs text-ink-faint"><Lock className="h-3 w-3" /> Already acted on in a later report</p>}
               </div>
             ))}
           </Section>
@@ -276,7 +276,7 @@ export function ReportForm({
                 <input aria-label="Number of future visits done today" type="number" inputMode="numeric" min={0} max={form.futureVisits.length}
                   placeholder="How many?" value={futureCount} onChange={(e) => onFutureCount(e.target.value)} className={inputCls} />
                 {future.map((f, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_auto] gap-2">
+                  <div key={i} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                     <select aria-label={`Future visit ${i + 1}`} value={f.visitId} disabled={f.frozen}
                       onChange={(e) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, visitId: e.target.value } : r)))} className={inputCls}>
                       <option value="" disabled>Select Visit</option>
@@ -285,7 +285,7 @@ export function ReportForm({
                       ))}
                     </select>
                     <input aria-label={`Future visit ${i + 1} time`} type="time" max={maxTime} value={f.time} disabled={f.frozen}
-                      onChange={(e) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, time: e.target.value } : r)))} className={cn(inputCls, "w-[8.5rem]")} />
+                      onChange={(e) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, time: e.target.value } : r)))} className={cn(inputCls, "min-[400px]:w-[8.5rem]")} />
                   </div>
                 ))}
               </>
@@ -295,10 +295,10 @@ export function ReportForm({
           {sole && (
             <Section title="Today's Walk In" empty={walkIns.length === 0 ? "Enter \"Walk In\" above to add names." : null}>
               {walkIns.map((w, i) => (
-                <div key={i} className="grid grid-cols-[1fr_auto] gap-2">
+                <div key={i} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                   <input aria-label={`Walk-in ${i + 1} client name`} placeholder="Client Name" value={w}
                     onChange={(e) => setWalkIns((rows) => rows.map((r, j) => (j === i ? e.target.value : r)))} className={inputCls} />
-                  <input aria-label={`Walk-in ${i + 1} date`} type="date" value={date} readOnly disabled className={cn(inputCls, "w-[9.5rem]")} />
+                  <input aria-label={`Walk-in ${i + 1} date`} type="date" value={date} readOnly disabled className={cn(inputCls, "min-[400px]:w-[9.5rem]")} />
                 </div>
               ))}
             </Section>
@@ -306,7 +306,8 @@ export function ReportForm({
         </>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-surface-border bg-white/95 px-4 py-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0">
+      {/* Stays at the bottom of the screen, just above the phone bottom bar, while scrolling the form. */}
+      <div className="sticky bottom-[var(--nav-h)] z-30 -mx-4 border-t border-surface-border bg-white/95 px-4 pb-[max(0.75rem,calc(env(safe-area-inset-bottom)-var(--nav-h)+0.75rem))] pt-3 backdrop-blur sm:mx-0 sm:rounded-t-card lg:static lg:border-0 lg:bg-transparent lg:p-0">
         <div className="mx-auto max-w-xl">
           <PrimaryButton type="submit" disabled={saving} className="w-full justify-center py-3 text-base">
             {saving ? (report ? "Saving…" : "Submitting…") : report ? "Save changes" : "Submit Report"}

@@ -53,12 +53,21 @@ export default function AdminPermissionsPage() {
   };
 
   return (
-    <div className="space-y-5 pt-4">
+    <div className="space-y-4 pt-2 md:space-y-5 md:pt-4">
       <PageHeader title="Permissions" subtitle="Choose which modules an employee can access. Changes apply on their next page load." />
       <ErrorBanner message={employees.error} onRetry={employees.reload} />
 
+      {/* Phones and tablets: pick the person from a list that keeps the name visible. */}
+      <label className="block lg:hidden">
+        <span className="mb-1.5 block text-xs font-medium text-ink-muted">Employee</span>
+        <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)} disabled={!active.length}
+          className="min-h-12 w-full rounded-xl border border-surface-border bg-white px-3.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-brand">
+          {active.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.department} · {e.role}</option>)}
+        </select>
+      </label>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="p-2 lg:col-span-1">
+        <Card className="hidden p-2 lg:col-span-1 lg:block">
           {employees.loading && !employees.data ? <Loading /> : (
             <ul className="max-h-[520px] space-y-0.5 overflow-y-auto">
               {active.map((e) => (
@@ -81,7 +90,7 @@ export default function AdminPermissionsPage() {
           )}
         </Card>
 
-        <Card className="p-5 lg:col-span-2">
+        <Card className="p-4 sm:p-5 lg:col-span-2">
           {employee && (
             <>
               <div className="mb-5 flex items-center gap-3 border-b border-surface-border pb-4">
@@ -99,8 +108,8 @@ export default function AdminPermissionsPage() {
                     const adminOnly = !!m.adminOnly && employee.role !== "Admin";
                     return (
                     <div key={m.key}>
-                      <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-surface">
-                        <span className="text-sm text-ink">
+                      <div className="flex min-h-12 items-center justify-between gap-3 rounded-xl px-3 py-2.5 hover:bg-surface">
+                        <span className="min-w-0 text-sm text-ink">
                           {m.label}
                           {isComingSoon(m) && <span className="ml-2"><ComingSoonBadge /></span>}
                           {adminOnly && <span className="ml-2 text-xs text-ink-faint">Admin only</span>}

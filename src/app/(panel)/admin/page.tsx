@@ -8,6 +8,7 @@ import { PerformanceTable } from "@/components/dashboard/performance-table";
 import { WeeklyTrendChart } from "@/components/dashboard/weekly-trend-chart";
 import { CheckInCard } from "@/components/attendance/check-in-card";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
+import { InstallBanner } from "@/components/pwa/install-banner";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
@@ -38,8 +39,9 @@ export default function AdminDashboardPage() {
   const departments = new Set(active.map((e) => e.department)).size;
 
   return (
-    <div className="space-y-6 pt-4">
+    <div className="space-y-5 pt-2 md:space-y-6 md:pt-4">
       <PageHeader title="Dashboard" subtitle="Your team at a glance." />
+      <InstallBanner />
 
       {on.attendance && permissions?.attendance && mine.data && (
         <CheckInCard today={todayRow} onChange={() => { mine.reload(); reload(); }} />
@@ -50,7 +52,7 @@ export default function AdminDashboardPage() {
       {employees.loading && !employees.data && <Loading />}
 
       {employees.data && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
           <SummaryCard icon={Users} label="Employees" value={active.length} note={`${all.length - active.length} inactive`} href="/admin/employees" />
           <SummaryCard icon={Building2} label="Departments" value={departments} note={`${active.filter((e) => e.role !== "Employee").length} HR / Admin`} />
           {on.attendance && data && (

@@ -33,8 +33,13 @@ drop function if exists private.is_working_day(date);
 create or replace function private.is_working_day(d date, p_week_off smallint) returns boolean
 language sql immutable as $$ select p_week_off is null or extract(isodow from d) <> p_week_off $$;
 
+-- A login lasts 30 days from the last time the panel was opened (get_me
+-- extends it), and never more than 90 days from signing in. Log out, a
+-- password change or reset, and deactivation still end sessions at once.
 create or replace function private.session_days() returns int
-language sql immutable as $$ select 7 $$;
+language sql immutable as $$ select 30 $$;
+create or replace function private.session_max_days() returns int
+language sql immutable as $$ select 90 $$;
 
 -- ===========================================================================
 -- Internal helpers
@@ -238,10 +243,16 @@ $$;
 
 -- Refreshes the signed-in user's profile and permissions.
 create or replace function public.get_me(p_token text) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
+language plpgsql volatile security definer set search_path = public, extensions, private as $$
 declare
   v_emp employees := private.session_employee(p_token);
 begin
+  -- Opening the panel keeps you signed in (written at most once a day).
+  update sessions
+     set expires_at = least(now() + make_interval(days => private.session_days()),
+                            created_at + make_interval(days => private.session_max_days()))
+   where token_hash = encode(digest(p_token, 'sha256'), 'hex')
+     and expires_at < now() + make_interval(days => private.session_days() - 1);
   return jsonb_build_object('employee', private.employee_json(v_emp), 'permissions', private.permissions_json(v_emp));
 end $$;
 

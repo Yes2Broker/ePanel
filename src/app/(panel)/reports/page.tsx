@@ -40,12 +40,12 @@ function ReportsInner() {
   const openId = q.get("open");
 
   return (
-    <div className="space-y-5 pt-4">
+    <div className="space-y-4 pt-2 md:space-y-5 md:pt-4">
       <PageHeader
         title="Daily Reports"
         subtitle={tab === "team" ? "Your team's reports, with today and month-to-date totals." : tab === "projects" ? "Sole selling projects." : tab === "visits" ? "Close old imported visits that were never marked." : tab === "email" ? "Who gets the 10 PM report emails." : "File today's report and look back at past ones."}
         actions={isAdmin && (
-          <Link href="/reports/import" className="inline-flex items-center gap-1.5 rounded-xl border border-surface-border bg-white px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface">
+          <Link href="/reports/import" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-surface-border bg-white px-3.5 py-2 text-sm font-medium text-ink hover:bg-surface md:min-h-10">
             <Upload className="h-4 w-4" /> Import old data
           </Link>
         )}
@@ -105,7 +105,7 @@ function MyReports({ options, loading, error, reload }: { options: ReportOption[
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-ink">My past reports</h3>
           <input type="month" value={month} max={todayISO().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month"
-            className="rounded-pill border border-surface-border bg-white px-3 py-1.5 text-sm text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand" />
+            className="min-h-10 rounded-pill border border-surface-border bg-white px-3 py-1.5 text-base text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm" />
         </div>
         <ErrorBanner message={past.error} onRetry={past.reload} />
         {past.loading && !past.data ? <Loading /> : (past.data ?? []).length === 0 ? (
@@ -114,7 +114,7 @@ function MyReports({ options, loading, error, reload }: { options: ReportOption[
           <ul className="divide-y divide-surface-border">
             {(past.data ?? []).map((r) => (
               <li key={r.id}>
-                <button onClick={() => setOpenId(r.id)} className="flex w-full items-center gap-3 py-3 text-left hover:bg-surface">
+                <button onClick={() => setOpenId(r.id)} className="flex min-h-14 w-full items-center gap-3 py-3 text-left hover:bg-surface">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-ink">{formatDate(r.date, { weekday: true })} · {r.title}</p>
                     <p className="text-xs text-ink-faint">Calls {r.calls} · Positive {r.positive} · Done {r.done} · Tokens {r.tokens}{r.canEdit ? " · editable" : ""}</p>

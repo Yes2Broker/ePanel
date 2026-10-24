@@ -4,77 +4,77 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navFor } from "@/lib/nav";
+import { NavItem, isActivePath, navFor } from "@/lib/nav";
 import { useSession } from "@/context/session-context";
 import { usePreferences } from "@/context/preferences-context";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
 import { FullLogo, LogoIcon } from "@/components/ui/logo";
 
-export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
+/** A nav link: internal pages use the router, other Yes2Broker sites open in a new tab. */
+export function NavLink({ item, className, children, onClick, title }: {
+  item: NavItem; className?: string; children: React.ReactNode; onClick?: () => void; title?: string;
+}) {
+  if (item.external) {
+    return <a href={item.href} target="_blank" rel="noopener noreferrer" onClick={onClick} title={title} className={className}>{children}</a>;
+  }
+  return <Link href={item.href} onClick={onClick} title={title} className={className}>{children}</Link>;
+}
+
+/**
+ * Tablet and desktop (768px+). Tablets get the icon-only rail; desktops get
+ * the full sidebar unless "Compact sidebar" is on. Phones use the bottom bar.
+ */
+export function Sidebar() {
   const pathname = usePathname();
   const { user, permissions } = useSession();
   const { prefs } = usePreferences();
   if (!user) return null;
   const nav = navFor(user, permissions);
-  // Compact mode only applies on desktop; the mobile drawer always shows labels.
   const compact = prefs.compactSidebar;
+  // Labels are hidden on tablets always, and on desktop in compact mode.
+  const labels = compact ? "hidden" : "hidden lg:flex";
 
   return (
-    <>
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-ink/20 lg:hidden" onClick={onClose} />
+    <aside
+      className={cn(
+        "sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col overflow-y-auto bg-surface px-3.5 py-6 md:flex",
+        !compact && "lg:w-[280px] lg:px-5"
       )}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-surface px-5 py-6 transition-transform lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0",
-          compact && "lg:w-[76px] lg:px-4",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        {/* Phones: square icon. Desktop: full logo, or the icon when the sidebar is compact. */}
-        <div className="mb-8 px-1">
-          <div className="flex items-center gap-2.5 lg:hidden">
-            <LogoIcon size={36} />
-            <span className="text-[15px] font-semibold text-brand">Yes2Broker</span>
-          </div>
-          {compact
-            ? <div className="hidden justify-center lg:flex"><LogoIcon size={40} /></div>
-            : <div className="hidden lg:block"><FullLogo className="max-w-[210px]" priority /></div>}
-        </div>
+    >
+      <div className="mb-8 px-1">
+        <div className={cn("justify-center", compact ? "flex" : "flex lg:hidden")}><LogoIcon size={40} /></div>
+        {!compact && <div className="hidden lg:block"><FullLogo className="max-w-[210px]" priority /></div>}
+      </div>
 
-        <nav className="flex-1 space-y-1">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            // "/admin" must match exactly, otherwise it would also light up on /admin/employees.
-            const isActive = !item.external && (item.href === "/admin" ? pathname === "/admin" : pathname === item.href || pathname.startsWith(`${item.href}/`));
-            const LinkTag = item.external ? "a" : Link;
-            return (
-              <LinkTag
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                {...(item.external && { target: "_blank", rel: "noopener noreferrer" })}
-                title={compact ? `${item.label}${item.comingSoon ? " (coming soon)" : item.external ? " (opens in a new tab)" : ""}` : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                  compact && "lg:justify-center",
-                  isActive ? "bg-white font-semibold text-ink shadow-card" : "font-normal text-ink-faint hover:text-ink-muted",
-                  item.comingSoon && !isActive && "opacity-70"
-                )}
-              >
-                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
-                <span className={cn("flex flex-1 items-center justify-between gap-2", compact && "lg:hidden")}>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    {item.label}
-                    {item.external && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="opens in a new tab" />}
-                  </span>
-                  {item.comingSoon && <ComingSoonBadge />}
+      <nav className="flex-1 space-y-1" aria-label="Main">
+        {nav.map((item) => {
+          const Icon = item.icon;
+          const isActive = isActivePath(item, pathname);
+          return (
+            <NavLink
+              key={item.href}
+              item={item}
+              title={`${item.label}${item.comingSoon ? " (coming soon)" : item.external ? " (opens in a new tab)" : ""}`}
+              className={cn(
+                "flex min-h-11 items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                compact ? "justify-center" : "justify-center lg:justify-start",
+                isActive ? "bg-white font-semibold text-ink shadow-card" : "font-normal text-ink-faint hover:text-ink-muted",
+                item.comingSoon && !isActive && "opacity-70"
+              )}
+            >
+              <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
+              <span className={cn("flex-1 items-center justify-between gap-2", labels)}>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  {item.label}
+                  {item.external && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="opens in a new tab" />}
                 </span>
-              </LinkTag>
-            );
-          })}
-        </nav>
-      </aside>
-    </>
+                {item.comingSoon && <ComingSoonBadge />}
+              </span>
+              <span className={cn("sr-only", !compact && "lg:hidden")}>{item.label}</span>
+            </NavLink>
+          );
+        })}
+      </nav>
+    </aside>
   );
 }

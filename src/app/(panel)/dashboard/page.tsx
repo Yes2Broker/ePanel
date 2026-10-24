@@ -5,6 +5,7 @@ import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { CheckInCard } from "@/components/attendance/check-in-card";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
+import { InstallBanner } from "@/components/pwa/install-banner";
 import { Card } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/pills";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
@@ -35,10 +36,11 @@ export default function EmployeeDashboardPage() {
   const canReport = !!(permissions?.normalReport || permissions?.soleSelling);
 
   return (
-    <div className="space-y-6 pt-4">
+    <div className="space-y-5 pt-2 md:space-y-6 md:pt-4">
       <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel." />
+      <InstallBanner />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         <SummaryCard icon={BadgeCheck} label="Employee ID" value={user.id} />
         <SummaryCard icon={Briefcase} label="Department" value={user.department} note={user.designation || undefined} />
         <SummaryCard icon={CalendarDays} label="Weekly Off" value={weekOffLabel(user.weekOff)} />
@@ -56,7 +58,7 @@ export default function EmployeeDashboardPage() {
             <CheckInCard today={data.today} isWorkingDay={data.isWorkingDay} onChange={(row) => setData({ ...data, today: row })} />
           )}
 
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
             {on.attendance && (
               <SummaryCard
                 icon={CalendarCheck} label="Attendance"
@@ -80,7 +82,7 @@ export default function EmployeeDashboardPage() {
               <Card className="p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-ink">Recent Reports</h3>
-                  <Link href="/reports" className="text-xs font-medium text-ink-muted hover:text-ink">View all</Link>
+                  <Link href="/reports" className="-my-2 inline-flex min-h-11 items-center px-2 text-xs font-medium text-ink-muted hover:text-ink">View all</Link>
                 </div>
                 {data.recentReports.length === 0 ? (
                   <p className="py-8 text-center text-sm text-ink-faint">No reports yet.</p>
