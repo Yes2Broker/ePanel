@@ -44,13 +44,14 @@ files, in this order:
 
 1. `supabase/schema.sql` — tables and security
 2. `supabase/functions.sql` — everything the app calls
-3. your team seed file (`seed_team.sql`, kept out of Git because it holds
-   starting passwords) — removes the prototype's demo accounts and adds
-   your employees
+3. `supabase/reports.sql` — Daily Reports (projects, reports, visits, history, import, email data)
+4. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
+Your team was loaded once from a separate seed file kept out of Git.
 
 Both are safe to run again. Whenever `functions.sql` changes, re-run it.
 
-> **Upgrading from the earlier prototype?** Just run all three. `functions.sql`
+All of these are safe to re-run on a live database: they only create what's
+missing and replace functions; they never delete or overwrite rows. `functions.sql`
 > removes the old `list_employees` / `create_employee` / `update_employee` /
 > `reset_employee_password` functions, which could be called by anyone
 > without logging in. Existing employees and passwords are kept.
@@ -85,10 +86,38 @@ Everyone signs in with **either their email or their employee code**
 Passwords must be at least 8 characters when set from the panel; anyone can
 change theirs from Profile → Change Password, and HR/Admin can reset it.
 
+## Daily Reports
+
+- **Employees** see a tile per report they're allowed (Permissions page:
+  *Normal Daily Report*, and *Sole Selling* + which projects). One report per
+  person, per report/project, per day; filed for today only. They can edit it
+  for 24 hours after submitting.
+- **The form** follows the old Google-Sheets forms: leads, calls, positive
+  calls, tokens, visits scheduled today (client + date), an action for every
+  visit due today (Done + time / Reschedule from tomorrow / Cancel + reason),
+  future visits done today, and walk-ins on Sole Selling. Site Visit Done =
+  visits done + future visits done; walk-ins are their own number and aren't
+  in any conversion %. Conversions show one decimal (e.g. 1.1%).
+- **Overdue visits** (date passed with no action) show in Today's Visits
+  with an "Overdue" tag and must be acted on. Imported old visits never block
+  anyone; HR/Admin close them in bulk on the **Old visits** tab.
+- **The popup** shows Today vs MTD (1st of that month up to the report's date)
+  with both conversion %s, a WhatsApp button and **Download image** — also for
+  any past report.
+- **HR / Admin**: Team tab (Today / MTD per person and project, every report,
+  file or fix any day), Projects tab, full change history on each report.
+  Admin only: 10 PM email recipients and **Import old data** (CSV from the old
+  sheets; re-running it never duplicates).
+- **10 PM email**: one email for Normal and one per active project, sent
+  through Gmail. Set `GMAIL_USER`, `GMAIL_APP_PASSWORD` (a Google *app
+  password*) and `CRON_SECRET` in Vercel, then run `email_schedule.sql` with
+  the same `CRON_SECRET`. "Send test email now" on the email tab checks it.
+
 ## Launching features one at a time
 
-Attendance, Leave, Daily Reports and My Tasks are switched off for now and
-show "Coming soon" (sidebar, dashboards, permissions page and their URLs).
+Attendance, Leave and My Tasks are switched off for now and show "Coming
+soon" (sidebar, dashboards, permissions page and their URLs). Daily Reports
+is live.
 To launch one, set its `enabled` to `true` in **`src/lib/features.ts`** and
 merge. No SQL is needed, because the database side is already in place.
 

@@ -16,6 +16,7 @@ const STATUS_STYLES: Record<string, string> = {
   Rejected: "bg-status-dangerBg text-status-danger",
   "Sent back": "bg-status-dangerBg text-status-danger",
   Cancelled: "bg-status-neutralBg text-ink-muted",
+  Closed: "bg-status-neutralBg text-ink-muted",
   Leave: "bg-status-neutralBg text-ink-muted",
 };
 
