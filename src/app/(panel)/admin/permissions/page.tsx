@@ -13,6 +13,7 @@ import { MODULE_FEATURE, isFeatureEnabled } from "@/lib/features";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
 import { ModuleKey } from "@/types";
 import { initials, cn } from "@/lib/utils";
+import { SoleSellingProjects } from "@/components/reports/sole-selling-projects";
 
 // A module can't be switched while its feature isn't launched; the saved
 // value is still shown and kept as it is in the database.
@@ -95,12 +96,17 @@ export default function AdminPermissionsPage() {
               {permissions.loading && !permissions.data ? <Loading /> : permissions.data && (
                 <div className="space-y-1">
                   {MODULES.map((m) => (
-                    <div key={m.key} className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-surface">
-                      <span className="text-sm text-ink">
-                        {m.label}
-                        {isComingSoon(m) && <span className="ml-2"><ComingSoonBadge /></span>}
-                      </span>
-                      <Toggle checked={!!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m)} onChange={(v) => toggle(m.key, v)} />
+                    <div key={m.key}>
+                      <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-surface">
+                        <span className="text-sm text-ink">
+                          {m.label}
+                          {isComingSoon(m) && <span className="ml-2"><ComingSoonBadge /></span>}
+                        </span>
+                        <Toggle checked={!!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m)} onChange={(v) => toggle(m.key, v)} />
+                      </div>
+                      {m.key === "soleSelling" && !isComingSoon(m) && permissions.data?.soleSelling && selectedId && (
+                        <SoleSellingProjects employeeId={selectedId} />
+                      )}
                     </div>
                   ))}
                 </div>

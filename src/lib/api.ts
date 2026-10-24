@@ -1,8 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import {
-  AdminDashboard, AttendanceRecord, DailyReport, Employee, EmployeeDashboard, LeaveRequest,
-  LeaveStatus, LeaveType, ModuleKey, Permissions, PersonalTask, ReportStatus, ReportType,
-  TaskPriority, TaskStatus, TeamAttendanceRow,
+  AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, LeaveRequest,
+  LeaveStatus, LeaveType, ModuleKey, Permissions, PersonalTask,
+  TaskPriority, TaskStatus, TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
+  SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
 } from "@/types";
 
 /**
@@ -97,20 +98,47 @@ export const api = {
   setTaskStatus: (id: string, status: TaskStatus) => rpc<PersonalTask>("set_task_status", { p_id: id, p_status: status }),
   deleteTask: (id: string) => rpc<void>("delete_task", { p_id: id }),
 
-  // Daily reports
-  myReports: () => rpc<DailyReport[]>("my_reports"),
-  saveReport: (id: string | null, date: string, type: ReportType, data: DailyReport["data"], submit: boolean) =>
-    rpc<DailyReport>("save_report", { p_id: id, p_date: date, p_type: type, p_data: data, p_submit: submit }),
-  deleteReport: (id: string) => rpc<void>("delete_report", { p_id: id }),
-  teamReports: (from: string, to: string, status: ReportStatus | null) =>
-    rpc<DailyReport[]>("list_team_reports", { p_from: from, p_to: to, p_status: status }),
-  reviewReport: (id: string, approve: boolean, note: string) =>
-    rpc<DailyReport>("review_report", { p_id: id, p_approve: approve, p_note: note }),
+  // Sales daily reports (Normal + Sole Selling)
+  listProjects: () => rpc<Project[]>("list_projects"),
+  saveProject: (id: string | null, name: string, status: Project["status"] | null) =>
+    rpc<Project>("save_project", { p_id: id, p_name: name, p_status: status }),
+  getEmployeeProjects: (employeeId: string) => rpc<string[]>("get_employee_projects", { p_employee_id: employeeId }),
+  setEmployeeProjects: (employeeId: string, projectIds: string[]) =>
+    rpc<void>("set_employee_projects", { p_employee_id: employeeId, p_project_ids: projectIds }),
+  reportOptions: () => rpc<ReportOption[]>("report_options"),
+  reportForm: (args: { reportId?: string | null; employeeId?: string | null; type?: SalesReportType | null; projectId?: string | null; date?: string | null }) =>
+    rpc<ReportFormData>("report_form", {
+      p_report_id: args.reportId ?? null, p_employee_id: args.employeeId ?? null, p_type: args.type ?? null,
+      p_project: args.projectId ?? null, p_date: args.date ?? null,
+    }),
+  saveSalesReport: (args: { reportId?: string | null; employeeId?: string | null; type?: SalesReportType | null; projectId?: string | null; date?: string | null; payload: ReportPayload }) =>
+    rpc<SalesReportDetail>("save_sales_report", {
+      p_report_id: args.reportId ?? null, p_employee_id: args.employeeId ?? null, p_type: args.type ?? null,
+      p_project: args.projectId ?? null, p_date: args.date ?? null, p_payload: args.payload,
+    }),
+  getReport: (id: string) => rpc<SalesReportDetail>("get_report", { p_report_id: id }),
+  reportHistory: (id: string) => rpc<ReportChange[]>("report_history", { p_report_id: id }),
+  mySalesReports: (month: string | null) => rpc<SalesReportRow[]>("my_sales_reports", { p_month: month }),
+  listSalesReports: (f: { from: string; to: string; type: SalesReportType | null; projectId: string | null; employeeId: string | null }) =>
+    rpc<SalesReportRow[]>("list_sales_reports", {
+      p_from: f.from, p_to: f.to, p_type: f.type, p_project: f.projectId, p_employee_id: f.employeeId,
+    }),
+  teamReportSummary: (f: { date: string; type: SalesReportType | null; projectId: string | null; employeeId: string | null }) =>
+    rpc<TeamSummaryGroup[]>("team_report_summary", { p_date: f.date, p_type: f.type, p_project: f.projectId, p_employee_id: f.employeeId }),
+  getReportEmailRecipients: () => rpc<string[]>("get_report_email_recipients"),
+  setReportEmailRecipients: (emails: string[]) => rpc<string[]>("set_report_email_recipients", { p_emails: emails }),
+  listEmployeeAliases: () => rpc<{ alias: string; employeeId: string }[]>("list_employee_aliases"),
+  importReports: (data: unknown) => rpc<Record<string, number>>("import_reports", { p_data: data }),
 
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),
   adminDashboard: () => rpc<AdminDashboard>("admin_dashboard"),
 };
+
+/** The current session token, for calls to the panel's own server routes. */
+export function getSessionToken() {
+  return sessionToken;
+}
 
 export function errorMessage(err: unknown) {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";

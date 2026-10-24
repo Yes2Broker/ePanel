@@ -9,7 +9,7 @@ import { ModuleKey } from "@/types";
 export const FEATURES = {
   attendance: { label: "Attendance", enabled: false },
   leave: { label: "Leave", enabled: false },
-  reports: { label: "Daily Reports", enabled: false },
+  reports: { label: "Daily Reports", enabled: true },
   tasks: { label: "My Tasks", enabled: false },
 } as const;
 

@@ -778,10 +778,14 @@ begin
                             from (select * from tasks where employee_id = v_emp.id and status = 'Pending'
                                   order by due_date nulls last, created_at desc limit 5) t), '[]'::jsonb)
     ),
-    'recentReports', coalesce((select jsonb_agg(private.report_json(r) order by r.report_date desc)
-                               from (select * from daily_reports where employee_id = v_emp.id
-                                     order by report_date desc limit 4) r), '[]'::jsonb),
-    'reportFiledToday', exists (select 1 from daily_reports where employee_id = v_emp.id and report_date = v_today and status in ('Submitted','Approved')),
+    -- Daily reports live in sales_reports (supabase/reports.sql).
+    'recentReports', coalesce((select jsonb_agg(jsonb_build_object('id', r.id, 'date', r.report_date, 'type', r.report_type,
+                                 'title', case when r.report_type = 'Normal' then 'Normal Daily Report'
+                                               else 'Sole Selling – ' || coalesce((select name from projects p where p.id = r.project_id), '') end)
+                                 order by r.report_date desc)
+                               from (select * from sales_reports where employee_id = v_emp.id
+                                     order by report_date desc, submitted_at desc limit 4) r), '[]'::jsonb),
+    'reportFiledToday', exists (select 1 from sales_reports where employee_id = v_emp.id and report_date = v_today),
     'pendingLeaves', (select count(*) from leave_requests where employee_id = v_emp.id and status = 'Pending'),
     'upcomingLeave', (select private.leave_json(l) from leave_requests l
                       where l.employee_id = v_emp.id and l.status = 'Approved' and l.end_date >= v_today
@@ -809,8 +813,8 @@ begin
     'onLeaveToday', (select count(*) from attendance a join employees e on e.id = a.employee_id
                      where e.status = 'Active' and a.work_date = v_today and a.status = 'Leave'),
     'pendingLeaves', (select count(*) from leave_requests where status = 'Pending'),
-    'reportsToday', (select count(*) from daily_reports where report_date = v_today and status in ('Submitted','Approved')),
-    'pendingReports', (select count(*) from daily_reports where status = 'Submitted'),
+    'reportsToday', (select count(*) from sales_reports where report_date = v_today),
+    'pendingReports', 0,
     -- Last 7 days, oldest first: share of the people due in that day who came in
     -- (anyone on their weekly off that day isn't counted).
     'weeklyTrend', coalesce((
@@ -844,8 +848,8 @@ begin
         select jsonb_build_object(
           'employee', private.employee_json(e),
           'attendanceRate', private.attendance_rate(e.id, private.rate_start(e, v_month_start), v_today),
-          'reportsThisMonth', (select count(*) from daily_reports r where r.employee_id = e.id
-                               and r.report_date >= v_month_start and r.status <> 'Draft'),
+          'reportsThisMonth', (select count(*) from sales_reports r where r.employee_id = e.id
+                               and r.report_date >= v_month_start),
           'tasksCompleted', (select count(*) from tasks t where t.employee_id = e.id
                              and t.status = 'Completed' and t.completed_at >= v_month_start),
           'checkedInToday', exists (select 1 from attendance a where a.employee_id = e.id

@@ -61,7 +61,7 @@ export default function AdminDashboardPage() {
             />
           )}
           {on.leave && data && <SummaryCard icon={CalendarOff} label="Leave Requests" value={data.pendingLeaves} note="awaiting approval" href="/leave" />}
-          {on.reports && data && <SummaryCard icon={FileText} label="Reports Today" value={data.reportsToday} note={`${data.pendingReports} awaiting review`} href="/reports" />}
+          {on.reports && data && <SummaryCard icon={FileText} label="Reports Today" value={data.reportsToday} note="filed today" href="/reports" />}
         </div>
       )}
 

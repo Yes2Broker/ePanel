@@ -13,7 +13,7 @@ import { usePreferences } from "@/context/preferences-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { formatDate, todayISO } from "@/lib/utils";
-import { reportStatusLabel, weekOffLabel } from "@/lib/constants";
+import { weekOffLabel } from "@/lib/constants";
 import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
 
 const on = {
@@ -78,6 +78,7 @@ export default function EmployeeDashboardPage() {
                 icon={FileText} label="Today's Report"
                 value={data.reportFiledToday ? "Filed" : "Pending"}
                 note={canReport ? (data.reportFiledToday ? "Thanks — all done" : "Submit before you leave") : "Not required for you"}
+                href={canReport ? "/reports" : undefined}
               />
             )}
             {on.leave && (
@@ -133,10 +134,10 @@ export default function EmployeeDashboardPage() {
                     {data.recentReports.map((r) => (
                       <li key={r.id} className="flex items-center justify-between rounded-xl px-2 py-2.5 hover:bg-surface">
                         <div>
-                          <p className="text-sm text-ink">{r.type} Report</p>
+                          <p className="text-sm text-ink">{r.title}</p>
                           <p className="text-xs text-ink-faint">{formatDate(r.date)}</p>
                         </div>
-                        <StatusPill status={reportStatusLabel(r.status)} />
+                        <StatusPill status="Submitted" />
                       </li>
                     ))}
                   </ul>
