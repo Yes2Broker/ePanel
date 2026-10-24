@@ -16,14 +16,17 @@ import {
 import { Employee, Project, SalesReportType } from "@/types";
 import { cn, formatDate } from "@/lib/utils";
 
-type Kind = "summary" | "done" | "scheduled";
+// "past" = the "Past Employee" tab: same columns as Sheet1, older daily summaries.
+type Kind = "summary" | "past" | "done" | "scheduled";
 type Src = "normal" | "sole";
 interface Slot { src: Src; kind: Kind; label: string; columns: string }
 const SLOTS: Slot[] = [
   { src: "normal", kind: "summary", label: "Normal — Sheet1", columns: "Date | Name | Leads | Calls | Positive | Scheduled | Done | Tokens" },
+  { src: "normal", kind: "past", label: "Normal — Past Employee", columns: "Same columns as Sheet1" },
   { src: "normal", kind: "done", label: "Normal — Visits Done", columns: "Date | Name | Site Name | Visit Time" },
   { src: "normal", kind: "scheduled", label: "Normal — Visits Scheduled", columns: "Date | Name | Visit Name | Visit Date | Reschedule | Status | Reason" },
   { src: "sole", kind: "summary", label: "Sole Selling — Sheet1", columns: "… same as Normal … | Walk In" },
+  { src: "sole", kind: "past", label: "Sole Selling — Past Employee", columns: "Same columns as Sole Selling Sheet1" },
   { src: "sole", kind: "done", label: "Sole Selling — Visits Done", columns: "Date | Name | Site Name | Visit Time | Status" },
   { src: "sole", kind: "scheduled", label: "Sole Selling — Visits Scheduled", columns: "Date | Name | Visit Name | Visit Date | Reschedule | Status | Reason" },
 ];
@@ -102,7 +105,7 @@ export default function ImportPage() {
   // ---------- sole selling: project per person, and which Status means walk-in ----------
   const soleEmployees = useMemo(() => {
     const ids = new Set<string>();
-    for (const kind of ["summary", "done", "scheduled"] as Kind[])
+    for (const kind of ["summary", "past", "done", "scheduled"] as Kind[])
       for (const r of files[`sole-${kind}`]?.rows ?? []) { const id = r[1] ? employeeFor(r[1]) : null; if (id) ids.add(id); }
     return [...ids];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +147,7 @@ export default function ImportPage() {
         if (!date) { errors.push(`${where}: can't read date "${r[0]}"`); return; }
         const rawKey = `${slot.src}|${slot.kind}|${r.map((v) => v.trim()).join("|")}`;
 
-        if (slot.kind === "summary") {
+        if (slot.kind === "summary" || slot.kind === "past") {
           const k = `${employeeId}|${date}|${type}|${projectId}`;
           const walkIn = type === "Sole Selling" ? toCount(r[8]) : 0;
           const done = type === "Sole Selling" && soleDoneHasWalkIns ? Math.max(0, toCount(r[6]) - walkIn) : toCount(r[6]);
@@ -222,7 +225,7 @@ export default function ImportPage() {
   return (
     <div className="space-y-5 pt-2">
       <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"><ArrowLeft className="h-4 w-4" /> Daily Reports</Link>
-      <PageHeader title="Import old reports" subtitle="Upload the six tabs of your two Google Sheets as CSV files. Nothing is saved until you press Import, and running it again won't create duplicates." />
+      <PageHeader title="Import old reports" subtitle="Upload the eight tabs of your two Google Sheets (Sheet1, Past Employee, Visits Done, Visits Scheduled) as CSV files. Nothing is saved until you press Import, and running it again won't create duplicates." />
       <ErrorBanner message={employees.error || projects.error} />
       {(employees.loading || projects.loading) && !employees.data && <Loading />}
 
@@ -311,11 +314,11 @@ export default function ImportPage() {
             ))}
           </ul>
           {activeProjects.length === 0 && <p className="text-xs text-status-danger">Add the projects first (Daily Reports → Projects).</p>}
-          {files["sole-summary"] && (
+          {(files["sole-summary"] || files["sole-past"]) && (
             <label className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-ink">
               <input type="checkbox" className="mt-0.5" checked={soleDoneHasWalkIns} onChange={(e) => setSoleDoneHasWalkIns(e.target.checked)} />
               <span>
-                In the old Sole Selling Sheet1, <b>Site Visit Done already includes Walk In</b> — take walk-ins out.
+                In the old Sole Selling Sheet1 / Past Employee, <b>Site Visit Done already includes Walk In</b> — take walk-ins out.
                 <span className="mt-0.5 block text-xs text-ink-faint">In the panel, Site Visit Done never includes walk-ins. Check one old day: if its Site Visit Done equals the visits done plus the walk-ins, tick this.</span>
               </span>
             </label>
