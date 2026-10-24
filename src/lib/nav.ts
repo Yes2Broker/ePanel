@@ -3,34 +3,42 @@ import {
   Users, ShieldCheck, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
+import { FeatureKey, isFeatureEnabled } from "@/lib/features";
 
 export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  comingSoon?: boolean;
 }
 
 export function navFor(user: Employee, permissions: Permissions | null): NavItem[] {
   const can = (key: keyof Permissions) => !!permissions?.[key];
   const isManager = user.role === "Admin" || user.role === "HR";
+
+  // A switched-off feature is shown to everyone, marked "Coming soon". Once it's
+  // switched on, the usual role/permission rule decides whether it appears.
+  const feature = (key: FeatureKey, item: NavItem, allowed: boolean): NavItem | false =>
+    isFeatureEnabled(key) ? allowed && item : { ...item, comingSoon: true };
+
+  const attendance = feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, isManager || can("attendance"));
+  const leave = feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, true);
+  const reports = feature("reports", { href: "/reports", label: "Daily Reports", icon: FileText }, isManager || can("normalReport") || can("soleSelling"));
+  const tasks = feature("tasks", { href: "/tasks", label: "My Tasks", icon: ListTodo }, can("tasks"));
+
   const items: (NavItem | false)[] = isManager
     ? [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
         { href: "/admin/employees", label: "Employees", icon: Users },
-        { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-        { href: "/leave", label: "Leave", icon: CalendarOff },
-        { href: "/reports", label: "Daily Reports", icon: FileText },
+        attendance, leave, reports,
         { href: "/admin/permissions", label: "Permissions", icon: ShieldCheck },
-        can("tasks") && { href: "/tasks", label: "My Tasks", icon: ListTodo },
+        tasks,
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ]
     : [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        can("attendance") && { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-        { href: "/leave", label: "Leave", icon: CalendarOff },
-        can("tasks") && { href: "/tasks", label: "My Tasks", icon: ListTodo },
-        (can("normalReport") || can("soleSelling")) && { href: "/reports", label: "Daily Reports", icon: FileText },
+        attendance, leave, tasks, reports,
         { href: "/profile", label: "Profile", icon: User },
         { href: "/settings", label: "Settings", icon: Settings },
       ];

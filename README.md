@@ -85,6 +85,13 @@ Everyone signs in with **either their email or their employee code**
 Passwords must be at least 8 characters when set from the panel; anyone can
 change theirs from Profile → Change Password, and HR/Admin can reset it.
 
+## Launching features one at a time
+
+Attendance, Leave, Daily Reports and My Tasks are switched off for now and
+show "Coming soon" (sidebar, dashboards, permissions page and their URLs).
+To launch one, set its `enabled` to `true` in **`src/lib/features.ts`** and
+merge. No SQL is needed, because the database side is already in place.
+
 ## How security works
 
 - The browser never reads or writes a table. Every table has row level

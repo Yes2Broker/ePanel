@@ -6,12 +6,14 @@ import { Toggle } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page";
 import { useSession } from "@/context/session-context";
 import { Preferences, usePreferences } from "@/context/preferences-context";
+import { FeatureKey, isFeatureEnabled } from "@/lib/features";
 
-const DASHBOARD_SECTIONS: { key: keyof Preferences["dashboard"]; label: string }[] = [
+// Only sections whose feature is launched can be shown or hidden.
+const DASHBOARD_SECTIONS = ([
   { key: "tasks", label: "Upcoming tasks" },
   { key: "reports", label: "Recent reports" },
   { key: "leave", label: "Upcoming leave" },
-];
+] satisfies { key: keyof Preferences["dashboard"] & FeatureKey; label: string }[]).filter((s) => isFeatureEnabled(s.key));
 
 export default function SettingsPage() {
   const { isManager } = useSession();
@@ -32,7 +34,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      {!isManager && (
+      {!isManager && DASHBOARD_SECTIONS.length > 0 && (
         <Card className="p-5">
           <h3 className="mb-3 text-sm font-semibold text-ink">Dashboard sections</h3>
           <div className="space-y-3">
