@@ -8,8 +8,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Employee, EmployeeStat } from "@/types";
 import { isFeatureEnabled } from "@/lib/features";
 
-// Stats columns appear only once their feature is launched (src/lib/features.ts).
-const showAttendance = isFeatureEnabled("attendance");
+// The reports column appears only once Daily Reports is launched (src/lib/features.ts).
 const showReports = isFeatureEnabled("reports");
 
 /** Active employees, plus this month's stats for whichever features are live. */
@@ -20,7 +19,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
   const visible = q
     ? employees.filter((e) => e.name.toLowerCase().includes(q) || e.department.toLowerCase().includes(q) || e.id.toLowerCase().includes(q))
     : employees;
-  const hasStats = showAttendance || showReports;
+  const hasStats = showReports;
 
   return (
     <Card className="p-4 sm:p-5">
@@ -47,12 +46,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
               <div className="min-w-0 flex-1">
                 <p className="break-words text-sm font-medium text-ink">{e.name}</p>
                 <p className="break-words text-xs text-ink-faint">{e.id} · {e.department}</p>
-                {(showReports || showAttendance) && s && (
-                  <p className="text-xs text-ink-muted">
-                    {showReports && `${s.reportsThisMonth} reports`}
-                    {showAttendance && ` · ${s.attendanceRate == null ? "—" : `${s.attendanceRate}%`} attendance`}
-                  </p>
-                )}
+                {showReports && s && <p className="text-xs text-ink-muted">{s.reportsThisMonth} reports</p>}
               </div>
               {e.mobile && (
                 <a href={`tel:${e.mobile}`} aria-label={`Call ${e.name} (${e.mobile})`} title={e.mobile}
@@ -72,9 +66,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
               <th className="pb-2.5 pr-3">Employee</th>
               <th className="pb-2.5 pr-3">Role</th>
               <th className="pb-2.5 pr-3">Mobile</th>
-              {showAttendance && <th className="pb-2.5 pr-3">Attendance</th>}
               {showReports && <th className="pb-2.5 pr-3">Reports</th>}
-              {showAttendance && <th className="pb-2.5">Today</th>}
             </tr>
           </thead>
           <tbody>
@@ -93,26 +85,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
                   </td>
                   <td className="py-3 pr-3 text-ink-muted">{e.role}</td>
                   <td className="whitespace-nowrap py-3 pr-3 text-ink-muted">{e.mobile || "—"}</td>
-                  {showAttendance && (
-                    <td className="py-3 pr-3">
-                      {s?.attendanceRate == null ? <span className="text-ink-faint">—</span> : (
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-status-neutralBg">
-                            <div className="h-full rounded-full bg-brand-dark" style={{ width: `${s.attendanceRate}%` }} />
-                          </div>
-                          <span className="text-ink-muted">{s.attendanceRate}%</span>
-                        </div>
-                      )}
-                    </td>
-                  )}
                   {showReports && <td className="py-3 pr-3 text-ink-muted">{s?.reportsThisMonth ?? "—"}</td>}
-                  {showAttendance && (
-                    <td className="py-3">
-                      <span className={s?.checkedInToday ? "text-xs font-medium text-status-success" : "text-xs text-ink-faint"}>
-                        {s?.checkedInToday ? "Checked in" : "Not in"}
-                      </span>
-                    </td>
-                  )}
                 </tr>
               );
             })}

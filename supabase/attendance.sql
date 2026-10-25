@@ -1,0 +1,702 @@
+-- ===========================================================================
+-- Attendance: punches uploaded from the eTimeOffice machine report (or the
+-- simple template), plus the old Google-Sheet history, with the same rules
+-- as the old Apps Script (Code.gs), web app (script.js) and Excel:
+--
+--   * Present = both In and Out. Only one of them = "Missed punch" (not
+--     counted until HR fixes it). No punches = Weekoff on the person's own
+--     weekly off, otherwise Absent.
+--   * Company holidays (Leave → Holidays) = Paid Leave for everyone.
+--     Approved leave shows as "Leave" (unpaid) or "Comp-off" (paid).
+--   * Working time = Out − In (no break deducted, like Code.gs).
+--   * Late = In after 10:30 (10:31 is late). Short Day = under 8 h (480 min).
+--     A day that is both counts once, as Short (Code.gs / script.js).
+--   * The first 2 lates in a month are free; every late from the 3rd on is a
+--     "Late Half" = 0.5 day deducted. Each Short Day = 0.5 day deducted.
+--   * Net payable = Present + Weekoff + Paid Leave + Comp-off
+--                   − (late deductions + Short Days × 0.5)
+--   * Salary (Admin only) = monthly salary ÷ days in month × net payable.
+--   * Working on your own weekly off adds a comp-off credit in Leave
+--     automatically (approved, expires 30 days after), instead of the old
+--     "cancels one Absent" rule.
+--
+-- Run AFTER leave.sql. Safe to run again on a live database: it only creates
+-- what's missing and replaces functions. The old `attendance` table (from the
+-- first check-in prototype) is left untouched.
+-- ===========================================================================
+
+create table if not exists attendance_days (
+  employee_id text not null references employees(id) on update cascade on delete cascade,
+  work_date date not null,
+  in_time time,
+  out_time time,
+  -- Set by HR (edit), the history import, or "Paid Leave = Yes" in the
+  -- template. Null = worked out from the punches.
+  status_set text check (status_set in ('Present','Absent','Weekoff','Paid Leave')),
+  remark text not null default '',
+  source text not null check (source in ('etimeoffice','template','history','manual')),
+  upload_id uuid,
+  -- Late / Half Day as written in the old sheet (history import only), kept
+  -- so differences from the recalculation can be shown.
+  sheet_late text,
+  sheet_half text,
+  -- Set when HR/Admin edit the day. Uploads never overwrite such a day.
+  edited_by text references employees(id) on update cascade on delete set null,
+  edited_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (employee_id, work_date)
+);
+create index if not exists attendance_days_date_idx on attendance_days (work_date);
+
+-- Every change to a day: uploads that change a value, and HR edits.
+create table if not exists attendance_changes (
+  id bigint generated always as identity primary key,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
+  work_date date not null,
+  changed_by text references employees(id) on update cascade on delete set null,
+  changed_at timestamptz not null default clock_timestamp(),
+  field text not null,
+  old_value text,
+  new_value text
+);
+create index if not exists attendance_changes_day_idx on attendance_changes (employee_id, work_date);
+
+-- Machine employee codes that don't follow 0002 → EMP002, mapped once by HR.
+create table if not exists attendance_code_map (
+  machine_code text primary key,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
+  created_by text references employees(id) on update cascade on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists attendance_uploads (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,
+  file_name text not null default '',
+  uploaded_by text references employees(id) on update cascade on delete set null,
+  uploaded_at timestamptz not null default now(),
+  rows_in int not null default 0,
+  added int not null default 0,
+  updated int not null default 0,
+  kept int not null default 0,
+  from_date date,
+  to_date date
+);
+
+alter table attendance_days enable row level security;
+alter table attendance_changes enable row level security;
+alter table attendance_code_map enable row level security;
+alter table attendance_uploads enable row level security;
+revoke all on attendance_days, attendance_changes, attendance_code_map, attendance_uploads from anon, authenticated;
+
+-- ===========================================================================
+-- Rules
+-- ===========================================================================
+create or replace function private.att_late_after() returns time language sql immutable as $$ select time '10:30' $$;
+create or replace function private.att_full_day_minutes() returns int language sql immutable as $$ select 480 $$;
+create or replace function private.att_free_lates() returns int language sql immutable as $$ select 2 $$;
+
+create or replace function private.month_start(d date) returns date language sql immutable as $$ select date_trunc('month', d)::date $$;
+create or replace function private.month_end(d date) returns date language sql immutable as $$ select (date_trunc('month', d) + interval '1 month - 1 day')::date $$;
+
+-- "10:05", "9:5", "10:05:00", "--:--" → time or null. Anything else raises.
+create or replace function private.att_time(p text) returns time
+language plpgsql immutable as $$
+declare
+  m text[];
+begin
+  if p is null or trim(p) = '' or trim(p) ~ '^-+:?-*$' then return null; end if;
+  m := regexp_match(trim(p), '^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$');
+  if m is null or m[1]::int > 23 or m[2]::int > 59 then
+    raise exception 'Time "%" isn''t HH:MM.', p using errcode = '22023';
+  end if;
+  return make_time(m[1]::int, m[2]::int, 0);
+end $$;
+
+-- One person's days with everything worked out. The month's running late
+-- count needs the whole month, so pass month bounds and filter afterwards.
+-- Days covered: from the 1st (or joining date) up to the last day that has
+-- any uploaded row for this person in the range (never after today).
+-- A working day inside that span with no row at all shows as Absent ("No record").
+do $$
+begin
+  if to_regtype('private.att_day') is null then
+    create type private.att_day as (
+      day date, in_time time, out_time time, minutes int, status text, note text,
+      late boolean, short_day boolean, late_half boolean, edited boolean, source text, has_row boolean
+    );
+  end if;
+end $$;
+
+create or replace function private.att_days(p_emp text, p_from date, p_to date)
+returns setof private.att_day
+language sql stable set search_path = public, private as $$
+  with emp as (select * from employees where id = p_emp),
+  span as (
+    select greatest(p_from, coalesce((select joining_date from emp), p_from)) as f,
+           least(p_to, private.today(),
+                 coalesce((select max(work_date) from attendance_days where employee_id = p_emp and work_date between p_from and p_to), p_from - 1)) as t
+  ),
+  base as (
+    select g::date as d, a.in_time as tin, a.out_time as tout, a.status_set, a.remark, a.source as src,
+           a.edited_by, a.work_date is not null as row_exists
+    from span cross join generate_series(span.f, span.t, interval '1 day') g
+    left join attendance_days a on a.employee_id = p_emp and a.work_date = g::date
+  ),
+  calc as (
+    select b.*,
+      case when b.tin is not null and b.tout is not null then (extract(epoch from (b.tout - b.tin)) / 60)::int end as mins,
+      h.name as holiday, lv.kind as leave_kind, lv.portion as leave_portion,
+      (select week_off from emp) as week_off
+    from base b
+    left join holidays h on h.holiday_date = b.d
+    left join lateral (
+      select a.kind, x.portion from leave_applications a, lateral private.app_days(a) x
+      where a.employee_id = p_emp and a.status = 'Approved' and b.d between a.start_date and a.end_date and x.day = b.d
+      order by x.portion desc limit 1) lv on true
+  ),
+  st as (
+    select c.*,
+      case
+        when c.status_set is not null then c.status_set
+        when c.tin is not null and c.tout is not null then 'Present'
+        when c.tin is not null or c.tout is not null then 'Missed punch'
+        when c.holiday is not null then 'Paid Leave'
+        when c.leave_portion >= 1 then case when c.leave_kind = 'Comp-off' then 'Comp-off' else 'Leave' end
+        when not private.is_working_day(c.d, c.week_off) then 'Weekoff'
+        else 'Absent'
+      end as st
+    from calc c
+  ),
+  fl as (
+    select s.*,
+      (s.st = 'Present' and s.mins is not null and s.mins < private.att_full_day_minutes()) as is_short,
+      (s.st = 'Present' and s.tin is not null and s.tout is not null and s.tin > private.att_late_after()) as in_late
+    from st s
+  ),
+  fl2 as (select f.*, f.in_late and not f.is_short as is_late from fl f)
+  select f.d, f.tin, f.tout, f.mins, f.st,
+    coalesce(nullif(f.remark, ''),
+      case when f.st = 'Paid Leave' and f.holiday is not null then f.holiday
+           when f.st = 'Absent' and not f.row_exists then 'No record'
+           when f.leave_portion = 0.5 then 'Half-day ' || lower(f.leave_kind)
+           when f.st = 'Present' and not private.is_working_day(f.d, f.week_off) then 'Worked on weekly off'
+      end),
+    f.in_late, f.is_short,
+    f.is_late and count(*) filter (where f.is_late) over (partition by date_trunc('month', f.d) order by f.d) > private.att_free_lates(),
+    f.edited_by is not null, f.src, f.row_exists
+  from fl2 f
+  order by f.d
+$$;
+
+-- Month totals for one person (script.js updateCards, with comp-off instead
+-- of "weekoff working").
+create or replace function private.att_summary(p_emp text, p_month date) returns jsonb
+language sql stable set search_path = public, private as $$
+  with d as (select * from private.att_days(p_emp, private.month_start(p_month), private.month_end(p_month))),
+  c as (
+    select count(*) as days,
+      count(*) filter (where status = 'Present') as present,
+      count(*) filter (where status = 'Absent') as absent,
+      count(*) filter (where status = 'Weekoff') as weekoff,
+      count(*) filter (where status = 'Paid Leave') as paid_leave,
+      count(*) filter (where status = 'Leave') as leave,
+      count(*) filter (where status = 'Comp-off') as comp_off,
+      count(*) filter (where status = 'Missed punch') as missed,
+      -- Lates shown = every day In was after 10:30 (like the old Late card);
+      -- a late day that is also short is charged once, as Short (script.js).
+      count(*) filter (where late) as lates,
+      count(*) filter (where late and not short_day) as lates_counted,
+      count(*) filter (where late_half) as late_halves,
+      count(*) filter (where short_day) as short_days,
+      max(day) as last_day
+    from d
+  )
+  select jsonb_build_object(
+    'daysInMonth', extract(day from private.month_end(p_month))::int,
+    'days', days, 'present', present, 'absent', absent, 'weekoff', weekoff, 'paidLeave', paid_leave,
+    'leave', leave, 'compOff', comp_off, 'missed', missed, 'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
+    'lateDeduction', greatest(lates_counted - private.att_free_lates(), 0) * 0.5,
+    'shortDays', short_days,
+    'netPayable', (present + weekoff + paid_leave + comp_off) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
+    'lastDay', last_day)
+  from c
+$$;
+
+create or replace function private.att_day_json(r private.att_day) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'date', r.day, 'in', to_char(r.in_time, 'HH24:MI'), 'out', to_char(r.out_time, 'HH24:MI'), 'minutes', r.minutes,
+    'status', r.status, 'note', coalesce(r.note, ''), 'late', r.late, 'shortDay', r.short_day, 'lateHalf', r.late_half,
+    'edited', r.edited, 'source', r.source, 'hasRow', r.has_row)
+$$;
+
+-- Salary part, for an Admin viewer only.
+create or replace function private.att_salary(e public.employees, s jsonb, me public.employees) returns jsonb
+language sql stable as $$
+  select case when me.role = 'Admin' then jsonb_build_object(
+    'monthly', coalesce(e.salary, 0),
+    'final', round(coalesce(e.salary, 0) / (s ->> 'daysInMonth')::numeric * (s ->> 'netPayable')::numeric))
+  end
+$$;
+
+-- A comp-off credit for working your own weekly off (Leave feature), added or
+-- removed when that day changes. Days older than 30 days would already be
+-- expired, so nothing is added for them.
+create or replace function private.att_sync_comp_off(p_emp text, p_day date, p_actor text) returns void
+language plpgsql volatile set search_path = public, private as $$
+declare
+  e employees;
+  v_status text;
+  c comp_off_claims;
+begin
+  select * into e from employees where id = p_emp;
+  if not found or e.week_off is null or extract(isodow from p_day)::int <> e.week_off then return; end if;
+  select status into v_status from private.att_days(p_emp, private.month_start(p_day), p_day) where day = p_day;
+  select * into c from comp_off_claims where employee_id = p_emp and worked_date = p_day and status in ('Pending','Approved');
+  if v_status = 'Present' then
+    if p_day < private.today() - private.comp_off_days() then return; end if;
+    if c.id is null then
+      insert into comp_off_claims (employee_id, worked_date, note, status, decided_at, decision_note)
+      values (p_emp, p_day, 'Attendance', 'Approved', now(), 'Automatic: worked on weekly off')
+      returning * into c;
+      perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off added automatically', private.fmt_day(p_day) || ' · worked on weekly off');
+    elsif c.status = 'Pending' then
+      update comp_off_claims set status = 'Approved', decided_at = now(), decision_note = 'Automatic: worked on weekly off' where id = c.id;
+      perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off approved automatically', private.fmt_day(p_day) || ' · worked on weekly off');
+    end if;
+  elsif c.id is not null and c.decision_note like 'Automatic:%'
+        and not exists (select 1 from leave_applications a where a.comp_off_id = c.id and a.status in ('Pending','Approved')) then
+    update comp_off_claims set status = 'Cancelled', decision_note = 'Automatic: attendance changed' where id = c.id;
+    perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off removed automatically', private.fmt_day(p_day) || ' · no longer worked');
+  end if;
+end $$;
+
+-- ===========================================================================
+-- Upload / import (HR / Admin). One function for preview (p_dry) and import.
+--   p_kind: 'etimeoffice' | 'template' | 'history' (history = Admin only)
+--   p_rows: [{ code, name?, date: 'YYYY-MM-DD', in?, out?, paid?, remark?,
+--              status?, sheetLate?, sheetHalf? }]
+--   p_map:  { "<machine code>": "EMP0xx" } for codes HR mapped by hand
+--           (remembered), or "-" to skip that code's rows this time.
+-- ===========================================================================
+create or replace function public.att_import(p_token text, p_kind text, p_rows jsonb, p_map jsonb, p_file text, p_dry boolean)
+returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v_today date := private.today();
+  v_upload uuid := gen_random_uuid();
+  r record;
+  old attendance_days;
+  v_in time; v_out time; v_status text;
+  v_added int := 0; v_updated int := 0; v_kept int := 0; v_same int := 0; v_future int := 0;
+  v_errors jsonb := '[]'::jsonb;
+  v_people jsonb;
+  v_unmatched jsonb;
+  v_compare jsonb := '[]'::jsonb;
+  v_from date; v_to date;
+begin
+  if p_kind not in ('etimeoffice','template','history') then
+    raise exception 'Unknown file type.' using errcode = '22023';
+  end if;
+  if p_kind = 'history' and me.role <> 'Admin' then
+    raise exception 'Only an Admin can import the old history.' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then
+    raise exception 'No rows found in the file.' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_rows) > 20000 then
+    raise exception 'The file has too many rows (max 20,000).' using errcode = '22023';
+  end if;
+
+  -- Resolve every row to an employee and check it, into a temp table.
+  if to_regclass('pg_temp.att_in') is not null then drop table pg_temp.att_in; end if;
+  create temp table att_in (
+    n int, code text, name text, date_txt text, in_txt text, out_txt text, paid boolean, remark text,
+    status_txt text, sheet_late text, sheet_half text, employee_id text,
+    work_date date, tin time, tout time, status_set text, err text
+  ) on commit drop;
+  insert into att_in
+  with src as (
+    select (ord)::int as n, x ->> 'code' as code, x ->> 'name' as name, x ->> 'date' as date_txt,
+           x ->> 'in' as in_txt, x ->> 'out' as out_txt, coalesce((x ->> 'paid')::boolean, false) as paid,
+           trim(coalesce(x ->> 'remark', '')) as remark, nullif(trim(coalesce(x ->> 'status', '')), '') as status_txt,
+           x ->> 'sheetLate' as sheet_late, x ->> 'sheetHalf' as sheet_half
+    from jsonb_array_elements(p_rows) with ordinality as t(x, ord)
+  )
+  select s.*,
+    coalesce(
+      (select e.id from employees e where e.id = p_map ->> s.code),
+      (select m.employee_id from attendance_code_map m where m.machine_code = s.code),
+      case
+        when p_kind = 'template' then (select e.id from employees e where e.id = upper(trim(s.code)))
+        when p_kind = 'history' then (select e.id from employees e where e.id = 'EMP' || lpad(nullif(ltrim(substring(s.code from '(?:^|_)E(\d+)'), '0'), ''), 3, '0'))
+        else (select e.id from employees e where e.id = 'EMP' || lpad(nullif(ltrim(regexp_replace(s.code, '\D', '', 'g'), '0'), ''), 3, '0'))
+      end) as employee_id,
+    null::date as work_date, null::time as tin, null::time as tout, null::text as status_set, null::text as err
+  from src s;
+
+  for r in select * from att_in loop
+    begin
+      update att_in set work_date = r.date_txt::date where n = r.n;
+      v_in := private.att_time(r.in_txt);
+      v_out := private.att_time(r.out_txt);
+      update att_in set tin = v_in, tout = v_out where n = r.n;
+      if r.status_txt is not null then
+        if r.status_txt not in ('Present','Absent','Weekoff','Paid Leave') then
+          raise exception 'Status "%" isn''t Present, Absent, Weekoff or Paid Leave.', r.status_txt using errcode = '22023';
+        end if;
+        update att_in set status_set = r.status_txt where n = r.n;
+      elsif r.paid then
+        if r.remark = '' then
+          raise exception 'Paid Leave needs a remark.' using errcode = '22023';
+        end if;
+        update att_in set status_set = 'Paid Leave' where n = r.n;
+      end if;
+    exception when others then
+      update att_in set err = sqlerrm where n = r.n;
+    end;
+  end loop;
+  update att_in set err = 'Not a valid date.' where err is null and work_date is null;
+  update att_in a set err = 'Same person and date twice in the file.'
+  where err is null and employee_id is not null and exists (
+    select 1 from att_in b where b.employee_id = a.employee_id and b.work_date = a.work_date and b.n < a.n and b.err is null);
+
+  select count(*) into v_future from att_in where err is null and employee_id is not null and work_date > v_today;
+  select min(work_date), max(work_date) into v_from, v_to from att_in where err is null and employee_id is not null and work_date <= v_today;
+
+  select coalesce(jsonb_agg(jsonb_build_object('row', n, 'message', err) order by n) filter (where err is not null), '[]'::jsonb)
+  into v_errors from (select * from att_in where err is not null order by n limit 200) e;
+
+  select coalesce(jsonb_agg(jsonb_build_object('code', code, 'name', name, 'rows', cnt) order by code), '[]'::jsonb)
+  into v_unmatched from (select code, max(name) as name, count(*) as cnt from att_in where employee_id is null group by code) u;
+
+  -- Per person preview, from the file's own rows (+ weekly offs / holidays).
+  with ok as (
+    select a.*, e.week_off,
+      case
+        when a.status_set is not null then a.status_set
+        when a.tin is not null and a.tout is not null then 'Present'
+        when a.tin is not null or a.tout is not null then 'Missed punch'
+        when exists (select 1 from holidays h where h.holiday_date = a.work_date) then 'Paid Leave'
+        when not private.is_working_day(a.work_date, e.week_off) then 'Weekoff'
+        else 'Absent'
+      end as st,
+      case when a.tin is not null and a.tout is not null then (extract(epoch from (a.tout - a.tin)) / 60)::int end as mins,
+      d.edited_by is not null or (d.source = 'history' and p_kind <> 'history') or (p_kind = 'history' and d.work_date is not null) as keep
+    from att_in a join employees e on e.id = a.employee_id
+    left join attendance_days d on d.employee_id = a.employee_id and d.work_date = a.work_date
+    where a.err is null and a.work_date <= v_today
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'employee', private.person_json(employee_id), 'days', days, 'present', present, 'absent', absent,
+           'weekoff', weekoff, 'paidLeave', paid, 'late', late, 'short', short, 'missed', missed, 'kept', kept,
+           'from', f, 'to', t) order by employee_id), '[]'::jsonb)
+  into v_people from (
+    select employee_id, count(*) as days, min(work_date) as f, max(work_date) as t,
+      count(*) filter (where st = 'Present') as present, count(*) filter (where st = 'Absent') as absent,
+      count(*) filter (where st = 'Weekoff') as weekoff, count(*) filter (where st = 'Paid Leave') as paid,
+      count(*) filter (where st = 'Present' and tin > private.att_late_after()) as late,
+      count(*) filter (where st = 'Present' and mins < private.att_full_day_minutes()) as short,
+      count(*) filter (where st = 'Missed punch') as missed,
+      count(*) filter (where keep) as kept
+    from ok group by employee_id
+  ) p;
+
+  -- History: where the recalculated Late / Half Day differ from the sheet.
+  if p_kind = 'history' then
+    with h as (
+      select a.n, a.employee_id, a.work_date, a.tin, a.tout, a.status_set, a.sheet_late, a.sheet_half,
+        case when a.tin is not null and a.tout is not null then (extract(epoch from (a.tout - a.tin)) / 60)::int end as mins
+      from att_in a where a.err is null and a.employee_id is not null
+    ), f as (
+      select h.*, coalesce(h.status_set, case when h.tin is not null and h.tout is not null then 'Present' end) = 'Present' and h.mins is not null as pres
+      from h
+    ), g as (
+      select f.*, pres and mins < private.att_full_day_minutes() as is_short,
+             pres and mins >= private.att_full_day_minutes() and tin > private.att_late_after() as is_late
+      from f
+    ), k as (
+      select g.*,
+        case when not pres then '' when is_late then 'Yes' else 'No' end as late_rc,
+        case when not pres then '' when is_short then 'Short Day'
+             when not is_late then 'No'
+             when count(*) filter (where is_late) over (partition by employee_id, date_trunc('month', work_date) order by work_date) > private.att_free_lates() then 'Yes'
+             else 'No' end as half_rc
+      from g
+    )
+    select coalesce(jsonb_agg(jsonb_build_object('employee', private.person_json(employee_id), 'date', work_date,
+             'in', to_char(tin, 'HH24:MI'), 'out', to_char(tout, 'HH24:MI'),
+             'sheetLate', coalesce(sheet_late, ''), 'sheetHalf', coalesce(sheet_half, ''), 'late', late_rc, 'half', half_rc)
+             order by employee_id, work_date), '[]'::jsonb)
+    into v_compare
+    from (select * from k
+          where coalesce(nullif(trim(sheet_late), ''), '') is distinct from late_rc
+             or coalesce(nullif(trim(sheet_half), ''), '') is distinct from half_rc
+          order by employee_id, work_date limit 1000) diff;
+  end if;
+
+  if not p_dry then
+    -- Every unmatched code needs a decision: an employee, or "-" to skip its rows.
+    if exists (select 1 from att_in where employee_id is null and coalesce(p_map ->> code, '') <> '-') then
+      raise exception 'Choose an employee (or Skip) for every unmatched code first.' using errcode = '22023';
+    end if;
+    -- Remember codes mapped by hand.
+    insert into attendance_code_map (machine_code, employee_id, created_by)
+    select k, v, me.id from jsonb_each_text(coalesce(p_map, '{}'::jsonb)) as m(k, v)
+    where exists (select 1 from employees where id = v)
+    on conflict (machine_code) do update set employee_id = excluded.employee_id;
+
+    for r in select * from att_in where err is null and employee_id is not null and work_date <= v_today order by employee_id, work_date loop
+      select * into old from attendance_days where employee_id = r.employee_id and work_date = r.work_date;
+      if old.employee_id is not null and (old.edited_by is not null or (old.source = 'history' and p_kind <> 'history') or p_kind = 'history') then
+        v_kept := v_kept + 1;
+        continue;
+      end if;
+      if old.employee_id is null then
+        insert into attendance_days (employee_id, work_date, in_time, out_time, status_set, remark, source, upload_id, sheet_late, sheet_half)
+        values (r.employee_id, r.work_date, r.tin, r.tout, r.status_set, r.remark, p_kind, v_upload,
+                case when p_kind = 'history' then nullif(trim(r.sheet_late), '') end, case when p_kind = 'history' then nullif(trim(r.sheet_half), '') end);
+        v_added := v_added + 1;
+      elsif old.in_time is not distinct from r.tin and old.out_time is not distinct from r.tout
+            and old.status_set is not distinct from r.status_set and old.remark = r.remark then
+        v_same := v_same + 1;
+        continue;
+      else
+        if old.in_time is distinct from r.tin then
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+          values (r.employee_id, r.work_date, me.id, 'In Time (upload)', to_char(old.in_time, 'HH24:MI'), to_char(r.tin, 'HH24:MI'));
+        end if;
+        if old.out_time is distinct from r.tout then
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+          values (r.employee_id, r.work_date, me.id, 'Out Time (upload)', to_char(old.out_time, 'HH24:MI'), to_char(r.tout, 'HH24:MI'));
+        end if;
+        if old.status_set is distinct from r.status_set then
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+          values (r.employee_id, r.work_date, me.id, 'Status (upload)', coalesce(old.status_set, 'auto'), coalesce(r.status_set, 'auto'));
+        end if;
+        update attendance_days set in_time = r.tin, out_time = r.tout, status_set = r.status_set, remark = r.remark,
+          source = p_kind, upload_id = v_upload, updated_at = now()
+        where employee_id = r.employee_id and work_date = r.work_date;
+        v_updated := v_updated + 1;
+      end if;
+      -- Old history was already paid under the old weekly-off rule: no credits for it.
+      if p_kind <> 'history' then
+        perform private.att_sync_comp_off(r.employee_id, r.work_date, me.id);
+      end if;
+    end loop;
+
+    insert into attendance_uploads (id, kind, file_name, uploaded_by, rows_in, added, updated, kept, from_date, to_date)
+    values (v_upload, p_kind, left(coalesce(p_file, ''), 200), me.id, jsonb_array_length(p_rows), v_added, v_updated, v_kept, v_from, v_to);
+  end if;
+
+  return jsonb_build_object(
+    'dry', p_dry, 'rows', jsonb_array_length(p_rows), 'from', v_from, 'to', v_to,
+    'future', v_future, 'unmatched', v_unmatched, 'errors', v_errors,
+    'errorCount', (select count(*) from att_in where err is not null),
+    'people', v_people, 'comparison', v_compare,
+    'added', v_added, 'updated', v_updated, 'kept', v_kept, 'unchanged', v_same);
+end $$;
+
+create or replace function public.att_code_maps(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return coalesce((select jsonb_agg(jsonb_build_object('code', m.machine_code, 'employee', private.person_json(m.employee_id)) order by m.machine_code)
+                   from attendance_code_map m), '[]'::jsonb);
+end $$;
+
+create or replace function public.att_uploads(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return coalesce((select jsonb_agg(jsonb_build_object('id', u.id, 'kind', u.kind, 'file', u.file_name, 'by', private.ename(u.uploaded_by),
+                     'at', u.uploaded_at, 'rows', u.rows_in, 'added', u.added, 'updated', u.updated, 'kept', u.kept,
+                     'from', u.from_date, 'to', u.to_date) order by u.uploaded_at desc)
+                   from (select * from attendance_uploads order by uploaded_at desc limit 20) u), '[]'::jsonb);
+end $$;
+
+-- ===========================================================================
+-- Editing (HR / Admin)
+-- ===========================================================================
+-- p_status: 'Present' | 'Absent' | 'Weekoff' | 'Paid Leave', or null/'' for
+-- "from the punches". Times 'HH:MM' or empty.
+create or replace function public.att_set_day(
+  p_token text, p_emp text, p_date date, p_in text, p_out text, p_status text, p_remark text
+) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  old attendance_days;
+  v_in time := private.att_time(p_in);
+  v_out time := private.att_time(p_out);
+  v_status text := nullif(trim(coalesce(p_status, '')), '');
+  v_remark text := trim(coalesce(p_remark, ''));
+  r private.att_day;
+begin
+  if not exists (select 1 from employees where id = p_emp) then
+    raise exception 'Employee not found.' using errcode = 'P0002';
+  end if;
+  if p_date is null or p_date > private.today() then
+    raise exception 'Choose today or an earlier date.' using errcode = '22023';
+  end if;
+  if v_status is not null and v_status not in ('Present','Absent','Weekoff','Paid Leave') then
+    raise exception 'Choose Present, Absent, Weekoff or Paid Leave.' using errcode = '22023';
+  end if;
+  if v_status = 'Present' and (v_in is null or v_out is null) then
+    raise exception 'Present needs both In and Out time.' using errcode = '22023';
+  end if;
+  if v_status = 'Paid Leave' and v_remark = '' then
+    raise exception 'Paid Leave needs a remark.' using errcode = '22023';
+  end if;
+  if v_status in ('Absent','Weekoff','Paid Leave') then v_in := null; v_out := null; end if;
+
+  select * into old from attendance_days where employee_id = p_emp and work_date = p_date for update;
+  if old.in_time is distinct from v_in then
+    insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+    values (p_emp, p_date, me.id, 'In Time', to_char(old.in_time, 'HH24:MI'), to_char(v_in, 'HH24:MI'));
+  end if;
+  if old.out_time is distinct from v_out then
+    insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+    values (p_emp, p_date, me.id, 'Out Time', to_char(old.out_time, 'HH24:MI'), to_char(v_out, 'HH24:MI'));
+  end if;
+  if old.status_set is distinct from v_status then
+    insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+    values (p_emp, p_date, me.id, 'Status', coalesce(old.status_set, 'from punches'), coalesce(v_status, 'from punches'));
+  end if;
+  if coalesce(old.remark, '') <> v_remark then
+    insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
+    values (p_emp, p_date, me.id, 'Remark', nullif(old.remark, ''), nullif(v_remark, ''));
+  end if;
+
+  insert into attendance_days (employee_id, work_date, in_time, out_time, status_set, remark, source, edited_by, edited_at)
+  values (p_emp, p_date, v_in, v_out, v_status, v_remark, 'manual', me.id, now())
+  on conflict (employee_id, work_date) do update set in_time = excluded.in_time, out_time = excluded.out_time,
+    status_set = excluded.status_set, remark = excluded.remark, edited_by = me.id, edited_at = now(), updated_at = now();
+
+  perform private.att_sync_comp_off(p_emp, p_date, me.id);
+  select * into r from private.att_days(p_emp, private.month_start(p_date), private.month_end(p_date)) where day = p_date;
+  return private.att_day_json(r);
+end $$;
+
+create or replace function public.att_day_changes(p_token text, p_emp text, p_date date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return coalesce((select jsonb_agg(jsonb_build_object('at', c.changed_at, 'by', private.ename(c.changed_by), 'field', c.field,
+                     'old', c.old_value, 'new', c.new_value) order by c.changed_at, c.id)
+                   from attendance_changes c where c.employee_id = p_emp and c.work_date = p_date), '[]'::jsonb);
+end $$;
+
+-- ===========================================================================
+-- Reading
+-- ===========================================================================
+-- One person's month. Employees: only their own (Attendance permission).
+-- HR/Admin: anyone. Salary only for an Admin.
+create or replace function public.att_month(p_token text, p_emp text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  e employees;
+  s jsonb;
+begin
+  if p_emp is null or p_emp = me.id then
+    if me.role not in ('HR','Admin') then perform private.require_module(p_token, 'attendance'); end if;
+    e := me;
+  else
+    perform private.require_manager(p_token);
+    select * into e from employees where id = p_emp;
+    if not found then raise exception 'Employee not found.' using errcode = 'P0002'; end if;
+  end if;
+  s := private.att_summary(e.id, p_month);
+  return jsonb_build_object(
+    'employee', private.person_json(e.id) || jsonb_build_object('weekOff', e.week_off),
+    'month', private.month_start(p_month),
+    'summary', s,
+    'salary', private.att_salary(e, s, me),
+    'days', coalesce((select jsonb_agg(private.att_day_json(d) order by d.day)
+                      from private.att_days(e.id, private.month_start(p_month), private.month_end(p_month)) d), '[]'::jsonb));
+end $$;
+
+-- Everyone for one month (HR/Admin). Salary only for an Admin.
+create or replace function public.att_team_month(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'summary', s, 'salary', private.att_salary(e, s, me)) order by e.name)
+    from employees e, lateral (select private.att_summary(e.id, p_month) as s) x
+    where e.status = 'Active'
+       or exists (select 1 from attendance_days a where a.employee_id = e.id
+                  and a.work_date between private.month_start(p_month) and private.month_end(p_month))
+  ), '[]'::jsonb);
+end $$;
+
+-- Everyone on one day (HR/Admin).
+create or replace function public.att_team_day(p_token text, p_date date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'day',
+             (select private.att_day_json(d) from private.att_days(e.id, private.month_start(p_date), p_date) d where d.day = p_date))
+           order by e.name)
+    from employees e
+    where e.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = e.id and a.work_date = p_date)
+  ), '[]'::jsonb);
+end $$;
+
+-- Missed punches still to fix (this month and last).
+create or replace function public.att_missed(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v_from date := private.month_start(private.month_start(private.today()) - 1);
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'day', private.att_day_json(d)) order by d.day desc, e.name)
+    from employees e,
+         lateral (select * from private.att_days(e.id, v_from, private.month_end(v_from))
+                  union all
+                  select * from private.att_days(e.id, private.month_start(private.today()), private.today())) d
+    where d.status = 'Missed punch'
+  ), '[]'::jsonb);
+end $$;
+
+-- Admin only: salary sheet for a month.
+create or replace function public.att_salary_sheet(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then
+    raise exception 'Only an Admin can see salaries.' using errcode = '42501';
+  end if;
+  return public.att_team_month(p_token, p_month);
+end $$;
+
+-- Dashboard cards. Employees: this month. HR/Admin: the last uploaded day.
+create or replace function public.att_dashboard(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  v_last date;
+begin
+  select max(work_date) into v_last from attendance_days where work_date <= private.today();
+  return jsonb_build_object(
+    'mine', case when coalesce((private.permissions_json(me) ->> 'attendance')::boolean, false)
+                 then private.att_summary(me.id, private.today()) end,
+    'team', case when me.role in ('HR','Admin') and v_last is not null then (
+      select jsonb_build_object('date', v_last,
+        'present', count(*) filter (where d.status = 'Present'),
+        'late', count(*) filter (where d.late),
+        'absent', count(*) filter (where d.status = 'Absent'),
+        'missed', count(*) filter (where d.status = 'Missed punch'),
+        'onLeave', count(*) filter (where d.status in ('Leave','Comp-off','Paid Leave')))
+      from employees e, lateral private.att_days(e.id, private.month_start(v_last), v_last) d
+      where e.status = 'Active' and d.day = v_last) end);
+end $$;

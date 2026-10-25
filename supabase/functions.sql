@@ -65,14 +65,21 @@ language sql immutable as $$
   select array['attendance','tasks','normalReport','soleSelling','builderData','analytics','leave']
 $$;
 
+-- Salary is never in here: only an Admin sees it (see private.with_salary).
 create or replace function private.employee_json(e public.employees) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
     'id', e.id, 'name', e.name, 'email', coalesce(e.email, ''), 'mobile', coalesce(e.mobile, ''),
     'department', e.department, 'role', e.role, 'designation', coalesce(e.designation, ''),
-    'salary', coalesce(e.salary, 0), 'joiningDate', coalesce(e.joining_date::text, ''),
+    'salary', null, 'joiningDate', coalesce(e.joining_date::text, ''),
     'manager', coalesce(e.manager, ''), 'status', e.status, 'weekOff', e.week_off
   )
+$$;
+
+-- Adds the salary for an Admin viewer only.
+create or replace function private.with_salary(j jsonb, e public.employees, me public.employees) returns jsonb
+language sql stable as $$
+  select case when me.role = 'Admin' then j || jsonb_build_object('salary', coalesce(e.salary, 0)) else j end
 $$;
 
 create or replace function private.default_permission(e public.employees, p_module text) returns boolean
@@ -279,9 +286,10 @@ end $$;
 -- ===========================================================================
 create or replace function public.list_employees(p_token text) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
+declare
+  v_me employees := private.require_manager(p_token);
 begin
-  perform private.require_manager(p_token);
-  return coalesce((select jsonb_agg(private.employee_json(e) order by e.name) from employees e), '[]'::jsonb);
+  return coalesce((select jsonb_agg(private.with_salary(private.employee_json(e), e, v_me) order by e.name) from employees e), '[]'::jsonb);
 end $$;
 
 create or replace function public.create_employee(p_token text, p_data jsonb, p_password text) returns jsonb
@@ -308,12 +316,13 @@ begin
   values (
     upper(trim(p_data ->> 'id')), trim(p_data ->> 'name'), nullif(lower(trim(p_data ->> 'email')), ''), p_data ->> 'mobile',
     p_data ->> 'department', p_data ->> 'role', p_data ->> 'designation',
-    nullif(p_data ->> 'salary', '')::numeric, coalesce(nullif(p_data ->> 'joiningDate', '')::date, private.today()),
+    case when v_me.role = 'Admin' then nullif(p_data ->> 'salary', '')::numeric end,  -- only an Admin sets salary
+    coalesce(nullif(p_data ->> 'joiningDate', '')::date, private.today()),
     p_data ->> 'manager', coalesce(p_data ->> 'status', 'Active'),
     case when p_data ? 'weekOff' then (p_data ->> 'weekOff')::smallint else 7 end,
     crypt(p_password, gen_salt('bf'))
   ) returning * into v_emp;
-  return private.employee_json(v_emp);
+  return private.with_salary(private.employee_json(v_emp), v_emp, v_me);
 end $$;
 
 create or replace function public.update_employee(p_token text, p_id text, p_data jsonb) returns jsonb
@@ -341,7 +350,9 @@ begin
   update employees set
     name = trim(p_data ->> 'name'), email = nullif(lower(trim(p_data ->> 'email')), ''), mobile = p_data ->> 'mobile',
     department = p_data ->> 'department', role = p_data ->> 'role', designation = p_data ->> 'designation',
-    salary = nullif(p_data ->> 'salary', '')::numeric, joining_date = nullif(p_data ->> 'joiningDate', '')::date,
+    -- HR never sees salary, so an HR edit keeps whatever is there.
+    salary = case when v_me.role = 'Admin' then nullif(p_data ->> 'salary', '')::numeric else v_old.salary end,
+    joining_date = nullif(p_data ->> 'joiningDate', '')::date,
     manager = p_data ->> 'manager', status = p_data ->> 'status', week_off = case when p_data ? 'weekOff' then (p_data ->> 'weekOff')::smallint else v_old.week_off end
   where id = p_id
   returning * into v_emp;
@@ -349,7 +360,7 @@ begin
   if v_emp.status <> 'Active' then
     delete from sessions where employee_id = p_id;
   end if;
-  return private.employee_json(v_emp);
+  return private.with_salary(private.employee_json(v_emp), v_emp, v_me);
 end $$;
 
 create or replace function public.reset_employee_password(p_token text, p_id text, p_new_password text) returns void

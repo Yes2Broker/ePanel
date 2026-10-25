@@ -29,47 +29,98 @@ export const MODULE_KEYS = [
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 export type Permissions = Record<ModuleKey, boolean>;
 
-export type AttendanceStatus = "Present" | "Late" | "Half Day" | "Absent" | "Leave";
-
-export interface AttendanceRecord {
-  date: string;
-  checkIn: string | null; // ISO timestamp
-  checkOut: string | null;
-  minutes: number | null;
-  status: AttendanceStatus | null; // null = today, not checked in yet
-  note: string;
-}
-
-export interface TeamAttendanceRow extends AttendanceRecord {
-  employee: Employee;
-}
-
 export interface EmployeeDashboard {
-  today: AttendanceRecord | null;
-  isWorkingDay: boolean;
-  month: { present: number; late: number; leave: number; workingDays: number; rate: number | null };
   recentReports: { id: string; date: string; type: SalesReportType; title: string }[];
   reportFiledToday: boolean;
 }
 
 export interface EmployeeStat {
   employee: Employee;
-  attendanceRate: number | null;
   reportsThisMonth: number;
-  checkedInToday: boolean;
 }
 
 export interface AdminDashboard {
   totalEmployees: number;
   activeEmployees: number;
-  presentToday: number;
-  lateToday: number;
-  onLeaveToday: number;
   reportsToday: number;
   pendingReports: number;
-  weeklyTrend: { date: string; day: string; rate: number }[];
-  monthlyTrend: { month: string; rate: number | null }[];
   employeeStats: EmployeeStat[];
+}
+
+// ---------------------------------------------------------------------------
+// Attendance — see supabase/attendance.sql
+// ---------------------------------------------------------------------------
+export type AttStatus = "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Leave" | "Comp-off" | "Missed punch";
+
+export interface AttDay {
+  date: string;
+  in: string | null;
+  out: string | null;
+  minutes: number | null;
+  status: AttStatus;
+  note: string;
+  late: boolean;
+  shortDay: boolean;
+  lateHalf: boolean;
+  edited: boolean;
+  source: "etimeoffice" | "template" | "history" | "manual" | null;
+  hasRow: boolean;
+}
+
+export interface AttSummary {
+  daysInMonth: number;
+  days: number;
+  present: number;
+  absent: number;
+  weekoff: number;
+  paidLeave: number;
+  leave: number;
+  compOff: number;
+  missed: number;
+  lates: number;
+  latesCounted: number;
+  lateHalves: number;
+  lateDeduction: number;
+  shortDays: number;
+  netPayable: number;
+  lastDay: string | null;
+}
+
+/** Only ever present for an Admin (the database leaves it out for everyone else). */
+export interface AttSalary { monthly: number; final: number }
+
+export interface AttMonth {
+  employee: PersonRef & { weekOff: number | null };
+  month: string;
+  summary: AttSummary;
+  salary: AttSalary | null;
+  days: AttDay[];
+}
+
+export interface AttTeamMonthRow { employee: PersonRef; summary: AttSummary; salary: AttSalary | null }
+export interface AttTeamDayRow { employee: PersonRef; day: AttDay | null }
+export interface AttChange { at: string; by: string | null; field: string; old: string | null; new: string | null }
+
+export interface AttImportResult {
+  dry: boolean;
+  rows: number;
+  from: string | null;
+  to: string | null;
+  future: number;
+  unmatched: { code: string; name: string | null; rows: number }[];
+  errors: { row: number; message: string }[];
+  errorCount: number;
+  people: { employee: PersonRef; days: number; present: number; absent: number; weekoff: number; paidLeave: number; late: number; short: number; missed: number; kept: number; from: string; to: string }[];
+  comparison: { employee: PersonRef; date: string; in: string | null; out: string | null; sheetLate: string; sheetHalf: string; late: string; half: string }[];
+  added: number;
+  updated: number;
+  kept: number;
+  unchanged: number;
+}
+
+export interface AttDashboard {
+  mine: AttSummary | null;
+  team: { date: string; present: number; late: number; absent: number; missed: number; onLeave: number } | null;
 }
 
 // ---------------------------------------------------------------------------

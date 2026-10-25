@@ -50,14 +50,14 @@ export function navFor(user: Employee, permissions: Permissions | null): NavItem
 }
 
 /**
- * Phone bottom bar: three direct items plus "More" (a sheet with the rest,
- * Install app and Log out). Everyone gets Dashboard, Reports and Leave when
- * they have them; HR and Admin find Employees at the top of More.
+ * Phone bottom bar: up to four direct items plus "More" (a sheet with the rest,
+ * Install app and Log out). Everyone gets Dashboard, Reports, Attendance and
+ * Leave when they have them; HR and Admin find Employees at the top of More.
  */
 export function bottomNavFor(user: Employee, permissions: Permissions | null): { bar: NavItem[]; more: NavItem[] } {
   const i = itemsFor(user, permissions);
   const live = (item: NavItem | false) => !!item && !item.comingSoon && item;
-  const bar = present([i.dashboard, live(i.reports), live(i.leave)]);
+  const bar = present([i.dashboard, live(i.reports), live(i.attendance), live(i.leave)]);
   if (bar.length < 3) bar.push(i.profile);
   const inBar = new Set(bar.map((b) => b.href));
   const more = present([i.employees, i.reports, i.leave, i.attendance, i.builderData, i.analytics, i.permissions, i.profile, i.settings])
@@ -78,6 +78,7 @@ export function pageTitle(pathname: string): string {
   if (pathname.startsWith("/reports/edit")) return "Edit report";
   if (pathname.startsWith("/reports/import")) return "Import old data";
   if (pathname.startsWith("/leave")) return "Leave";
+  if (pathname.startsWith("/attendance")) return "Attendance";
   const feature = featureForPath(pathname) ?? (pathname.startsWith("/coming-soon/") ? (pathname.split("/")[2] as FeatureKey) : null);
   if (feature && FEATURES[feature]) return FEATURES[feature].label;
   const titles: [string, string][] = [

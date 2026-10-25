@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound, CalendarOff } from "lucide-react";
+import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound, CalendarOff, Clock, Hourglass } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
-import { CheckInCard } from "@/components/attendance/check-in-card";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { Card } from "@/components/ui/card";
@@ -28,8 +27,10 @@ export default function EmployeeDashboardPage() {
   const { user, permissions } = useSession();
   const { prefs } = usePreferences();
   // Everything this call returns belongs to a feature, so skip it while they're all off.
-  const { data, setData, loading, error, reload } = useApi(() => (anyFeatureOn ? api.employeeDashboard() : Promise.resolve(null)));
+  const { data, loading, error, reload } = useApi(() => (anyFeatureOn ? api.employeeDashboard() : Promise.resolve(null)));
   const leave = useApi(() => (on.leave ? api.leaveDashboard() : Promise.resolve(null)));
+  const att = useApi(() => (on.attendance ? api.attDashboard() : Promise.resolve(null)));
+  const mine = att.data?.mine;
   if (!user) return null;
 
   const firstName = user.name.split(" ")[0];
@@ -67,17 +68,17 @@ export default function EmployeeDashboardPage() {
 
       {data && (
         <>
-          {on.attendance && permissions?.attendance && (
-            <CheckInCard today={data.today} isWorkingDay={data.isWorkingDay} onChange={(row) => setData({ ...data, today: row })} />
-          )}
-
           <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
-            {on.attendance && (
-              <SummaryCard
-                icon={CalendarCheck} label="Attendance"
-                value={data.month.rate == null ? "—" : `${data.month.rate}%`}
-                note={`${data.month.present}/${data.month.workingDays} days this month${data.month.late ? ` · ${data.month.late} late` : ""}`}
-              />
+            {/* This month's attendance, once HR has uploaded some days. */}
+            {on.attendance && mine && mine.days > 0 && (
+              <>
+                <SummaryCard icon={CalendarCheck} label="Payable days" value={Number(mine.netPayable.toFixed(1))}
+                  note={`this month, till ${formatDate(mine.lastDay)}`} href="/attendance" />
+                <SummaryCard icon={Clock} label="Lates" value={mine.lates}
+                  note={mine.lateDeduction ? `${mine.lateDeduction} day deducted` : "first 2 are free"} href="/attendance" />
+                <SummaryCard icon={Hourglass} label="Short days" value={mine.shortDays}
+                  note={mine.shortDays ? `${mine.shortDays * 0.5} day deducted` : "under 8 hours"} href="/attendance" />
+              </>
             )}
             {on.reports && (
               <SummaryCard

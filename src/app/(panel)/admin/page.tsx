@@ -1,19 +1,14 @@
 "use client";
 
-import { Users, UserCheck, FileText, Building2, CalendarOff, Inbox } from "lucide-react";
+import { Users, UserCheck, FileText, Building2, CalendarOff, Inbox, Clock, CircleAlert } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
-import { TopPerformers } from "@/components/dashboard/top-performers";
-import { PerformanceChart } from "@/components/dashboard/performance-chart";
 import { PerformanceTable } from "@/components/dashboard/performance-table";
-import { WeeklyTrendChart } from "@/components/dashboard/weekly-trend-chart";
-import { CheckInCard } from "@/components/attendance/check-in-card";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
-import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { todayISO } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
 
 const on = {
@@ -25,16 +20,11 @@ const on = {
 const anyFeatureOn = FEATURE_KEYS.some(isFeatureEnabled);
 
 export default function AdminDashboardPage() {
-  const { permissions } = useSession();
   const employees = useApi(() => api.listEmployees());
   const { data, loading, error, reload } = useApi(() => (anyFeatureOn ? api.adminDashboard() : Promise.resolve(null)));
   const leave = useApi(() => (on.leave ? api.leaveDashboard() : Promise.resolve(null)));
-  // HR/Admin check in too; load their own row for the widget.
-  const mine = useApi(
-    () => (on.attendance && permissions?.attendance ? api.myAttendance(todayISO()) : Promise.resolve([])),
-    [permissions?.attendance]
-  );
-  const todayRow = mine.data?.find((r) => r.date === todayISO()) ?? null;
+  const att = useApi(() => (on.attendance ? api.attDashboard() : Promise.resolve(null)));
+  const team = att.data?.team;
 
   const all = employees.data ?? [];
   const active = all.filter((e) => e.status === "Active");
@@ -45,10 +35,6 @@ export default function AdminDashboardPage() {
       <PageHeader title="Dashboard" subtitle="Your team at a glance." />
       <InstallBanner />
 
-      {on.attendance && permissions?.attendance && mine.data && (
-        <CheckInCard today={todayRow} onChange={() => { mine.reload(); reload(); }} />
-      )}
-
       <ErrorBanner message={employees.error} onRetry={employees.reload} />
       <ErrorBanner message={error} onRetry={reload} />
       {employees.loading && !employees.data && <Loading />}
@@ -57,12 +43,6 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
           <SummaryCard icon={Users} label="Employees" value={active.length} note={`${all.length - active.length} inactive`} href="/admin/employees" />
           <SummaryCard icon={Building2} label="Departments" value={departments} note={`${active.filter((e) => e.role !== "Employee").length} HR / Admin`} />
-          {on.attendance && data && (
-            <SummaryCard
-              icon={UserCheck} label="Present Today" value={`${data.presentToday}/${data.activeEmployees}`}
-              note={`${data.lateToday} late`} href="/attendance"
-            />
-          )}
           {on.reports && data && <SummaryCard icon={FileText} label="Reports Today" value={data.reportsToday} note="filed today" href="/reports" />}
           {on.leave && leave.data?.onLeaveToday && (
             <SummaryCard icon={CalendarOff} label="On leave today" value={leave.data.onLeaveToday.length}
@@ -76,22 +56,23 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <ComingSoonCard />
-
-      {on.attendance && data && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_1.6fr]">
-          <TopPerformers stats={data.employeeStats} />
-          <PerformanceChart data={data.monthlyTrend} />
-        </div>
+      {/* Attendance on the last uploaded day. */}
+      {on.attendance && team && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-ink">Attendance · {formatDate(team.date, { weekday: true })} <span className="font-normal text-ink-faint">(last uploaded day)</span></h2>
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
+            <SummaryCard icon={UserCheck} label="Present" value={team.present} note={team.onLeave ? `${team.onLeave} on leave / paid leave` : undefined} href={`/attendance?tab=day&date=${team.date}`} />
+            <SummaryCard icon={Clock} label="Late" value={team.late} href={`/attendance?tab=day&date=${team.date}&filter=Late`} />
+            <SummaryCard icon={Users} label="Absent" value={team.absent} href={`/attendance?tab=day&date=${team.date}&filter=Absent`} />
+            <SummaryCard icon={CircleAlert} label="Missed punch" value={team.missed} href="/attendance?tab=missed" />
+          </div>
+        </section>
       )}
+
+      <ComingSoonCard />
       {anyFeatureOn && loading && !data && <Loading />}
 
-      {employees.data && (
-        <div className={on.attendance && data ? "grid grid-cols-1 gap-4 lg:grid-cols-[1.7fr_minmax(0,1fr)]" : ""}>
-          <PerformanceTable employees={active} stats={data?.employeeStats} />
-          {on.attendance && data && <WeeklyTrendChart data={data.weeklyTrend} />}
-        </div>
-      )}
+      {employees.data && <PerformanceTable employees={active} stats={data?.employeeStats} />}
     </div>
   );
 }

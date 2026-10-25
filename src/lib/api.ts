@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import {
-  AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, ModuleKey, Permissions,
-  TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
+  AdminDashboard, Employee, EmployeeDashboard, ModuleKey, Permissions,
+  Project, ReportOption, ReportFormData, ReportPayload,
+  AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType, StaleVisit,
   LeaveOverview, LeaveKind, LeavePreview, LeaveApplication, CompOffClaim, LeaveCalendarDay, LeaveSummaryRow,
   Holiday, LeaveDashboard,
@@ -70,16 +71,19 @@ export const api = {
   setPermission: (employeeId: string, module: ModuleKey, enabled: boolean) =>
     rpc<void>("set_employee_permission", { p_employee_id: employeeId, p_module: module, p_enabled: enabled }),
 
-  // Attendance
-  checkIn: () => rpc<AttendanceRecord>("check_in"),
-  checkOut: () => rpc<AttendanceRecord>("check_out"),
-  myAttendance: (month: string) => rpc<AttendanceRecord[]>("my_attendance", { p_month: month }),
-  teamAttendance: (date: string) => rpc<TeamAttendanceRow[]>("team_attendance", { p_date: date }),
-  setAttendance: (args: { employeeId: string; date: string; status: string; checkIn: string; checkOut: string; note: string }) =>
-    rpc<AttendanceRecord>("set_attendance", {
-      p_employee_id: args.employeeId, p_date: args.date, p_status: args.status,
-      p_check_in: args.checkIn || null, p_check_out: args.checkOut || null, p_note: args.note,
-    }),
+  // Attendance (supabase/attendance.sql)
+  attMonth: (employeeId: string | null, month: string) => rpc<AttMonth>("att_month", { p_emp: employeeId, p_month: month }),
+  attTeamMonth: (month: string) => rpc<AttTeamMonthRow[]>("att_team_month", { p_month: month }),
+  attTeamDay: (date: string) => rpc<AttTeamDayRow[]>("att_team_day", { p_date: date }),
+  attMissed: () => rpc<{ employee: PersonRef; day: AttDay }[]>("att_missed"),
+  attSalarySheet: (month: string) => rpc<AttTeamMonthRow[]>("att_salary_sheet", { p_month: month }),
+  attSetDay: (a: { employeeId: string; date: string; in: string; out: string; status: string; remark: string }) =>
+    rpc<AttDay>("att_set_day", { p_emp: a.employeeId, p_date: a.date, p_in: a.in, p_out: a.out, p_status: a.status, p_remark: a.remark }),
+  attDayChanges: (employeeId: string, date: string) => rpc<AttChange[]>("att_day_changes", { p_emp: employeeId, p_date: date }),
+  attImport: (kind: string, rows: unknown[], map: Record<string, string>, fileName: string, dry: boolean) =>
+    rpc<AttImportResult>("att_import", { p_kind: kind, p_rows: rows, p_map: map, p_file: fileName, p_dry: dry }),
+  attUploads: () => rpc<{ id: string; kind: string; file: string; by: string | null; at: string; rows: number; added: number; updated: number; kept: number; from: string | null; to: string | null }[]>("att_uploads"),
+  attDashboard: () => rpc<AttDashboard>("att_dashboard"),
 
   // Sales daily reports (Normal + Sole Selling)
   listProjects: () => rpc<Project[]>("list_projects"),

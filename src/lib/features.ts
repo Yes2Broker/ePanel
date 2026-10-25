@@ -7,7 +7,7 @@ import { ModuleKey } from "@/types";
  * nothing in the database is changed either way.
  */
 export const FEATURES = {
-  attendance: { label: "Attendance", enabled: false },
+  attendance: { label: "Attendance", enabled: true },
   reports: { label: "Daily Reports", enabled: true },
   leave: { label: "Leave", enabled: true },
 } as const;
