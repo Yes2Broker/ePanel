@@ -6,12 +6,13 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { useRequireSession } from "@/context/session-context";
+import { navFor } from "@/lib/nav";
 import { Loading, Skeleton } from "@/components/ui/page";
 import { ComingSoonPage } from "@/components/feature/coming-soon";
 import { featureForPath, isFeatureEnabled } from "@/lib/features";
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, isManager } = useRequireSession();
+  const { user, loading, isManager, permissions } = useRequireSession();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -29,6 +30,13 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
     if (blocked) router.replace("/dashboard");
     else if (toAdmin) router.replace("/admin");
   }, [blocked, toAdmin, router]);
+
+  // Load every page in the menu in the background, so taps open instantly
+  // (the More sheet's links aren't on screen, so Next wouldn't prefetch them).
+  useEffect(() => {
+    if (!user) return;
+    navFor(user, permissions).filter((i) => !i.external && !i.comingSoon).forEach((i) => router.prefetch(i.href));
+  }, [user, permissions, router]);
 
   if (loading || !user || blocked || toAdmin) {
     return (

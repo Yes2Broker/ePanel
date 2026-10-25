@@ -13,7 +13,6 @@ export const STATUS_CODE: Record<AttStatus, string> = {
   Present: "P", Absent: "A", Weekoff: "W", "Paid Leave": "PL",
 };
 
-export const ALL_STATUSES: AttStatus[] = ["Present", "Absent", "Weekoff", "Paid Leave"];
 
 export function AttPill({ status, className }: { status: AttStatus; className?: string }) {
   return <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLE[status], className)}>{status}</span>;

@@ -36,7 +36,7 @@ function AttendanceInner() {
     <div className="space-y-4 pt-1 md:space-y-5 md:pt-4">
       <PageHeader title="Attendance" subtitle={subtitle} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={tab} onChange={(t) => router.replace(`${pathname}?tab=${t}`)} />}
-      {tab === "list" && <AttendanceList manager />}
+      {tab === "list" && <AttendanceList key={`${q.get("emp")}${q.get("month")}`} manager initialEmp={q.get("emp") ?? ""} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />}
       {tab === "mine" && <AttendanceList manager={false} />}
       {tab === "upload" && <AttendanceUpload />}
       {tab === "salary" && isAdmin && <SalarySheet />}

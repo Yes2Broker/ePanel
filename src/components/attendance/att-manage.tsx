@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Users } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Download, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SecondaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading, selectCls, tableHeadCls } from "@/components/ui/page";
+import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-import { AttDay, PersonRef } from "@/types";
+import { AttDay, AttTeamMonthRow, PersonRef } from "@/types";
 import { cn, formatDate, formatINR, todayISO } from "@/lib/utils";
 import { AttPill, hours } from "@/components/attendance/att-format";
 import { DayEdit, EditTarget } from "@/components/attendance/day-edit";
@@ -17,7 +19,7 @@ import { Calendar, MonthPicker, SummaryGrid, monthLabel } from "@/components/att
 
 const n1 = (v: number) => Number(v.toFixed(1));
 
-export type StatusFilter = "" | "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Late" | "Short Day";
+type StatusFilter = "" | "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Late" | "Short Day";
 const STATUS_FILTERS: StatusFilter[] = ["Present", "Absent", "Weekoff", "Paid Leave", "Late", "Short Day"];
 
 function matches(d: AttDay, f: StatusFilter) {
@@ -39,10 +41,10 @@ interface Row { employee: PersonRef; day: AttDay }
  * Otherwise: the signed-in person's own days, Month filter only.
  * With one person selected: their month summary and a Calendar toggle.
  */
-export function AttendanceList({ manager }: { manager: boolean }) {
+export function AttendanceList({ manager, initialMonth, initialEmp }: { manager: boolean; initialMonth?: string; initialEmp?: string }) {
   const { user } = useSession();
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
-  const [emp, setEmp] = useState("");
+  const [month, setMonth] = useState(initialMonth || todayISO().slice(0, 7));
+  const [emp, setEmp] = useState(manager ? initialEmp ?? "" : "");
   const [status, setStatus] = useState<StatusFilter>("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [editing, setEditing] = useState<EditTarget | null>(null);
@@ -172,6 +174,7 @@ export function SalarySheet() {
       n1(s.lateDeduction), s.shortDays, n1(s.netPayable), r.salary?.monthly ?? 0, r.salary?.final ?? 0] as (string | number)[];
   }), [data]);
   const total = rows.reduce((t, r) => t + Number(r[C.final]), 0);
+  const [open, setOpen] = useState<AttTeamMonthRow | null>(null);
 
   const download = async () => {
     try {
@@ -196,18 +199,20 @@ export function SalarySheet() {
       <ErrorBanner message={error} onRetry={reload} />
       {loading && !data ? <Loading /> : !rows.length ? <EmptyState icon={Users} title="No one this month" /> : (
         <>
-          {/* Phones: one card per person. */}
+          {/* Phones: one short card per person; tap for the details. */}
           <div className="space-y-2 md:hidden">
-            {rows.map((r, ri) => (
-              <Card key={(data ?? [])[ri]?.employee.id ?? ri} className="p-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 break-words text-sm font-medium text-ink">{r[0]}</p>
-                  <p className="shrink-0 text-base font-semibold text-ink">{formatINR(Number(r[C.final]))}</p>
+            {(data ?? []).map((r) => (
+              <button key={r.employee.id} onClick={() => setOpen(r)} aria-label={`${r.employee.name}: more details`}
+                className="flex w-full items-center gap-3 rounded-card bg-white p-3.5 text-left shadow-card active:bg-surface">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-medium text-ink">{r.employee.name}</p>
+                  <p className="text-xs text-ink-muted">Net {n1(r.summary.netPayable)} / {r.summary.daysInMonth} days</p>
                 </div>
-                <p className="mt-1 text-xs text-ink-muted">
-                  Net {r[C.net]} / {r[C.days]} days · of {formatINR(Number(r[C.monthly]))} · P {r[C.present]} · A {r[C.absent]} · W {r[C.weekoff]}{Number(r[C.worked]) ? ` · WW ${r[C.worked]}` : ""}{Number(r[C.paid]) ? ` · PL ${r[C.paid]}` : ""} · Late {r[C.lates]} (−{r[C.lateDed]}) · Short {r[C.short]}
+                <p className={cn("shrink-0 text-right font-semibold", hasSalary(r) ? "text-base text-ink" : "text-sm text-ink-faint")}>
+                  {hasSalary(r) ? formatINR(r.salary!.final) : "Salary not set"}
                 </p>
-              </Card>
+                <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />
+              </button>
             ))}
             <p className="px-1 text-right text-sm font-semibold text-ink">Total {formatINR(total)}</p>
           </div>
@@ -220,10 +225,10 @@ export function SalarySheet() {
               </thead>
               <tbody className="divide-y divide-surface-border">
                 {rows.map((r, ri) => (
-                  <tr key={(data ?? [])[ri]?.employee.id ?? ri}>
+                  <tr key={(data ?? [])[ri]?.employee.id ?? ri} onClick={() => data && setOpen(data[ri])} className="cursor-pointer hover:bg-surface">
                     {r.map((v, i) => (
                       <td key={i} className={cn("whitespace-nowrap px-2 py-2", i < 1 ? "text-left" : "text-right", i === C.final && "font-semibold")}>
-                        {i >= C.monthly ? formatINR(Number(v)) : v}
+                        {i >= C.monthly ? (Number(r[C.monthly]) > 0 ? formatINR(Number(v)) : i === C.monthly ? <span className="text-ink-faint">Salary not set</span> : "") : i === C.lateDed && !Number(v) ? "" : v}
                       </td>
                     ))}
                   </tr>
@@ -237,6 +242,50 @@ export function SalarySheet() {
           </Card>
         </>
       )}
+      <SalaryDetails row={open} month={month} onClose={() => setOpen(null)} />
     </div>
+  );
+}
+
+const hasSalary = (r: AttTeamMonthRow) => !!r.salary && r.salary.monthly > 0;
+
+/** Plain-words breakdown of one person's salary for the month. */
+function SalaryDetails({ row, month, onClose }: { row: AttTeamMonthRow | null; month: string; onClose: () => void }) {
+  if (!row) return null;
+  const s = row.summary;
+  const set = hasSalary(row);
+  const perDay = set ? row.salary!.monthly / s.daysInMonth : 0;
+  const lines: [string, string][] = [
+    ["Days in month", String(s.daysInMonth)],
+    ["Present", String(s.present)],
+    ["Absent", String(s.absent)],
+    ["Weekly off", String(s.weekoff)],
+    ["Weekly-off worked", String(s.weekoffWorked)],
+    ["Paid leave", String(s.paidLeave)],
+    ["Lates", `${s.lates} (2 free)${s.lateDeduction > 0 ? ` · −${n1(s.lateDeduction)} day${s.lateDeduction === 1 ? "" : "s"}` : ""}`],
+    ["Short days", `${s.shortDays}${s.shortDays > 0 ? ` · −${n1(s.shortDays * 0.5)} day${s.shortDays * 0.5 === 1 ? "" : "s"}` : ""}`],
+    ["Net payable days", String(n1(s.netPayable))],
+    ["Monthly salary", set ? formatINR(row.salary!.monthly) : "Salary not set"],
+    ["Per-day salary", set ? formatINR(Math.round(perDay)) : "—"],
+  ];
+  return (
+    <Modal open onClose={onClose} title={row.employee.name} subtitle={monthLabel(month)} size="sm">
+      <dl className="divide-y divide-surface-border text-sm">
+        {lines.map(([k, v]) => (
+          <div key={k} className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-ink-muted">{k}</dt>
+            <dd className="text-right text-ink">{v}</dd>
+          </div>
+        ))}
+        <div className="flex items-baseline justify-between gap-3 py-2.5">
+          <dt className="font-semibold text-ink">Final salary</dt>
+          <dd className="text-right text-lg font-semibold text-ink">{set ? formatINR(row.salary!.final) : "Salary not set"}</dd>
+        </div>
+      </dl>
+      <Link href={`/attendance?tab=list&emp=${row.employee.id}&month=${month}`} onClick={onClose}
+        className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-brand">
+        See days <ChevronRight className="h-4 w-4" />
+      </Link>
+    </Modal>
   );
 }

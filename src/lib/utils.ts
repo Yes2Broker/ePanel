@@ -47,15 +47,9 @@ export function formatDate(iso: string | null | undefined, opts: { weekday?: boo
 }
 
 /** ISO timestamp -> "09:58 AM" in office time. */
-export function formatTime(ts: string | null | undefined) {
+function formatTime(ts: string | null | undefined) {
   if (!ts) return "—";
   return new Date(ts).toLocaleTimeString("en-IN", { timeZone: OFFICE_TZ, hour: "2-digit", minute: "2-digit", hour12: true });
-}
-
-/** ISO timestamp -> "HH:MM" (24h) in office time, for <input type="time">. */
-export function timeInputValue(ts: string | null | undefined) {
-  if (!ts) return "";
-  return new Date(ts).toLocaleTimeString("en-GB", { timeZone: OFFICE_TZ, hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export function formatDateTime(ts: string | null | undefined) {
@@ -63,7 +57,3 @@ export function formatDateTime(ts: string | null | undefined) {
   return `${formatDate(new Date(ts).toLocaleDateString("en-CA", { timeZone: OFFICE_TZ }))}, ${formatTime(ts)}`;
 }
 
-export function formatMinutes(minutes: number | null | undefined) {
-  if (minutes == null) return "—";
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
-}

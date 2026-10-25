@@ -27,11 +27,11 @@ function shortName(full: string) {
 // One decimal, same as the panel: 1.1%, 0.7%, 0.0%.
 const pct = (a: number, b: number) => `${b ? (Math.round((a / b) * 1000) / 10).toFixed(1) : "0.0"}%`;
 
-export function dateLabel(iso: string) {
+function dateLabel(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function subjectFor(g: Group, date: string) {
+function subjectFor(g: Group, date: string) {
   return g.type === "Normal"
     ? `📊 Daily Sales Performance Report — ${dateLabel(date)}`
     : `📊 ${g.title} Report — ${dateLabel(date)}`;
@@ -73,7 +73,7 @@ const LEGEND: [string, string][] = [
   ["CC%", "Closure Conversion (Bookings ÷ Done)"], ["WTD", "Week-To-Date (Mon to Today)"], ["MTD", "Month-To-Date (1st to Today)"],
 ];
 
-export function buildHtml(g: Group, date: string) {
+function buildHtml(g: Group, date: string) {
   const heading = g.type === "Normal" ? "📊 Sales Performance Report" : `📊 ${esc(g.title)}`;
   const legend = LEGEND.map(([k, v]) => `<div style="padding:4px 0;font-size:12px;color:#4a5568;border-bottom:1px solid #f0f0f0;"><b style="color:${ACCENT};display:inline-block;min-width:38px;">${k}</b> = ${v}</div>`).join("");
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#f0f4f8;font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;}</style></head><body>`
@@ -87,7 +87,7 @@ export function buildHtml(g: Group, date: string) {
 }
 
 /** Plain-text copy, sent alongside the HTML so Gmail doesn't collapse the email. */
-export function buildText(g: Group, date: string) {
+function buildText(g: Group, date: string) {
   const lines = [`${g.type === "Normal" ? "Sales Performance Report" : g.title} — ${dateLabel(date)}`, ""];
   for (const [key, label] of [["daily", "DAILY"], ["wtd", "WTD"], ["mtd", "MTD"]] as const) {
     lines.push(`--- ${label} ---`, "Name         | FL  | CM  | P   | SVS | SVD | B");

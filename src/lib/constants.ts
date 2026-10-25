@@ -9,7 +9,6 @@ export function weekOffLabel(weekOff: number | null) {
   return weekOff ? WEEKDAYS[weekOff - 1] : "None";
 }
 
-export const ATTENDANCE_STATUSES = ["Present", "Late", "Half Day", "Absent", "Leave"] as const;
 
 // adminOnly: can only be switched on for employees whose role is Admin
 // (the database enforces this too).

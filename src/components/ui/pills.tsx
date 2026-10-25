@@ -27,17 +27,3 @@ export function StatusPill({ status }: { status: string }) {
     </span>
   );
 }
-
-const PRIORITY_STYLES: Record<string, string> = {
-  High: "bg-status-dangerBg text-status-danger",
-  Medium: "bg-status-warningBg text-status-warning",
-  Low: "bg-status-neutralBg text-ink-muted",
-};
-
-export function PriorityPill({ priority }: { priority: string }) {
-  return (
-    <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", PRIORITY_STYLES[priority])}>
-      {priority}
-    </span>
-  );
-}

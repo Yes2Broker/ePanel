@@ -25,18 +25,6 @@ export function SecondaryButton({ className, ...props }: ButtonHTMLAttributes<HT
   );
 }
 
-export function GhostButton({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      className={cn(
-        "inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-1.5 md:min-h-9 text-sm text-ink-muted transition-colors hover:bg-white hover:text-ink",
-        className
-      )}
-      {...props}
-    />
-  );
-}
-
 export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button

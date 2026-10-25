@@ -52,78 +52,15 @@ create table if not exists sessions (
 create index if not exists sessions_employee_idx on sessions (employee_id);
 
 -- ---------------------------------------------------------------------------
--- Attendance: one row per employee per working day.
+-- Failed sign-ins in a row, per email/code. 10 in a row locks it for 15
+-- minutes; a successful sign-in clears it.
 -- ---------------------------------------------------------------------------
-create table if not exists attendance (
-  employee_id text not null references employees(id) on update cascade on delete cascade,
-  work_date date not null,
-  check_in timestamptz,
-  check_out timestamptz,
-  status text not null check (status in ('Present','Late','Half Day','Absent','Leave')),
-  note text,
-  updated_by text,
-  updated_at timestamptz not null default now(),
-  primary key (employee_id, work_date),
-  check (check_out is null or check_in is null or check_out >= check_in)
-);
-create index if not exists attendance_date_idx on attendance (work_date);
-
--- ---------------------------------------------------------------------------
--- Leave requests
--- ---------------------------------------------------------------------------
-create table if not exists leave_requests (
-  id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on update cascade on delete cascade,
-  leave_type text not null check (leave_type in ('Casual','Sick','Earned','Unpaid')),
-  start_date date not null,
-  end_date date not null,
-  reason text not null default '',
-  status text not null default 'Pending' check (status in ('Pending','Approved','Rejected','Cancelled')),
-  review_note text,
-  reviewed_by text references employees(id) on update cascade on delete set null,
-  reviewed_at timestamptz,
-  created_at timestamptz not null default now(),
-  check (end_date >= start_date)
-);
-create index if not exists leave_requests_employee_idx on leave_requests (employee_id, start_date);
-
--- ---------------------------------------------------------------------------
--- Personal tasks (reminders an employee keeps for themselves)
--- ---------------------------------------------------------------------------
-create table if not exists tasks (
-  id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on update cascade on delete cascade,
-  title text not null,
-  description text not null default '',
-  priority text not null default 'Medium' check (priority in ('Low','Medium','High')),
-  status text not null default 'Pending' check (status in ('Pending','Completed')),
-  due_date date,
-  completed_at timestamptz,
-  created_at timestamptz not null default now(),
+create table if not exists login_attempts (
+  login text primary key,
+  failures int not null default 0,
+  locked_until timestamptz,
   updated_at timestamptz not null default now()
 );
-create index if not exists tasks_employee_idx on tasks (employee_id, status);
-
--- ---------------------------------------------------------------------------
--- Daily reports. The form answers live in `data` so the form fields can
--- change without a migration.
--- ---------------------------------------------------------------------------
-create table if not exists daily_reports (
-  id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on update cascade on delete cascade,
-  report_date date not null,
-  report_type text not null check (report_type in ('Normal','Sole Selling')),
-  data jsonb not null default '{}'::jsonb,
-  status text not null default 'Draft' check (status in ('Draft','Submitted','Approved','Rejected')),
-  review_note text,
-  reviewed_by text references employees(id) on update cascade on delete set null,
-  reviewed_at timestamptz,
-  submitted_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (employee_id, report_date, report_type)
-);
-create index if not exists daily_reports_date_idx on daily_reports (report_date);
 
 -- ---------------------------------------------------------------------------
 -- Per-employee module access. A missing row means "use the default for
@@ -141,13 +78,10 @@ create table if not exists employee_permissions (
 -- ---------------------------------------------------------------------------
 alter table employees enable row level security;
 alter table sessions enable row level security;
-alter table attendance enable row level security;
-alter table leave_requests enable row level security;
-alter table tasks enable row level security;
-alter table daily_reports enable row level security;
+alter table login_attempts enable row level security;
 alter table employee_permissions enable row level security;
 
-revoke all on employees, sessions, attendance, leave_requests, tasks, daily_reports, employee_permissions
+revoke all on employees, sessions, login_attempts, employee_permissions
   from anon, authenticated;
 
 -- ---------------------------------------------------------------------------

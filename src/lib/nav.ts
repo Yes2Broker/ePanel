@@ -14,8 +14,8 @@ export interface NavItem {
   external?: boolean; // another Yes2Broker site, opened in a new tab
 }
 
-export const BUILDER_DATA_URL = "https://yes2broker.github.io/Builder-Data/";
-export const ANALYTICS_URL = "https://analytics.yes2broker.in/";
+const BUILDER_DATA_URL = "https://yes2broker.github.io/Builder-Data/";
+const ANALYTICS_URL = "https://analytics.yes2broker.in/";
 
 /** Every item this person may see, by name. Missing = not allowed. */
 function itemsFor(user: Employee, permissions: Permissions | null) {

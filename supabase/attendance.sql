@@ -236,11 +236,6 @@ language sql stable as $$
   end
 $$;
 
--- No longer used: working a weekly off offsets Absent days instead (see
--- att_summary). Kept as a no-op so an older copy of this file can't add credits.
-create or replace function private.att_sync_comp_off(p_emp text, p_day date, p_actor text) returns void
-language sql volatile as $$ select null::void $$;
-
 -- ===========================================================================
 -- Upload / import (HR / Admin). One function for preview (p_dry) and import.
 --   p_kind: 'etimeoffice' | 'template' | 'history' (history = Admin only)
@@ -311,6 +306,9 @@ begin
       update att_in set work_date = r.date_txt::date where n = r.n;
       v_in := private.att_time(r.in_txt);
       v_out := private.att_time(r.out_txt);
+      if v_in is not null and v_out is not null and v_out <= v_in then
+        raise exception 'Out time must be after In time.' using errcode = '22023';
+      end if;
       update att_in set tin = v_in, tout = v_out where n = r.n;
       if r.status_txt is not null then
         if r.status_txt not in ('Present','Absent','Weekoff','Paid Leave') then
@@ -461,14 +459,6 @@ begin
     'added', v_added, 'updated', v_updated, 'kept', v_kept, 'unchanged', v_same);
 end $$;
 
-create or replace function public.att_code_maps(p_token text) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-begin
-  perform private.require_manager(p_token);
-  return coalesce((select jsonb_agg(jsonb_build_object('code', m.machine_code, 'employee', private.person_json(m.employee_id)) order by m.machine_code)
-                   from attendance_code_map m), '[]'::jsonb);
-end $$;
-
 create or replace function public.att_uploads(p_token text) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
 begin
@@ -508,6 +498,9 @@ begin
   end if;
   if v_status = 'Present' and (v_in is null or v_out is null) then
     raise exception 'Present needs both In and Out time.' using errcode = '22023';
+  end if;
+  if v_in is not null and v_out is not null and v_out <= v_in and coalesce(v_status, 'Present') = 'Present' then
+    raise exception 'Out time must be after In time.' using errcode = '22023';
   end if;
   if v_status = 'Paid Leave' and v_remark = '' then
     raise exception 'Paid Leave needs a remark.' using errcode = '22023';
@@ -593,38 +586,6 @@ begin
     where e.role <> 'Admin' and (e.status = 'Active'
        or exists (select 1 from attendance_days a where a.employee_id = e.id
                   and a.work_date between private.month_start(p_month) and private.month_end(p_month)))
-  ), '[]'::jsonb);
-end $$;
-
--- Everyone on one day (HR/Admin).
-create or replace function public.att_team_day(p_token text, p_date date) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-declare
-  me employees := private.require_manager(p_token);
-begin
-  return coalesce((
-    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'day',
-             (select private.att_day_json(d) from private.att_days(e.id, private.month_start(p_date), p_date) d where d.day = p_date))
-           order by e.name)
-    from employees e
-    where e.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = e.id and a.work_date = p_date)
-  ), '[]'::jsonb);
-end $$;
-
--- No longer used (a day with only In or only Out is Absent); kept for older app versions.
-create or replace function public.att_missed(p_token text) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-declare
-  me employees := private.require_manager(p_token);
-  v_from date := private.month_start(private.month_start(private.today()) - 1);
-begin
-  return coalesce((
-    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'day', private.att_day_json(d)) order by d.day desc, e.name)
-    from employees e,
-         lateral (select * from private.att_days(e.id, v_from, private.month_end(v_from))
-                  union all
-                  select * from private.att_days(e.id, private.month_start(private.today()), private.today())) d
-    where d.status = 'Missed punch'
   ), '[]'::jsonb);
 end $$;
 

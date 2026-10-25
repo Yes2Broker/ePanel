@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Employee, Permissions } from "@/types";
+import { clearApiCache } from "@/lib/use-api";
 import { api, ApiError, setSessionExpiredHandler, setSessionToken } from "@/lib/api";
 
 interface SessionContextValue {
@@ -52,6 +53,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const apply = useCallback((next: StoredSession | null) => {
+    // A different (or no) user: nothing cached for the last one may show.
+    if (!next || next.token !== readStored()?.token) clearApiCache();
     setSessionToken(next?.token ?? null);
     writeStored(next);
     setSession(next);

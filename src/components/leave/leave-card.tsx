@@ -15,7 +15,7 @@ import { cn, formatDate, formatDateTime, todayISO } from "@/lib/utils";
 
 export const daysLabel = (n: number) => `${Number(n.toFixed(1))} day${n === 1 ? "" : "s"}`;
 
-export function rangeLabel(a: { start: string; end: string; half: string | null }) {
+function rangeLabel(a: { start: string; end: string; half: string | null }) {
   if (a.half) return `${formatDate(a.start, { weekday: true })} · ${a.half === "first" ? "first" : "second"} half`;
   if (a.start === a.end) return formatDate(a.start, { weekday: true });
   return `${formatDate(a.start, { weekday: true })} – ${formatDate(a.end, { weekday: true })}`;
@@ -146,7 +146,7 @@ export function LeaveCard({ a, showPerson, onChange }: { a: LeaveApplication; sh
   );
 }
 
-export function ReasonDialog({ open, title, label, action, busy, onClose, onSubmit }: {
+function ReasonDialog({ open, title, label, action, busy, onClose, onSubmit }: {
   open: boolean; title: string; label: string; action: string; busy: boolean; onClose: () => void; onSubmit: (note: string) => void;
 }) {
   const [note, setNote] = useState("");

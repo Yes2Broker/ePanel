@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FileText, TrendingUp, CheckCircle2, ChevronRight, Upload } from "lucide-react";
@@ -72,9 +72,6 @@ function MyReports({ options, loading, error, reload }: { options: ReportOption[
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const past = useApi(() => api.mySalesReports(`${month}-01`), [month]);
   const [openId, setOpenId] = useState<string | null>(null);
-
-  // Refresh "filed today" after coming back from the form.
-  useEffect(() => { reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   if (loading && !options) return <Loading />;
   if (options && options.length === 0) {

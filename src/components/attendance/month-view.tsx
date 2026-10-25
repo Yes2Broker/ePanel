@@ -7,7 +7,7 @@ import { cn, formatDate, formatINR, todayISO } from "@/lib/utils";
 import { STATUS_CODE, STATUS_STYLE } from "@/components/attendance/att-format";
 
 /** "2026-10" ± n months. */
-export function shiftMonth(month: string, n: number) {
+function shiftMonth(month: string, n: number) {
   const [y, m] = month.split("-").map(Number);
   const d = new Date(Date.UTC(y, m - 1 + n, 1));
   return d.toISOString().slice(0, 7);

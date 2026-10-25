@@ -28,7 +28,7 @@ export interface AttendanceRow {
   sheetHalf?: string;
 }
 
-export interface ParsedAttendance {
+interface ParsedAttendance {
   kind: AttendanceKind;
   rows: AttendanceRow[];
   sheets: number;
@@ -45,7 +45,7 @@ function serialDate(n: number) {
 }
 
 /** "01/10/2026", "1/10/2026", "2026-10-01", or an Excel serial → "2026-10-01". */
-export function parseDate(v: Cell): string {
+function parseDate(v: Cell): string {
   if (typeof v === "number" && v > 20000) return serialDate(v);
   const s = text(v);
   let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
@@ -56,7 +56,7 @@ export function parseDate(v: Cell): string {
 }
 
 /** "10:24", "9:05", "10:24:00", "7:01 PM", Excel time fraction → "HH:MM"; "--:--"/blank → "". */
-export function parseTime(v: Cell): string {
+function parseTime(v: Cell): string {
   if (v == null || v === "") return "";
   if (typeof v === "number") {
     const mins = Math.round((v - Math.floor(v)) * 1440) % 1440;
