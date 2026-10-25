@@ -144,7 +144,7 @@ export function TeamMonth({ month, person, onChange }: { month: string; person: 
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium text-ink">{r.employee.name} <span className="font-normal text-ink-faint">· {r.employee.id}</span></p>
                   <p className="mt-0.5 break-words text-xs text-ink-muted">
-                    P {s.present} · A {s.absent} · W {s.weekoff}{s.paidLeave ? ` · PL ${s.paidLeave}` : ""}{s.leave ? ` · L ${s.leave}` : ""}{s.compOff ? ` · CO ${s.compOff}` : ""}
+                    P {s.present} · A {s.absent} · W {s.weekoff}{s.weekoffWorked ? ` · WW ${s.weekoffWorked}` : ""}{s.paidLeave ? ` · PL ${s.paidLeave}` : ""}
                     {` · Late ${s.lates}`}{s.lateDeduction ? ` (−${n1(s.lateDeduction)})` : ""}{s.shortDays ? ` · Short ${s.shortDays}` : ""}
                     {s.missed ? <span className="text-status-danger"> · {s.missed} missed punch</span> : null}
                   </p>
@@ -188,8 +188,10 @@ export function MissedPunches({ onChange }: { onChange?: () => void }) {
   );
 }
 
-const SALARY_COLUMNS = ["Name", "Code", "Days in month", "Present", "Absent", "Weekoff", "Paid leave", "Leave", "Comp-off", "Lates",
+const SALARY_COLUMNS = ["Name", "Code", "Days in month", "Present", "Absent", "Weekoff", "Weekoff worked", "Paid leave", "Lates",
   "Late deductions", "Short days", "Net payable", "Monthly salary", "Final salary"] as const;
+// Column positions used below.
+const C = { days: 2, present: 3, absent: 4, weekoff: 5, worked: 6, paid: 7, lates: 8, lateDed: 9, short: 10, net: 11, monthly: 12, final: 13 };
 
 /** Admin only: salary per person for a month, and the Excel download. */
 export function SalarySheet() {
@@ -198,15 +200,15 @@ export function SalarySheet() {
   const { data, loading, error, reload } = useApi(() => api.attSalarySheet(`${month}-01`), [month]);
   const rows = useMemo(() => (data ?? []).map((r) => {
     const s = r.summary;
-    return [r.employee.name, r.employee.id, s.daysInMonth, s.present, s.absent, s.weekoff, s.paidLeave, s.leave, s.compOff, s.lates,
+    return [r.employee.name, r.employee.id, s.daysInMonth, s.present, s.absent, s.weekoff, s.weekoffWorked, s.paidLeave, s.lates,
       n1(s.lateDeduction), s.shortDays, n1(s.netPayable), r.salary?.monthly ?? 0, r.salary?.final ?? 0] as (string | number)[];
   }), [data]);
-  const total = rows.reduce((t, r) => t + Number(r[14]), 0);
+  const total = rows.reduce((t, r) => t + Number(r[C.final]), 0);
 
   const download = async () => {
     try {
       const XLSX = await import("xlsx");
-      const ws = XLSX.utils.aoa_to_sheet([[...SALARY_COLUMNS], ...rows, [], ["Total", "", "", "", "", "", "", "", "", "", "", "", "", "", total]]);
+      const ws = XLSX.utils.aoa_to_sheet([[...SALARY_COLUMNS], ...rows, [], ["Total", ...Array(C.final - 1).fill(""), total]]);
       ws["!cols"] = SALARY_COLUMNS.map((c, i) => ({ wch: i === 0 ? 24 : Math.max(10, c.length + 2) }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, monthLabel(month).slice(0, 31));
@@ -232,10 +234,10 @@ export function SalarySheet() {
               <Card key={String(r[1])} className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <p className="min-w-0 break-words text-sm font-medium text-ink">{r[0]} <span className="font-normal text-ink-faint">· {r[1]}</span></p>
-                  <p className="shrink-0 text-base font-semibold text-ink">{formatINR(Number(r[14]))}</p>
+                  <p className="shrink-0 text-base font-semibold text-ink">{formatINR(Number(r[C.final]))}</p>
                 </div>
                 <p className="mt-1 text-xs text-ink-muted">
-                  Net {r[12]} / {r[2]} days · of {formatINR(Number(r[13]))} · P {r[3]} · A {r[4]} · W {r[5]}{Number(r[6]) ? ` · PL ${r[6]}` : ""}{Number(r[7]) ? ` · L ${r[7]}` : ""}{Number(r[8]) ? ` · CO ${r[8]}` : ""} · Late {r[9]} (−{r[10]}) · Short {r[11]}
+                  Net {r[C.net]} / {r[C.days]} days · of {formatINR(Number(r[C.monthly]))} · P {r[C.present]} · A {r[C.absent]} · W {r[C.weekoff]}{Number(r[C.worked]) ? ` · WW ${r[C.worked]}` : ""}{Number(r[C.paid]) ? ` · PL ${r[C.paid]}` : ""} · Late {r[C.lates]} (−{r[C.lateDed]}) · Short {r[C.short]}
                 </p>
               </Card>
             ))}
@@ -252,14 +254,14 @@ export function SalarySheet() {
                 {rows.map((r) => (
                   <tr key={String(r[1])}>
                     {r.map((v, i) => (
-                      <td key={i} className={cn("whitespace-nowrap px-2 py-2", i < 2 ? "text-left" : "text-right", i === 14 && "font-semibold")}>
-                        {i >= 13 ? formatINR(Number(v)) : v}
+                      <td key={i} className={cn("whitespace-nowrap px-2 py-2", i < 2 ? "text-left" : "text-right", i === C.final && "font-semibold")}>
+                        {i >= C.monthly ? formatINR(Number(v)) : v}
                       </td>
                     ))}
                   </tr>
                 ))}
                 <tr className="font-semibold">
-                  <td className="px-2 py-2" colSpan={14}>Total</td>
+                  <td className="px-2 py-2" colSpan={C.final}>Total</td>
                   <td className="whitespace-nowrap px-2 py-2 text-right">{formatINR(total)}</td>
                 </tr>
               </tbody>

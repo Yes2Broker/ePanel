@@ -25,7 +25,7 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
   useEffect(() => {
     if (!target) return;
     const d = target.day;
-    // A status the person can't be "set" to (Leave, Comp-off, Missed punch) means "from the punches".
+    // A status the person can't be "set" to (Missed punch) means "from the punches".
     const settable = d && d.edited && ["Present", "Absent", "Weekoff", "Paid Leave"].includes(d.status) ? d.status : "";
     setForm({ in: d?.in ?? "", out: d?.out ?? "", status: settable, remark: d?.note && d.edited ? d.note : "" });
   }, [target]);

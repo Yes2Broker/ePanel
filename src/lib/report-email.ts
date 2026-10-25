@@ -10,7 +10,7 @@ interface Totals { leads: number; calls: number; positive: number; scheduled: nu
 interface Group {
   title: string;
   type: "Normal" | "Sole Selling";
-  // off: "On leave", "Half-day leave", "Weekly off" or "Holiday" (null on a normal working day).
+  // off: "On leave", "Half-day leave", "Weekly off" (null on a normal working day).
   rows: { name: string; off?: string | null; filed?: boolean; daily: Totals; wtd: Totals; mtd: Totals }[];
   totals: { daily: Totals; wtd: Totals; mtd: Totals };
 }

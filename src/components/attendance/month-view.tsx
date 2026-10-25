@@ -43,11 +43,10 @@ const n1 = (v: number) => Number(v.toFixed(1));
 export function SummaryGrid({ s, salary }: { s: AttSummary; salary?: AttMonth["salary"] }) {
   const items: [string, string | number, string?][] = [
     ["Present", s.present],
-    ["Absent", s.absent, s.missed ? `+ ${s.missed} missed punch` : undefined],
+    ["Absent", s.absent, [s.weekoffWorked && `${s.absentDays} − ${s.weekoffWorked} weekly-off worked`, s.missed && `+ ${s.missed} missed punch`].filter(Boolean).join(" · ") || undefined],
     ["Weekoff", s.weekoff],
+    ["Weekoff worked", s.weekoffWorked, "offsets absent"],
     ["Paid leave", s.paidLeave],
-    ["Leave", s.leave, "unpaid"],
-    ["Comp-off", s.compOff],
     ["Lates", s.lates, s.lates > s.latesCounted ? `${s.lates - s.latesCounted} counted as short` : "first 2 free"],
     ["Late deduction", n1(s.lateDeduction), "days"],
     ["Short days", s.shortDays, `${n1(s.shortDays * 0.5)} days deducted`],
@@ -117,7 +116,7 @@ function Calendar({ month, days, onPick }: { month: string; days: AttDay[]; onPi
         })}
       </div>
       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1 text-[0.6875rem] text-ink-faint">
-        <span>P Present</span><span>A Absent</span><span>W Weekoff</span><span>PL Paid leave</span><span>L Leave</span><span>CO Comp-off</span><span>MP Missed punch</span>
+        <span>P Present</span><span>A Absent</span><span>W Weekoff</span><span>PL Paid leave</span><span>MP Missed punch</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-status-warning" />Late</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-status-danger" />Late half / Short</span>
       </p>

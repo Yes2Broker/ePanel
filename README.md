@@ -10,7 +10,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 **Employees**
 - **Dashboard** — your details, today's report status and recent reports.
 - **Daily Reports** — Normal and/or Sole Selling report, summary popup and image download (details below).
-- **Leave** — apply (full or half day, reason, optional photo/PDF), cancel, comp-off credits, company holidays (details below).
+- **Leave** — apply (full or half day, reason, optional photo/PDF) and see/cancel your requests (details below).
 - **Attendance** — your month: calendar and list, payable days, lates, short days (details below).
 - **Profile** — view details and change your own password.
 - **Settings** — compact sidebar and which dashboard sections to show (per device).
@@ -20,7 +20,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 - **Employees** — add, edit, deactivate, reset passwords.
 - **Daily Reports → Team / Old visits / Projects** — totals, every report, history, file or fix any day.
 - **Permissions** — turn modules on/off per employee, and assign Sole Selling projects.
-- **Leave** — approve/reject requests and comp-off claims, team calendar, company holidays, monthly summary (CSV).
+- **Leave** — approve/reject requests (with warnings and history).
 
 **Links to other Yes2Broker sites** (open in a new tab, marked ↗ in the sidebar):
 - **Builder Data** — https://yes2broker.github.io/Builder-Data/ — shown to
@@ -50,7 +50,7 @@ files, in this order:
 2. `supabase/functions.sql` — everything the app calls
 3. `supabase/reports.sql` — Daily Reports (projects, reports, visits, history, import, email data)
 4. `supabase/builder_data_defaults.sql` — one-time Builder Data defaults (runs only once, however often you paste it)
-5. `supabase/leave.sql` — Leave: requests, comp-offs, holidays, history (after reports.sql)
+5. `supabase/leave.sql` — Leave: requests, approvals, history (after reports.sql)
 6. `supabase/attendance.sql` — Attendance: uploaded days, edits + history, code mappings, salary sheet (after leave.sql)
 7. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
 Your team was loaded once from a separate seed file kept out of Git.
@@ -127,16 +127,12 @@ change theirs from Profile → Change Password, and HR/Admin can reset it.
 
 ## Leave
 
-Rules (`supabase/leave.sql` has them at the top):
-- **All leave is unpaid** — no quota, balance or carry forward. Full day or
-  half day (first/second half = 0.5). Dates up to 7 days back, any date ahead.
-- **Never counted:** each person's own weekly off and company holidays (no
-  sandwich rule). A holiday added later stops counting inside existing leave.
-- **Comp-off** = a paid day off. Filing a daily report on your weekly off or
-  a holiday lets you claim one for that date; HR/Admin approve; it must be
-  used within 30 days of the worked date, on one full working day.
+Leave is a **request + approval only**. It never changes Attendance
+(status, payable days or salary). Rules (`supabase/leave.sql` has them at the top):
+- Full day or half day (first/second half = 0.5). Dates up to 7 days back,
+  any date ahead. Each person's weekly off is never counted.
 - **Approval:** HR or Admin, never your own. HR can't act on an Admin's leave;
-  an **Admin's own leave and comp-off claims are approved automatically**.
+  an **Admin's own leave is approved automatically**.
   Rejecting needs a reason.
 - **Approver sees:** leave taken this month/year, and warnings — weekend
   (peak site-visit days), "<Project> will have nobody on site on <date>",
@@ -146,11 +142,12 @@ Rules (`supabase/leave.sql` has them at the top):
 - **Client visits** on leave days must be rescheduled (to a day outside the
   leave) or handed over to a colleague on the same report/project before the
   request can be sent.
-- **History:** every action (apply, approve, reject, cancel, visit moved,
-  comp-off, holiday change) is recorded with who and when.
+- **History:** every action (apply, approve, reject, cancel, visit moved) is
+  recorded with who and when.
 - **Daily Reports link:** in the Team view and the 10 PM email, people on
-  approved leave, their weekly off or a holiday show "On leave" / "Weekly off"
-  / "Holiday" instead of "not filed".
+  approved leave or their weekly off show "On leave" / "Weekly off" instead
+  of "not filed".
+- Comp-offs and company holidays are no longer used (their old rows are kept).
 - **Attachments** (photo or PDF, max 5 MB) are stored in the database and
   only reachable through the panel's functions (the owner and HR/Admin).
 - The **Leave** permission is on by default for everyone.
@@ -166,16 +163,16 @@ tab). Rules (copied from the old Apps Script and sheet; `supabase/attendance.sql
 has them at the top):
 - **Status:** In and Out → Present; only one of them → **Missed punch** (not
   counted until HR fixes it); otherwise Weekoff on the person's own weekly
-  off, else Absent. Company holidays are Paid Leave for everyone; approved
-  leave and comp-offs show on their days.
+  off, else Absent. Paid Leave is only what HR marks or the upload file says;
+  leave requests never change attendance.
 - **Late** = In after 10:30. The first 2 lates a month are free; from the 3rd,
   each is half a day ("Late Half"). **Short Day** = under 8 hours (Out − In) =
   half a day. A day that is both late and short counts once, as Short.
-- **Net payable** = Present + Weekoff + Paid Leave + Comp-off − (late
-  deductions + short days × 0.5). **Salary** (Admin only) = monthly salary ÷
-  days in month × net payable.
-- **Working on your weekly off** adds a comp-off credit automatically
-  (approved, use within 30 days).
+- **Weekly-off working** (Present on your own weekly off) offsets Absent days,
+  capped at the number of Absent days; Absent shown = Absent − that (script.js).
+- **Net payable** = Present + Weekoff + Paid Leave + weekly-off working −
+  (late deductions + short days × 0.5). **Salary** (Admin only) = monthly
+  salary ÷ days in month × net payable.
 - **Uploads** preview per person first. Machine codes match automatically
   (0002 → EMP002); others are mapped once and remembered. Re-uploading never
   duplicates a day and never changes a day HR edited.

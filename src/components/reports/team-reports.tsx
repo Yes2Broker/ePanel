@@ -27,7 +27,7 @@ const COLS: { key: keyof ReportTotals; label: string; title: string }[] = [
   { key: "closureConversion", label: "CC%", title: "Closure Conversion" },
 ];
 
-/** No report that day: why, if they were off (leave, weekly off, holiday), else "not filed". */
+/** No report that day: why, if they were off (leave or weekly off), else "not filed". */
 function NotFiled({ off }: { off?: string | null }) {
   // A half day still means a report is expected.
   if (off && off !== "Half-day leave") return <span className="text-xs font-normal text-ink-faint">{off}</span>;

@@ -53,7 +53,7 @@ export default function EmployeeDashboardPage() {
             icon={CalendarOff} label="Next leave"
             value={leave.data.nextLeave ? formatDate(leave.data.nextLeave.start, { weekday: true }) : "None"}
             note={[
-              leave.data.nextLeave && `${leave.data.nextLeave.kind === "Comp-off" ? "Comp-off" : "Leave"} · ${Number(leave.data.nextLeave.days.toFixed(1))} day${leave.data.nextLeave.days === 1 ? "" : "s"}`,
+              leave.data.nextLeave && `${Number(leave.data.nextLeave.days.toFixed(1))} day${leave.data.nextLeave.days === 1 ? "" : "s"}`,
               leave.data.myPending ? `${leave.data.myPending} pending` : !leave.data.nextLeave && "Nothing planned",
             ].filter(Boolean).join(" · ")}
             href="/leave"

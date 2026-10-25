@@ -6,19 +6,19 @@
 --   * Present = both In and Out. Only one of them = "Missed punch" (not
 --     counted until HR fixes it). No punches = Weekoff on the person's own
 --     weekly off, otherwise Absent.
---   * Company holidays (Leave → Holidays) = Paid Leave for everyone.
---     Approved leave shows as "Leave" (unpaid) or "Comp-off" (paid).
+--   * Paid Leave = only what HR marks or the upload file says. Leave
+--     requests (the Leave page) never change attendance.
 --   * Working time = Out − In (no break deducted, like Code.gs).
 --   * Late = In after 10:30 (10:31 is late). Short Day = under 8 h (480 min).
 --     A day that is both counts once, as Short (Code.gs / script.js).
 --   * The first 2 lates in a month are free; every late from the 3rd on is a
 --     "Late Half" = 0.5 day deducted. Each Short Day = 0.5 day deducted.
---   * Net payable = Present + Weekoff + Paid Leave + Comp-off
+--   * Weekly-off working (Present on your own weekly off) offsets Absent
+--     days, capped at the number of Absent days (script.js):
+--     Net payable = Present + Weekoff + Paid Leave + weekly-off working
 --                   − (late deductions + Short Days × 0.5)
+--     and Absent shown = Absent − weekly-off working.
 --   * Salary (Admin only) = monthly salary ÷ days in month × net payable.
---   * Working on your own weekly off adds a comp-off credit in Leave
---     automatically (approved, expires 30 days after), instead of the old
---     "cancels one Absent" rule.
 --
 -- Run AFTER leave.sql. Safe to run again on a live database: it only creates
 -- what's missing and replaces functions. The old `attendance` table (from the
@@ -147,14 +147,8 @@ language sql stable set search_path = public, private as $$
   calc as (
     select b.*,
       case when b.tin is not null and b.tout is not null then (extract(epoch from (b.tout - b.tin)) / 60)::int end as mins,
-      h.name as holiday, lv.kind as leave_kind, lv.portion as leave_portion,
       (select week_off from emp) as week_off
     from base b
-    left join holidays h on h.holiday_date = b.d
-    left join lateral (
-      select a.kind, x.portion from leave_applications a, lateral private.app_days(a) x
-      where a.employee_id = p_emp and a.status = 'Approved' and b.d between a.start_date and a.end_date and x.day = b.d
-      order by x.portion desc limit 1) lv on true
   ),
   st as (
     select c.*,
@@ -162,8 +156,6 @@ language sql stable set search_path = public, private as $$
         when c.status_set is not null then c.status_set
         when c.tin is not null and c.tout is not null then 'Present'
         when c.tin is not null or c.tout is not null then 'Missed punch'
-        when c.holiday is not null then 'Paid Leave'
-        when c.leave_portion >= 1 then case when c.leave_kind = 'Comp-off' then 'Comp-off' else 'Leave' end
         when not private.is_working_day(c.d, c.week_off) then 'Weekoff'
         else 'Absent'
       end as st
@@ -178,9 +170,7 @@ language sql stable set search_path = public, private as $$
   fl2 as (select f.*, f.in_late and not f.is_short as is_late from fl f)
   select f.d, f.tin, f.tout, f.mins, f.st,
     coalesce(nullif(f.remark, ''),
-      case when f.st = 'Paid Leave' and f.holiday is not null then f.holiday
-           when f.st = 'Absent' and not f.row_exists then 'No record'
-           when f.leave_portion = 0.5 then 'Half-day ' || lower(f.leave_kind)
+      case when f.st = 'Absent' and not f.row_exists then 'No record'
            when f.st = 'Present' and not private.is_working_day(f.d, f.week_off) then 'Worked on weekly off'
       end),
     f.in_late, f.is_short,
@@ -190,8 +180,7 @@ language sql stable set search_path = public, private as $$
   order by f.d
 $$;
 
--- Month totals for one person (script.js updateCards, with comp-off instead
--- of "weekoff working").
+-- Month totals for one person (script.js updateCards).
 create or replace function private.att_summary(p_emp text, p_month date) returns jsonb
 language sql stable set search_path = public, private as $$
   with d as (select * from private.att_days(p_emp, private.month_start(p_month), private.month_end(p_month))),
@@ -201,9 +190,8 @@ language sql stable set search_path = public, private as $$
       count(*) filter (where status = 'Absent') as absent,
       count(*) filter (where status = 'Weekoff') as weekoff,
       count(*) filter (where status = 'Paid Leave') as paid_leave,
-      count(*) filter (where status = 'Leave') as leave,
-      count(*) filter (where status = 'Comp-off') as comp_off,
       count(*) filter (where status = 'Missed punch') as missed,
+      count(*) filter (where status = 'Present' and not private.is_working_day(day, (select week_off from employees where id = p_emp))) as wow_raw,
       -- Lates shown = every day In was after 10:30 (like the old Late card);
       -- a late day that is also short is charged once, as Short (script.js).
       count(*) filter (where late) as lates,
@@ -212,16 +200,20 @@ language sql stable set search_path = public, private as $$
       count(*) filter (where short_day) as short_days,
       max(day) as last_day
     from d
-  )
+  ),
+  w as (select c.*, least(wow_raw, absent) as wow from c)
   select jsonb_build_object(
     'daysInMonth', extract(day from private.month_end(p_month))::int,
-    'days', days, 'present', present, 'absent', absent, 'weekoff', weekoff, 'paidLeave', paid_leave,
-    'leave', leave, 'compOff', comp_off, 'missed', missed, 'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
+    'days', days, 'present', present,
+    -- Absent shown (script.js "unpaid leave") = Absent − weekly-off working.
+    'absent', absent - wow, 'absentDays', absent, 'weekoffWorked', wow,
+    'weekoff', weekoff, 'paidLeave', paid_leave,
+    'missed', missed, 'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
     'lateDeduction', greatest(lates_counted - private.att_free_lates(), 0) * 0.5,
     'shortDays', short_days,
-    'netPayable', (present + weekoff + paid_leave + comp_off) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
+    'netPayable', (present + weekoff + paid_leave + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
     'lastDay', last_day)
-  from c
+  from w
 $$;
 
 create or replace function private.att_day_json(r private.att_day) returns jsonb
@@ -241,37 +233,10 @@ language sql stable as $$
   end
 $$;
 
--- A comp-off credit for working your own weekly off (Leave feature), added or
--- removed when that day changes. Days older than 30 days would already be
--- expired, so nothing is added for them.
+-- No longer used: working a weekly off offsets Absent days instead (see
+-- att_summary). Kept as a no-op so an older copy of this file can't add credits.
 create or replace function private.att_sync_comp_off(p_emp text, p_day date, p_actor text) returns void
-language plpgsql volatile set search_path = public, private as $$
-declare
-  e employees;
-  v_status text;
-  c comp_off_claims;
-begin
-  select * into e from employees where id = p_emp;
-  if not found or e.week_off is null or extract(isodow from p_day)::int <> e.week_off then return; end if;
-  select status into v_status from private.att_days(p_emp, private.month_start(p_day), p_day) where day = p_day;
-  select * into c from comp_off_claims where employee_id = p_emp and worked_date = p_day and status in ('Pending','Approved');
-  if v_status = 'Present' then
-    if p_day < private.today() - private.comp_off_days() then return; end if;
-    if c.id is null then
-      insert into comp_off_claims (employee_id, worked_date, note, status, decided_at, decision_note)
-      values (p_emp, p_day, 'Attendance', 'Approved', now(), 'Automatic: worked on weekly off')
-      returning * into c;
-      perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off added automatically', private.fmt_day(p_day) || ' · worked on weekly off');
-    elsif c.status = 'Pending' then
-      update comp_off_claims set status = 'Approved', decided_at = now(), decision_note = 'Automatic: worked on weekly off' where id = c.id;
-      perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off approved automatically', private.fmt_day(p_day) || ' · worked on weekly off');
-    end if;
-  elsif c.id is not null and c.decision_note like 'Automatic:%'
-        and not exists (select 1 from leave_applications a where a.comp_off_id = c.id and a.status in ('Pending','Approved')) then
-    update comp_off_claims set status = 'Cancelled', decision_note = 'Automatic: attendance changed' where id = c.id;
-    perform private.leave_log(null, c.id, p_emp, p_actor, 'Comp-off removed automatically', private.fmt_day(p_day) || ' · no longer worked');
-  end if;
-end $$;
+language sql volatile as $$ select null::void $$;
 
 -- ===========================================================================
 -- Upload / import (HR / Admin). One function for preview (p_dry) and import.
@@ -373,14 +338,13 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object('code', code, 'name', name, 'rows', cnt) order by code), '[]'::jsonb)
   into v_unmatched from (select code, max(name) as name, count(*) as cnt from att_in where employee_id is null group by code) u;
 
-  -- Per person preview, from the file's own rows (+ weekly offs / holidays).
+  -- Per person preview, from the file's own rows (+ weekly offs).
   with ok as (
     select a.*, e.week_off,
       case
         when a.status_set is not null then a.status_set
         when a.tin is not null and a.tout is not null then 'Present'
         when a.tin is not null or a.tout is not null then 'Missed punch'
-        when exists (select 1 from holidays h where h.holiday_date = a.work_date) then 'Paid Leave'
         when not private.is_working_day(a.work_date, e.week_off) then 'Weekoff'
         else 'Absent'
       end as st,
@@ -482,10 +446,6 @@ begin
         where employee_id = r.employee_id and work_date = r.work_date;
         v_updated := v_updated + 1;
       end if;
-      -- Old history was already paid under the old weekly-off rule: no credits for it.
-      if p_kind <> 'history' then
-        perform private.att_sync_comp_off(r.employee_id, r.work_date, me.id);
-      end if;
     end loop;
 
     insert into attendance_uploads (id, kind, file_name, uploaded_by, rows_in, added, updated, kept, from_date, to_date)
@@ -576,7 +536,6 @@ begin
   on conflict (employee_id, work_date) do update set in_time = excluded.in_time, out_time = excluded.out_time,
     status_set = excluded.status_set, remark = excluded.remark, edited_by = me.id, edited_at = now(), updated_at = now();
 
-  perform private.att_sync_comp_off(p_emp, p_date, me.id);
   select * into r from private.att_days(p_emp, private.month_start(p_date), private.month_end(p_date)) where day = p_date;
   return private.att_day_json(r);
 end $$;
@@ -696,7 +655,7 @@ begin
         'late', count(*) filter (where d.late),
         'absent', count(*) filter (where d.status = 'Absent'),
         'missed', count(*) filter (where d.status = 'Missed punch'),
-        'onLeave', count(*) filter (where d.status in ('Leave','Comp-off','Paid Leave')))
+        'onLeave', count(*) filter (where d.status = 'Paid Leave'))
       from employees e, lateral private.att_days(e.id, private.month_start(v_last), v_last) d
       where e.status = 'Active' and d.day = v_last) end);
 end $$;

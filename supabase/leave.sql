@@ -1,5 +1,8 @@
 -- ===========================================================================
--- Leave: unpaid leave, comp-offs and company holidays.
+-- Leave: a request + approval only. It never changes Attendance (status,
+-- payable days or salary): Attendance comes only from uploads and HR edits.
+-- Comp-offs and company holidays are no longer used; their tables are kept,
+-- unread, so no data is lost.
 --
 -- Run AFTER schema.sql, functions.sql and reports.sql. Safe to run again on a
 -- live database: it only creates what's missing and replaces functions. The
@@ -7,11 +10,8 @@
 --
 -- Rules (decided by the owner):
 --   * All leave is unpaid. No quota, no balance, no carry forward.
---   * "Comp-off" = a paid day off, using a comp-off credit. A credit is earned
---     by filing a daily report on your weekly off or a company holiday,
---     claimed, approved by HR/Admin, and expires 30 days after that date.
 --   * Half days (first / second half) count 0.5.
---   * Each person's weekly off and company holidays never count as leave.
+--   * Each person's weekly off never counts as leave.
 --   * Dates: up to 7 days in the past, any date in the future.
 --   * HR or Admin approve. Nobody approves their own. HR can't act on an
 --     Admin's leave; an Admin's own leave is approved automatically.
@@ -124,7 +124,7 @@ language sql immutable as $$ select to_char(d, 'Dy DD Mon') $$;
 create or replace function private.is_holiday(d date) returns boolean
 language sql stable set search_path = public as $$ select exists (select 1 from holidays where holiday_date = d) $$;
 
--- The days a range counts as leave for one person: weekly off and holidays left out.
+-- The days a range counts as leave for one person: weekly off left out.
 create or replace function private.leave_days(p_emp text, p_start date, p_end date, p_half text)
 returns table (day date, portion numeric)
 language sql stable set search_path = public, private as $$
@@ -132,7 +132,6 @@ language sql stable set search_path = public, private as $$
   from employees e, generate_series(p_start, p_end, interval '1 day') g
   where e.id = p_emp and p_end >= p_start
     and private.is_working_day(g::date, e.week_off)
-    and not exists (select 1 from holidays h where h.holiday_date = g::date)
 $$;
 
 -- The days an application counts (after any "cancel remaining days").
@@ -162,7 +161,6 @@ language plpgsql stable set search_path = public, private as $$
 declare
   v numeric;
 begin
-  if private.is_holiday(d) then return 'Holiday'; end if;
   if not private.is_working_day(d, e.week_off) then return 'Weekly off'; end if;
   v := private.leave_portion(e.id, d);
   if v >= 1 then return 'On leave'; end if;
@@ -220,8 +218,7 @@ language sql stable set search_path = public, private as $$
         where o.project_id = p.id and o.employee_id <> a.employee_id and oe.status = 'Active'
           and coalesce((private.permissions_json(oe) ->> 'soleSelling')::boolean, false)
           and private.day_off(oe, d.day) is distinct from 'On leave'
-          and private.day_off(oe, d.day) is distinct from 'Weekly off'
-          and private.day_off(oe, d.day) is distinct from 'Holiday')
+          and private.day_off(oe, d.day) is distinct from 'Weekly off')
   ),
   busy as (
     select 'Already ' || n || case when n = 1 then ' person' else ' people' end || ' on leave on ' || private.fmt_day(day) as msg, day
@@ -243,7 +240,7 @@ $$;
 create or replace function private.leave_json(a public.leave_applications, me public.employees) returns jsonb
 language sql stable set search_path = public, private as $$
   select jsonb_build_object(
-    'id', a.id, 'employee', private.person_json(a.employee_id), 'kind', a.kind,
+    'id', a.id, 'employee', private.person_json(a.employee_id), 'kind', 'Leave',
     'start', a.start_date, 'end', a.end_date, 'half', a.half, 'reason', a.reason,
     'days', private.app_total(a),
     'dayList', coalesce((select jsonb_agg(jsonb_build_object('date', day, 'portion', portion) order by day) from private.app_days(a)), '[]'::jsonb),
@@ -251,7 +248,6 @@ language sql stable set search_path = public, private as $$
     'decidedBy', private.ename(a.decided_by), 'decidedAt', a.decided_at, 'decisionNote', a.decision_note,
     'cancelledFrom', a.cancelled_from, 'cancelledBy', private.ename(a.cancelled_by), 'cancelledAt', a.cancelled_at, 'cancelNote', a.cancel_note,
     'createdAt', a.created_at,
-    'compOffDate', (select worked_date from comp_off_claims where id = a.comp_off_id),
     'attachment', (select jsonb_build_object('name', file_name, 'mime', mime, 'size', size_bytes) from leave_attachments where application_id = a.id),
     'canCancel', (a.status = 'Pending' and a.employee_id = me.id)
                  or (a.status = 'Approved' and a.start_date > private.today()
@@ -302,8 +298,9 @@ declare
   v_days date[];
   c comp_off_claims;
 begin
-  if p_kind not in ('Leave','Comp-off') then
-    raise exception 'Choose Leave or Comp-off.' using errcode = '22023';
+  -- Leave is a request + approval only (comp-offs are no longer used).
+  if coalesce(p_kind, 'Leave') <> 'Leave' then
+    raise exception 'Only Leave can be applied for.' using errcode = '22023';
   end if;
   if p_start is null or p_end is null or p_end < p_start then
     raise exception 'The end date must be on or after the start date.' using errcode = '22023';
@@ -322,7 +319,7 @@ begin
   end if;
   select array_agg(day order by day) into v_days from private.leave_days(me.id, p_start, p_end, p_half);
   if v_days is null then
-    raise exception 'These dates are all your weekly off or company holidays — no leave needed.' using errcode = '22023';
+    raise exception 'These dates are all your weekly off — no leave needed.' using errcode = '22023';
   end if;
   if exists (
     select 1 from leave_applications a, lateral private.app_days(a) x
@@ -331,22 +328,6 @@ begin
       and not (a.half is not null and p_half is not null and a.half <> p_half)
   ) then
     raise exception 'You already have leave on some of these dates.' using errcode = '23505';
-  end if;
-  if p_kind = 'Comp-off' then
-    if p_half is not null or array_length(v_days, 1) <> 1 then
-      raise exception 'A comp-off covers exactly one full working day.' using errcode = '22023';
-    end if;
-    select * into c from comp_off_claims where id = p_comp_off and employee_id = me.id;
-    if not found or c.status <> 'Approved' then
-      raise exception 'Choose one of your approved comp-off credits.' using errcode = '22023';
-    end if;
-    if exists (select 1 from leave_applications a where a.comp_off_id = c.id and a.status in ('Pending','Approved')) then
-      raise exception 'That comp-off credit is already used.' using errcode = '23505';
-    end if;
-    if v_days[1] <= c.worked_date or v_days[1] > c.worked_date + private.comp_off_days() then
-      raise exception 'This comp-off can be used between % and %.', private.fmt_day(c.worked_date + 1),
-        private.fmt_day(c.worked_date + private.comp_off_days()) using errcode = '22023';
-    end if;
   end if;
   return v_days;
 end $$;
@@ -372,21 +353,8 @@ begin
     'applications', coalesce((
       select jsonb_agg(private.leave_json(a, me) order by a.start_date desc, a.created_at desc)
       from leave_applications a where a.employee_id = me.id and a.end_date >= v_today - 400), '[]'::jsonb),
-    'claims', coalesce((
-      select jsonb_agg(private.claim_json(c, me) order by c.worked_date desc)
-      from comp_off_claims c where c.employee_id = me.id and c.worked_date >= v_today - 120), '[]'::jsonb),
-    -- Days in the last 30 where a report was filed on a weekly off or holiday, not yet claimed.
-    'claimable', coalesce((
-      select jsonb_agg(jsonb_build_object('date', d, 'reason',
-               case when private.is_holiday(d) then 'Holiday: ' || (select name from holidays where holiday_date = d) else 'Weekly off' end) order by d desc)
-      from (select distinct r.report_date as d from sales_reports r
-            where r.employee_id = me.id and r.report_date between v_today - private.comp_off_days() and v_today) x
-      where (private.is_holiday(d) or not private.is_working_day(d, me.week_off))
-        and not exists (select 1 from comp_off_claims c where c.employee_id = me.id and c.worked_date = d and c.status in ('Pending','Approved'))
-    ), '[]'::jsonb),
-    'holidays', coalesce((
-      select jsonb_agg(jsonb_build_object('date', holiday_date, 'name', name) order by holiday_date)
-      from holidays where holiday_date >= date_trunc('year', v_today) and holiday_date < date_trunc('year', v_today) + interval '2 years'), '[]'::jsonb)
+    -- Comp-offs and company holidays are no longer used (kept empty for older app versions).
+    'claims', '[]'::jsonb, 'claimable', '[]'::jsonb, 'holidays', '[]'::jsonb
   );
 end $$;
 
@@ -446,7 +414,7 @@ create or replace function public.leave_apply(p_token text, p_data jsonb) return
 language plpgsql volatile security definer set search_path = public, private as $$
 declare
   me employees := private.require_module(p_token, 'leave');
-  v_kind text := p_data ->> 'kind';
+  v_kind text := 'Leave';
   v_start date := (p_data ->> 'start')::date;
   v_end date := (p_data ->> 'end')::date;
   v_half text := nullif(p_data ->> 'half', '');
@@ -467,10 +435,10 @@ begin
   end if;
 
   insert into leave_applications (employee_id, kind, start_date, end_date, half, reason, comp_off_id)
-  values (me.id, v_kind, v_start, v_end, v_half, v_reason, case when v_kind = 'Comp-off' then v_comp end)
+  values (me.id, v_kind, v_start, v_end, v_half, v_reason, null)
   returning * into a;
   perform private.leave_log(a.id, null, me.id, me.id, 'Applied',
-    format('%s · %s%s · %s day(s)', a.kind, private.fmt_day(a.start_date),
+    format('%s · %s%s · %s day(s)', 'Leave', private.fmt_day(a.start_date),
            case when a.end_date <> a.start_date then ' – ' || private.fmt_day(a.end_date) else '' end
            || case when a.half is not null then ' (' || a.half || ' half)' else '' end, private.app_total(a)));
 
@@ -616,6 +584,7 @@ declare
   me employees := private.require_module(p_token, 'leave');
   c comp_off_claims;
 begin
+  raise exception 'Comp-offs are no longer used.' using errcode = '22023';
   if p_date is null or p_date > private.today() then
     raise exception 'Choose a date that has passed.' using errcode = '22023';
   end if;
@@ -740,6 +709,7 @@ declare
   c comp_off_claims;
   emp employees;
 begin
+  raise exception 'Comp-offs are no longer used.' using errcode = '22023';
   select * into c from comp_off_claims where id = p_id for update;
   if not found then
     raise exception 'Claim not found.' using errcode = 'P0002';
@@ -828,6 +798,7 @@ declare
   me employees := private.require_manager(p_token);
   v_old text;
 begin
+  raise exception 'Company holidays are no longer used.' using errcode = '22023';
   if p_date is null or coalesce(trim(p_name), '') = '' then
     raise exception 'Enter a date and a name.' using errcode = '22023';
   end if;
@@ -868,8 +839,6 @@ begin
         from employees e where e.status = 'Active' and private.leave_portion(e.id, v_today) > 0), '[]'::jsonb) end,
     'pendingApprovals', case when me.role in ('HR','Admin') then
         (select count(*) from leave_applications a join employees e on e.id = a.employee_id
-         where a.status = 'Pending' and private.can_decide(me, e))
-      + (select count(*) from comp_off_claims c join employees e on e.id = c.employee_id
-         where c.status = 'Pending' and private.can_decide(me, e)) end
+         where a.status = 'Pending' and private.can_decide(me, e)) end
   );
 end $$;

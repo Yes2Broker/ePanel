@@ -6,7 +6,7 @@ import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
-import { CompOffClaim, LeaveKind, LeavePreview } from "@/types";
+import { LeavePreview } from "@/types";
 import { addDays, cn, formatDate, todayISO } from "@/lib/utils";
 import { daysLabel } from "@/components/leave/leave-card";
 
@@ -45,13 +45,9 @@ async function upload(file: File) {
   return id;
 }
 
-export function ApplyLeave({ open, onClose, onDone, credits }: {
-  open: boolean; onClose: () => void; onDone: () => void; credits: CompOffClaim[];
-}) {
+export function ApplyLeave({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const today = todayISO();
-  const [kind, setKind] = useState<LeaveKind>("Leave");
-  const [creditId, setCreditId] = useState("");
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState(today);
   const [half, setHalf] = useState<"" | "first" | "second">("");
@@ -61,35 +57,32 @@ export function ApplyLeave({ open, onClose, onDone, credits }: {
   const [previewError, setPreviewError] = useState("");
   const [choices, setChoices] = useState<Record<string, VisitChoice>>({});
   const [sending, setSending] = useState(false);
-  const usable = credits.filter((c) => c.status === "Approved" && !c.usedBy && !c.expired);
-  const credit = usable.find((c) => c.id === creditId);
 
   useEffect(() => {
     if (!open) return;
-    setKind("Leave"); setCreditId(""); setStart(today); setEnd(today); setHalf(""); setReason(""); setFile(null); setChoices({});
+    setStart(today); setEnd(today); setHalf(""); setReason(""); setFile(null); setChoices({});
   }, [open, today]);
 
-  // A comp-off is one full day.
-  const single = kind === "Comp-off" || !!half;
+  const single = !!half;
   const effEnd = single ? start : end;
 
   useEffect(() => {
-    if (!open || !start || !effEnd || (kind === "Comp-off" && !creditId)) { setPreview(null); setPreviewError(""); return; }
+    if (!open || !start || !effEnd) { setPreview(null); setPreviewError(""); return; }
     let live = true;
     const t = window.setTimeout(() => {
-      api.leavePreview({ kind, start, end: effEnd, half: half || null, compOffId: kind === "Comp-off" ? creditId : null })
+      api.leavePreview({ start, end: effEnd, half: half || null })
         .then((p) => { if (live) { setPreview(p); setPreviewError(""); } })
         .catch((e) => { if (live) { setPreview(null); setPreviewError(errorMessage(e)); } });
     }, 250);
     return () => { live = false; window.clearTimeout(t); };
-  }, [open, kind, creditId, start, effEnd, half]);
+  }, [open, start, effEnd, half]);
 
   const leaveDays = useMemo(() => new Set((preview?.days ?? []).map((d) => d.date)), [preview]);
   const visitsOk = (preview?.visits ?? []).every((v) => {
     const c = choices[v.id];
     return c && ((c.action === "reschedule" && c.date && c.date >= today && !leaveDays.has(c.date)) || (c.action === "handover" && c.to));
   });
-  const ready = !!preview && !previewError && reason.trim() && visitsOk && (kind === "Leave" || !!creditId);
+  const ready = !!preview && !previewError && reason.trim() && visitsOk;
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
@@ -109,8 +102,7 @@ export function ApplyLeave({ open, onClose, onDone, credits }: {
         uploadId = await upload(sent);
       }
       const app = await api.leaveApply({
-        kind, start, end: effEnd, half: half || null, reason: reason.trim(),
-        compOffId: kind === "Comp-off" ? creditId : null,
+        start, end: effEnd, half: half || null, reason: reason.trim(),
         uploadId, fileName: sent?.name ?? null, mime: sent ? (sent.type || (sent.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg")) : null,
         visits: (preview?.visits ?? []).map((v) => ({ visitId: v.id, action: choices[v.id].action, date: choices[v.id].date || null, to: choices[v.id].to || null })),
       });
@@ -134,31 +126,10 @@ export function ApplyLeave({ open, onClose, onDone, credits }: {
         <PrimaryButton className="justify-center" disabled={!ready || sending} onClick={send}>{sending ? "Sending…" : "Send request"}</PrimaryButton>
       </div>}>
       <div className="space-y-4">
-        {/* Type */}
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1" role="radiogroup" aria-label="Leave type">
-          {(["Leave", "Comp-off"] as LeaveKind[]).map((k) => (
-            <button key={k} role="radio" aria-checked={kind === k} disabled={k === "Comp-off" && !usable.length}
-              onClick={() => { setKind(k); if (k === "Comp-off") setHalf(""); }}
-              className={cn("min-h-10 rounded-lg px-2 text-sm font-medium disabled:opacity-40", kind === k ? "bg-white text-ink shadow-card" : "text-ink-muted")}>
-              {k === "Leave" ? "Leave (unpaid)" : `Comp-off (${usable.length})`}
-            </button>
-          ))}
-        </div>
-        {!usable.length && <p className="-mt-2 text-xs text-ink-faint">No comp-off credits right now. All leave is unpaid.</p>}
-
-        {kind === "Comp-off" && (
-          <Field label="Use comp-off earned on">
-            <select value={creditId} onChange={(e) => setCreditId(e.target.value)} className={inputCls}>
-              <option value="">Choose a credit</option>
-              {usable.map((c) => <option key={c.id} value={c.id}>{formatDate(c.workedDate, { weekday: true })} · use by {formatDate(c.expires)}</option>)}
-            </select>
-          </Field>
-        )}
-
         {/* Dates */}
         <div className={cn("grid gap-3", !single && "grid-cols-2")}>
           <Field label={single ? "Date" : "From"}>
-            <input type="date" value={start} min={addDays(today, -7)} max={credit ? credit.expires : undefined}
+            <input type="date" value={start} min={addDays(today, -7)}
               onChange={(e) => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} className={cn(inputCls, "min-w-0 px-2.5")} />
           </Field>
           {!single && (
@@ -167,7 +138,7 @@ export function ApplyLeave({ open, onClose, onDone, credits }: {
             </Field>
           )}
         </div>
-        {kind === "Leave" && start === end && (
+        {start === end && (
           <Field label="Full or half day">
             <select value={half} onChange={(e) => setHalf(e.target.value as typeof half)} className={inputCls}>
               <option value="">Full day</option>
@@ -176,15 +147,15 @@ export function ApplyLeave({ open, onClose, onDone, credits }: {
             </select>
           </Field>
         )}
-        {kind === "Leave" && start !== end && <p className="-mt-2 text-xs text-ink-faint">Half days: choose the same From and To date.</p>}
+        {start !== end && <p className="-mt-2 text-xs text-ink-faint">Half days: choose the same From and To date.</p>}
 
         {/* What it counts as */}
         {previewError ? (
           <p className="rounded-xl bg-status-dangerBg px-3 py-2 text-sm text-status-danger" role="alert">{previewError}</p>
         ) : preview && (
           <p className="rounded-xl bg-brand-soft px-3 py-2 text-sm text-ink">
-            <b>{daysLabel(preview.total)}</b> of {kind === "Comp-off" ? "paid comp-off" : "unpaid leave"}
-            {preview.skipped > 0 && <span className="text-ink-muted"> · {preview.skipped} weekly off / holiday day{preview.skipped === 1 ? "" : "s"} not counted</span>}
+            <b>{daysLabel(preview.total)}</b> of leave
+            {preview.skipped > 0 && <span className="text-ink-muted"> · {preview.skipped} weekly off day{preview.skipped === 1 ? "" : "s"} not counted</span>}
           </p>
         )}
 

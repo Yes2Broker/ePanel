@@ -50,7 +50,7 @@ export interface AdminDashboard {
 // ---------------------------------------------------------------------------
 // Attendance — see supabase/attendance.sql
 // ---------------------------------------------------------------------------
-export type AttStatus = "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Leave" | "Comp-off" | "Missed punch";
+export type AttStatus = "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Missed punch";
 
 export interface AttDay {
   date: string;
@@ -71,11 +71,13 @@ export interface AttSummary {
   daysInMonth: number;
   days: number;
   present: number;
+  /** Absent shown = absent days − weekly-off working (script.js "unpaid leave"). */
   absent: number;
+  absentDays: number;
+  /** Days worked on the person's own weekly off, capped at the absent days. */
+  weekoffWorked: number;
   weekoff: number;
   paidLeave: number;
-  leave: number;
-  compOff: number;
   missed: number;
   lates: number;
   latesCounted: number;
@@ -250,7 +252,7 @@ export interface TeamSummaryGroup {
   type: SalesReportType;
   projectId: string | null;
   title: string;
-  // off: "On leave" | "Half-day leave" | "Weekly off" | "Holiday" on the summary date, else null.
+  // off: "On leave" | "Half-day leave" | "Weekly off" on the summary date, else null.
   rows: { employeeId: string; employeeName: string; filedToday: boolean; off?: string | null; today: ReportTotals; mtd: ReportTotals }[];
   totals: { today: ReportTotals; mtd: ReportTotals };
 }
@@ -258,7 +260,7 @@ export interface TeamSummaryGroup {
 // ---------------------------------------------------------------------------
 // Leave — see supabase/leave.sql
 // ---------------------------------------------------------------------------
-export type LeaveKind = "Leave" | "Comp-off";
+export type LeaveKind = "Leave";
 export type LeaveStatus = "Pending" | "Approved" | "Rejected" | "Cancelled";
 export interface PersonRef { id: string; name: string; department: Department; role: Role }
 
@@ -281,7 +283,6 @@ export interface LeaveApplication {
   cancelledAt: string | null;
   cancelNote: string | null;
   createdAt: string;
-  compOffDate: string | null;
   attachment: { name: string; mime: string; size: number } | null;
   canCancel: boolean;
   canCancelRemaining: boolean;
@@ -292,36 +293,12 @@ export interface LeaveApplication {
   visitChanges?: string[];
 }
 
-export interface CompOffClaim {
-  id: string;
-  employee: PersonRef;
-  workedDate: string;
-  reason: string;
-  note: string;
-  status: LeaveStatus;
-  expires: string;
-  usedBy: { id: string; date: string; status: LeaveStatus } | null;
-  expired: boolean;
-  decidedBy: string | null;
-  decidedAt: string | null;
-  decisionNote: string | null;
-  createdAt: string;
-  canCancel: boolean;
-  canDecide: boolean;
-  reports?: string[] | null;
-}
-
-export interface Holiday { date: string; name: string }
-
 export interface LeaveOverview {
   today: string;
   canApply: boolean;
   weekOff: number | null;
   stats: { month: number; year: number };
   applications: LeaveApplication[];
-  claims: CompOffClaim[];
-  claimable: { date: string; reason: string }[];
-  holidays: Holiday[];
 }
 
 export interface LeaveVisit {
@@ -339,15 +316,6 @@ export interface LeavePreview {
   skipped: number;
   visits: LeaveVisit[];
 }
-
-export interface LeaveCalendarDay {
-  date: string;
-  holiday: string | null;
-  leaves: { id: string; employeeId: string; name: string; kind: LeaveKind; portion: number; half: string | null; status: LeaveStatus }[];
-  weeklyOff: string[];
-}
-
-export interface LeaveSummaryRow { employee: PersonRef; unpaid: number; compOff: number; halfDays: number; total: number }
 
 export interface LeaveDashboard {
   nextLeave: LeaveApplication | null;

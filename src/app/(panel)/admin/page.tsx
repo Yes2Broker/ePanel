@@ -47,11 +47,11 @@ export default function AdminDashboardPage() {
           {on.leave && leave.data?.onLeaveToday && (
             <SummaryCard icon={CalendarOff} label="On leave today" value={leave.data.onLeaveToday.length}
               note={leave.data.onLeaveToday.map((p) => `${p.name.split(" ")[0]}${p.portion < 1 ? " (½)" : ""}`).join(", ") || "Everyone in"}
-              href="/leave?tab=calendar" />
+              href="/leave" />
           )}
           {on.leave && leave.data && leave.data.pendingApprovals != null && (
             <SummaryCard icon={Inbox} label="Pending approvals" value={leave.data.pendingApprovals}
-              note="leave and comp-offs" href="/leave?tab=requests" />
+              note="leave requests" href="/leave" />
           )}
         </div>
       )}
@@ -61,7 +61,7 @@ export default function AdminDashboardPage() {
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-ink">Attendance · {formatDate(team.date, { weekday: true })} <span className="font-normal text-ink-faint">(last uploaded day)</span></h2>
           <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
-            <SummaryCard icon={UserCheck} label="Present" value={team.present} note={team.onLeave ? `${team.onLeave} on leave / paid leave` : undefined} href={`/attendance?tab=day&date=${team.date}`} />
+            <SummaryCard icon={UserCheck} label="Present" value={team.present} note={team.onLeave ? `${team.onLeave} on paid leave` : undefined} href={`/attendance?tab=day&date=${team.date}`} />
             <SummaryCard icon={Clock} label="Late" value={team.late} href={`/attendance?tab=day&date=${team.date}&filter=Late`} />
             <SummaryCard icon={Users} label="Absent" value={team.absent} href={`/attendance?tab=day&date=${team.date}&filter=Absent`} />
             <SummaryCard icon={CircleAlert} label="Missed punch" value={team.missed} href="/attendance?tab=missed" />

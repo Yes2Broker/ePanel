@@ -76,7 +76,7 @@ export function LeaveCard({ a, showPerson, onChange }: { a: LeaveApplication; sh
           )}
           <p className={cn("break-words text-sm text-ink", !showPerson && "font-semibold")}>{rangeLabel(a)}</p>
           <p className="text-xs text-ink-muted">
-            {a.kind === "Comp-off" ? `Comp-off (paid)${a.compOffDate ? ` · for ${formatDate(a.compOffDate)}` : ""}` : "Leave (unpaid)"} · {daysLabel(a.days)}
+            {daysLabel(a.days)}
             {a.cancelledFrom && ` · cancelled from ${formatDate(a.cancelledFrom)}`}
           </p>
         </div>
