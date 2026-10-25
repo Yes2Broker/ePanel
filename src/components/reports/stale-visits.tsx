@@ -78,8 +78,8 @@ export function StaleVisits() {
                 <label className={cn("flex items-center gap-3 px-4 py-3", selected.has(v.id) && "bg-brand-soft")}>
                   <input type="checkbox" className="h-5 w-5 shrink-0" checked={selected.has(v.id)} onChange={(e) => toggle(v.id, e.target.checked)} aria-label={`Select ${v.client}`} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-ink">{v.client}</span>
-                    <span className="block truncate text-xs text-ink-faint">{v.employeeName} · {v.type === "Normal" ? "Normal" : v.projectName}</span>
+                    <span className="block break-words font-medium text-ink">{v.client}</span>
+                    <span className="block break-words text-xs text-ink-faint">{v.employeeName} · {v.type === "Normal" ? "Normal" : v.projectName}</span>
                   </span>
                   <span className="shrink-0 text-xs text-ink-muted">{formatDate(v.date)}</span>
                 </label>

@@ -53,8 +53,8 @@ export function Modal({
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-surface-border py-2 pl-5 pr-2">
           <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold text-ink sm:text-sm">{title}</h3>
-            {subtitle && <p className="truncate text-xs text-ink-faint">{subtitle}</p>}
+            <h3 className="break-words text-base font-semibold leading-snug text-ink sm:text-sm">{title}</h3>
+            {subtitle && <p className="break-words text-xs text-ink-faint">{subtitle}</p>}
           </div>
           <button onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-surface hover:text-ink" aria-label="Close">
             <X className="h-5 w-5" />

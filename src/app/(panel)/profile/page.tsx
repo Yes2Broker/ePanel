@@ -15,9 +15,9 @@ import { weekOffLabel } from "@/lib/constants";
 
 function Row({ label, value, locked }: { label: string; value: React.ReactNode; locked?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-surface-border py-3 last:border-0">
-      <span className="shrink-0 text-sm text-ink-faint">{label}</span>
-      <span className="flex min-w-0 items-center gap-1.5 text-right text-sm font-medium text-ink [overflow-wrap:anywhere]">
+    <div className="flex flex-col gap-0.5 border-b border-surface-border py-2.5 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-3">
+      <span className="text-xs text-ink-faint sm:shrink-0 sm:text-sm">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink [overflow-wrap:anywhere] sm:text-right">
         {value || "—"} {locked && <Lock className="h-3 w-3 shrink-0 text-ink-faint" />}
       </span>
     </div>
@@ -29,17 +29,17 @@ export default function ProfilePage() {
   if (!user) return null;
 
   return (
-    <div className="max-w-3xl space-y-6 pt-4">
+    <div className="max-w-3xl space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="My Profile" subtitle="Contact HR or Admin to update these details." />
 
       <Card className="p-4 sm:p-5">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-ink text-lg font-medium text-white">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ink text-base font-medium text-white sm:h-16 sm:w-16 sm:text-lg">
             {initials(user.name)}
           </div>
-          <div>
-            <p className="text-base font-semibold text-ink">{user.name}</p>
-            <p className="text-sm text-ink-faint">{user.designation} · {user.department}</p>
+          <div className="min-w-0">
+            <p className="break-words text-base font-semibold text-ink">{user.name}</p>
+            <p className="text-sm text-ink-faint">{[user.designation, user.department].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
       </Card>

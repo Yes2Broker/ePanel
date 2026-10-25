@@ -230,7 +230,7 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-5 pt-2">
-      <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"><ArrowLeft className="h-4 w-4" /> Daily Reports</Link>
+      <Link href="/reports" className="inline-flex min-h-11 items-center gap-1 text-sm text-ink-muted hover:text-ink md:min-h-0"><ArrowLeft className="h-4 w-4" /> Daily Reports</Link>
       <PageHeader title="Import old reports" subtitle="Upload the eight tabs of your two Google Sheets (Sheet1, Past Employee, Visits Done, Visits Scheduled) as CSV files. Nothing is saved until you press Import, and running it again won't create duplicates." />
       <ErrorBanner message={employees.error || projects.error} />
       {(employees.loading || projects.loading) && !employees.data && <Loading />}

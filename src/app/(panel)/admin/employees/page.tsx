@@ -94,7 +94,7 @@ export default function AdminEmployeesPage() {
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2.5">
         <div className="relative col-span-2">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email or ID…" aria-label="Search employees"
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID…" aria-label="Search employees by name, email or ID"
             className="min-h-11 w-full rounded-pill border border-surface-border bg-white py-2 pl-8 pr-3 text-base focus:outline-none focus:ring-2 focus:ring-brand sm:min-h-10 sm:w-60 sm:text-sm" />
         </div>
         <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={cn(selectCls, "col-span-2 sm:col-auto")} aria-label="Department">
@@ -121,8 +121,9 @@ export default function AdminEmployeesPage() {
               <button onClick={() => setViewing(e)} className="flex w-full items-center gap-3 text-left" aria-label={`View ${e.name}`}>
                 <Avatar name={e.name} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-ink">{e.name}</p>
-                  <p className="truncate text-xs text-ink-faint">{e.id} · {e.department} · {e.role}</p>
+                  <p className="break-words text-sm font-medium text-ink">{e.name}</p>
+                  <p className="break-words text-xs text-ink-faint">{e.id} · {e.department}</p>
+                  <p className="text-xs text-ink-faint">{e.role}{e.designation ? ` · ${e.designation}` : ""}</p>
                 </div>
                 <StatusPill status={e.status} />
               </button>

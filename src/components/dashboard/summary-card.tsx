@@ -2,27 +2,28 @@ import Link from "next/link";
 import { LucideIcon, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
+/**
+ * Stat tile: label on top, value below. Two per row on phones, where the
+ * icon is dropped to leave room for large phone font sizes. Long values wrap
+ * to a second line instead of being cut off.
+ */
 export function SummaryCard({
   icon: Icon, label, value, note, href,
 }: { icon: LucideIcon; label: string; value: string | number; note?: string; href?: string }) {
-  // Phones: one compact row (icon, label + note, value). Larger screens: the tile.
+  // Numbers and short codes are big; names and words a bit smaller so they fit.
+  const short = String(value).length <= 7;
   const body = (
-    <Card className="flex h-full min-h-[4.5rem] items-center gap-3 p-4 transition-colors sm:block">
-      <div className="flex items-center gap-2.5 sm:mb-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft sm:h-7 sm:w-7">
-          <Icon className="h-4 w-4 text-brand sm:h-3.5 sm:w-3.5" strokeWidth={2.25} />
+    <Card className="relative flex h-full min-w-0 flex-col p-3 transition-colors sm:p-4">
+      <div className="mb-1.5 flex min-w-0 items-center gap-2.5 pr-4 sm:mb-3 sm:pr-0">
+        <div className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-soft sm:flex">
+          <Icon className="h-3.5 w-3.5 text-brand" strokeWidth={2.25} />
         </div>
-        <span className="hidden text-sm text-ink-muted sm:inline">{label}</span>
-        {href && <ArrowUpRight className="ml-auto hidden h-3.5 w-3.5 text-ink-faint sm:block" />}
+        <span className="min-w-0 flex-1 text-xs leading-snug text-ink-muted sm:text-sm">{label}</span>
       </div>
-      <div className="min-w-0 flex-1 sm:hidden">
-        <p className="text-sm text-ink-muted">{label}</p>
-        {note && <p className="text-xs text-ink-faint">{note}</p>}
-      </div>
-      <span className="max-w-[55%] truncate text-xl font-semibold leading-none text-ink sm:block sm:max-w-none sm:text-[26px]">{value}</span>
-      {note && <p className="mt-1.5 hidden truncate text-xs text-ink-faint sm:block">{note}</p>}
-      {href && <ArrowUpRight className="h-4 w-4 shrink-0 text-ink-faint sm:hidden" />}
+      {href && <ArrowUpRight className="absolute right-2.5 top-3 h-3.5 w-3.5 text-ink-faint sm:right-4 sm:top-[1.375rem]" />}
+      <span className={`line-clamp-2 font-semibold leading-tight text-ink sm:text-[26px] sm:leading-none ${short ? "text-xl" : "text-base"}`}>{value}</span>
+      {note && <p className="mt-1 text-xs leading-snug text-ink-faint sm:mt-1.5">{note}</p>}
     </Card>
   );
-  return href ? <Link href={href} className="block rounded-card hover:opacity-90">{body}</Link> : body;
+  return href ? <Link href={href} className="block min-w-0 rounded-card hover:opacity-90">{body}</Link> : body;
 }

@@ -12,7 +12,7 @@ export function PerformanceChart({ data }: { data: { month: string; rate: number
   const peak = points.reduce<{ month: string; rate: number } | null>((max, d) => (!max || d.rate > max.rate ? d : max), null);
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink">Monthly Attendance</h3>
         <span className="text-xs font-medium text-ink-muted">This year</span>

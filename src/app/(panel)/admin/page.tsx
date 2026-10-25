@@ -39,7 +39,7 @@ export default function AdminDashboardPage() {
   const departments = new Set(active.map((e) => e.department)).size;
 
   return (
-    <div className="space-y-5 pt-2 md:space-y-6 md:pt-4">
+    <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="Dashboard" subtitle="Your team at a glance." />
       <InstallBanner />
 
@@ -52,7 +52,7 @@ export default function AdminDashboardPage() {
       {employees.loading && !employees.data && <Loading />}
 
       {employees.data && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
           <SummaryCard icon={Users} label="Employees" value={active.length} note={`${all.length - active.length} inactive`} href="/admin/employees" />
           <SummaryCard icon={Building2} label="Departments" value={departments} note={`${active.filter((e) => e.role !== "Employee").length} HR / Admin`} />
           {on.attendance && data && (
