@@ -15,8 +15,8 @@ import { ModuleKey } from "@/types";
 import { initials, cn } from "@/lib/utils";
 import { SoleSellingProjects } from "@/components/reports/sole-selling-projects";
 
-// A module can't be switched while its feature isn't launched; the saved
-// value is still shown and kept as it is in the database.
+// A module can't be switched while its feature isn't launched. It shows as
+// off (so nobody thinks it's on); the saved value is kept in the database.
 function isComingSoon(m: (typeof MODULES)[number]) {
   const feature = MODULE_FEATURE[m.key];
   return !!m.comingSoon || (!!feature && !isFeatureEnabled(feature));
@@ -62,7 +62,7 @@ export default function AdminPermissionsPage() {
         <span className="mb-1.5 block text-xs font-medium text-ink-muted">Employee</span>
         <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)} disabled={!active.length}
           className="min-h-12 w-full rounded-xl border border-surface-border bg-white px-3.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-brand">
-          {active.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.department} · {e.role}</option>)}
+          {active.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
       </label>
 
@@ -114,7 +114,7 @@ export default function AdminPermissionsPage() {
                           {isComingSoon(m) && <span className="ml-2"><ComingSoonBadge /></span>}
                           {adminOnly && <span className="ml-2 text-xs text-ink-faint">Admin only</span>}
                         </span>
-                        <Toggle checked={!!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m) || adminOnly} onChange={(v) => toggle(m.key, v)} />
+                        <Toggle checked={!isComingSoon(m) && !!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m) || adminOnly} onChange={(v) => toggle(m.key, v)} />
                       </div>
                       {m.key === "soleSelling" && !isComingSoon(m) && permissions.data?.soleSelling && selectedId && (
                         <SoleSellingProjects employeeId={selectedId} />

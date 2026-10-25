@@ -38,7 +38,7 @@ export function ProjectsPanel() {
     <div className="max-w-2xl space-y-4">
       <Card className="p-4">
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(null, name, null, `${name.trim()} added.`); }} className="flex gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New project name, e.g. Nandanvan" aria-label="New project name"
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" aria-label="New project name"
             className="min-h-11 min-w-0 flex-1 rounded-xl border border-surface-border px-3.5 py-2.5 text-base sm:text-sm focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand" />
           <PrimaryButton type="submit" disabled={busy || !name.trim()}><Plus className="h-4 w-4" /> Add</PrimaryButton>
         </form>
@@ -61,11 +61,10 @@ export function ProjectsPanel() {
                   </form>
                 ) : (
                   <>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-ink">{p.name}</p>
+                    <div className="min-w-0 flex-1 basis-40">
+                      <p className="flex flex-wrap items-center gap-2 font-medium text-ink"><span className="break-words">{p.name}</span> <StatusPill status={p.status} /></p>
                       <p className="text-xs text-ink-faint">{p.people ?? 0} people assigned · {p.reports ?? 0} reports</p>
                     </div>
-                    <StatusPill status={p.status} />
                     <button onClick={() => setEditing({ id: p.id, name: p.name })} className="flex h-11 w-11 items-center justify-center rounded-lg text-ink-faint hover:bg-surface" aria-label={`Rename ${p.name}`}><Pencil className="h-3.5 w-3.5" /></button>
                     <SecondaryButton disabled={busy} onClick={() => save(p.id, p.name, p.status === "Active" ? "Closed" : "Active", p.status === "Active" ? `${p.name} closed.` : `${p.name} reopened.`)}>
                       {p.status === "Active" ? "Close" : "Reopen"}

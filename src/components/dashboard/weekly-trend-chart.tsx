@@ -8,7 +8,7 @@ export function WeeklyTrendChart({ data }: { data: { date: string; day: string; 
   const peak = data.reduce<(typeof data)[number] | null>((max, d) => (!max || d.rate > max.rate ? d : max), null);
 
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <h3 className="mb-4 text-sm font-semibold text-ink">Daily Attendance — last 7 working days</h3>
       <div className="h-56">
         {data.length === 0 ? (

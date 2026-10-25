@@ -6,7 +6,7 @@ import { EmployeeStat } from "@/types";
 export function TopPerformers({ stats }: { stats: EmployeeStat[] }) {
   const top = stats.filter((s) => s.attendanceRate != null).slice(0, 5);
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink">Top Attendance</h3>
         <span className="text-xs text-ink-faint">This month</span>

@@ -36,11 +36,11 @@ export default function EmployeeDashboardPage() {
   const canReport = !!(permissions?.normalReport || permissions?.soleSelling);
 
   return (
-    <div className="space-y-5 pt-2 md:space-y-6 md:pt-4">
+    <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel." />
       <InstallBanner />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
         <SummaryCard icon={BadgeCheck} label="Employee ID" value={user.id} />
         <SummaryCard icon={Briefcase} label="Department" value={user.department} note={user.designation || undefined} />
         <SummaryCard icon={CalendarDays} label="Weekly Off" value={weekOffLabel(user.weekOff)} />
@@ -58,7 +58,7 @@ export default function EmployeeDashboardPage() {
             <CheckInCard today={data.today} isWorkingDay={data.isWorkingDay} onChange={(row) => setData({ ...data, today: row })} />
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
             {on.attendance && (
               <SummaryCard
                 icon={CalendarCheck} label="Attendance"
@@ -79,7 +79,7 @@ export default function EmployeeDashboardPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
             {on.reports && prefs.dashboard.reports && canReport && (
-              <Card className="p-5">
+              <Card className="p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-ink">Recent Reports</h3>
                   <Link href="/reports" className="-my-2 inline-flex min-h-11 items-center px-2 text-xs font-medium text-ink-muted hover:text-ink">View all</Link>

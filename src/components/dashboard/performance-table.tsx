@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Phone } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Employee, EmployeeStat } from "@/types";
@@ -42,11 +42,11 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
         {visible.map((e) => {
           const s = byId.get(e.id);
           return (
-            <li key={e.id} className="flex items-center gap-3 py-3">
+            <li key={e.id} className="flex items-center gap-3 py-2.5">
               <Avatar name={e.name} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-ink">{e.name}</p>
-                <p className="truncate text-xs text-ink-faint">{e.id} · {e.department} · {e.role}</p>
+                <p className="break-words text-sm font-medium text-ink">{e.name}</p>
+                <p className="break-words text-xs text-ink-faint">{e.id} · {e.department}</p>
                 {(showReports || showAttendance) && s && (
                   <p className="text-xs text-ink-muted">
                     {showReports && `${s.reportsThisMonth} reports`}
@@ -54,7 +54,12 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
                   </p>
                 )}
               </div>
-              {e.mobile && <a href={`tel:${e.mobile}`} className="flex min-h-11 shrink-0 items-center rounded-full bg-surface px-3 text-xs text-ink-muted">{e.mobile}</a>}
+              {e.mobile && (
+                <a href={`tel:${e.mobile}`} aria-label={`Call ${e.name} (${e.mobile})`} title={e.mobile}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink-muted">
+                  <Phone className="h-4 w-4" />
+                </a>
+              )}
             </li>
           );
         })}

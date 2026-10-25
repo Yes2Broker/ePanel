@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,12 +10,12 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   // On phones the top bar already shows this title; don't repeat it (screen readers still get it).
   const inTopBar = pageTitle(usePathname()) === title;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className={cn("text-2xl font-semibold text-ink sm:text-[28px]", inTopBar && "max-md:sr-only")}>{title}</h1>
+    <div className="flex items-start justify-between gap-3 sm:flex-wrap sm:items-center">
+      <div className="min-w-0 flex-1">
+        <h1 className={cn("text-xl font-semibold leading-tight text-ink sm:text-[28px]", inTopBar && "max-md:sr-only")}>{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-ink-faint">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -64,18 +65,41 @@ export function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIc
   );
 }
 
-export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { value: T; label: string; count?: number }[]; value: T; onChange: (v: T) => void }) {
+/**
+ * Pill tabs. On phones they sit in one scrolling row; a fade on the edge shows
+ * when more tabs are hidden. `short` is the label used on phones.
+ */
+export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { value: T; label: string; short?: string; count?: number }[]; value: T; onChange: (v: T) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setFade({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
+  }, [tabs.length]);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [value]);
+  const mask = fade.left && fade.right ? "[mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-2rem),transparent)]"
+    : fade.right ? "[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
+    : fade.left ? "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]" : "";
   return (
-    <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden" role="tablist">
+    <div ref={ref} className={cn("-mx-4 flex gap-1.5 overflow-x-auto px-4 py-0.5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:[mask-image:none] [&::-webkit-scrollbar]:hidden", mask)} role="tablist">
       {tabs.map((t) => (
         <button
           key={t.value}
           role="tab"
           aria-selected={value === t.value}
+          aria-label={t.label}
           onClick={() => onChange(t.value)}
-          className={cn("flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium", value === t.value ? "bg-ink text-white" : "bg-white text-ink-muted shadow-card hover:text-ink")}
+          className={cn("flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium sm:px-4", value === t.value ? "bg-ink text-white" : "bg-white text-ink-muted shadow-card hover:text-ink")}
         >
-          {t.label}
+          {t.short ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}
           {!!t.count && (
             <span className={cn("rounded-full px-1.5 text-xs", value === t.value ? "bg-white text-ink" : "bg-status-warningBg text-status-warning")}>{t.count}</span>
           )}

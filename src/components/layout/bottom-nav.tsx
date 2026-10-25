@@ -63,11 +63,11 @@ function BarButton({ item, active, onClick }: { item: NavItem; active: boolean; 
         <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.25 : 1.75} />
         {item.external && <ExternalLink className="absolute -right-2.5 -top-1 h-3 w-3" aria-hidden />}
       </span>
-      <span className="max-w-full truncate text-[11px] leading-tight">{item.short ?? item.label}</span>
+      <span className="max-w-full break-words text-center text-[0.6875rem] leading-[1.1]">{item.short ?? item.label}</span>
     </>
   );
   const cls = cn(
-    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 font-medium transition-colors",
+    "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 font-medium transition-colors",
     active ? "text-brand" : "text-ink-faint active:text-ink-muted",
     item.comingSoon && "opacity-60"
   );
@@ -121,7 +121,7 @@ export function BottomNav() {
               className={cn("flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 font-medium", moreActive || moreOpen ? "text-brand" : "text-ink-faint")}
             >
               <LayoutGrid className="h-[22px] w-[22px]" strokeWidth={moreActive ? 2.25 : 1.75} />
-              <span className="text-[11px] leading-tight">More</span>
+              <span className="text-[0.6875rem] leading-[1.1]">More</span>
             </button>
           )}
         </div>

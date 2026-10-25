@@ -28,8 +28,8 @@ export function ComingSoonCard() {
   const pending = FEATURE_KEYS.filter((k) => !isFeatureEnabled(k));
   if (pending.length === 0) return null;
   return (
-    <Card className="flex flex-wrap items-center gap-3 p-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-soft">
+    <Card className="flex items-center gap-3 p-3.5 sm:p-5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft sm:h-9 sm:w-9">
         <Sparkles className="h-4 w-4 text-brand" />
       </div>
       <div className="min-w-0 flex-1">
