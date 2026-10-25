@@ -21,17 +21,17 @@
 create table if not exists holidays (
   holiday_date date primary key,
   name text not null check (length(trim(name)) > 0),
-  created_by text references employees(id) on delete set null,
+  created_by text references employees(id) on update cascade on delete set null,
   created_at timestamptz not null default now()
 );
 
 create table if not exists comp_off_claims (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   worked_date date not null,
   note text not null default '',
   status text not null default 'Pending' check (status in ('Pending','Approved','Rejected','Cancelled')),
-  decided_by text references employees(id) on delete set null,
+  decided_by text references employees(id) on update cascade on delete set null,
   decided_at timestamptz,
   decision_note text,
   created_at timestamptz not null default now()
@@ -41,7 +41,7 @@ create unique index if not exists comp_off_claims_one_per_day on comp_off_claims
 
 create table if not exists leave_applications (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   kind text not null check (kind in ('Leave','Comp-off')),
   start_date date not null,
   end_date date not null,
@@ -49,13 +49,13 @@ create table if not exists leave_applications (
   reason text not null check (length(trim(reason)) > 0),
   comp_off_id uuid references comp_off_claims(id) on delete set null,
   status text not null default 'Pending' check (status in ('Pending','Approved','Rejected','Cancelled')),
-  decided_by text references employees(id) on delete set null,
+  decided_by text references employees(id) on update cascade on delete set null,
   decided_at timestamptz,
   decision_note text,
   -- Set when HR/Admin cancel the rest of a leave that has already started:
   -- days from this date on no longer count.
   cancelled_from date,
-  cancelled_by text references employees(id) on delete set null,
+  cancelled_by text references employees(id) on update cascade on delete set null,
   cancelled_at timestamptz,
   cancel_note text,
   created_at timestamptz not null default now(),
@@ -83,7 +83,7 @@ create table if not exists leave_attachments (
 create table if not exists leave_uploads (
   upload_id uuid not null,
   seq int not null,
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   data bytea not null,
   created_at timestamptz not null default now(),
   primary key (upload_id, seq)
@@ -93,8 +93,8 @@ create table if not exists leave_history (
   id bigint generated always as identity primary key,
   application_id uuid references leave_applications(id) on delete cascade,
   claim_id uuid references comp_off_claims(id) on delete cascade,
-  employee_id text references employees(id) on delete cascade,
-  actor_id text references employees(id) on delete set null,
+  employee_id text references employees(id) on update cascade on delete cascade,
+  actor_id text references employees(id) on update cascade on delete set null,
   action text not null,
   details text,
   at timestamptz not null default clock_timestamp()

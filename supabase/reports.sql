@@ -27,7 +27,7 @@ create unique index if not exists projects_name_lower_idx on projects (lower(nam
 
 -- Which Sole Selling projects each employee may report for.
 create table if not exists employee_projects (
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   project_id uuid not null references projects(id) on delete cascade,
   primary key (employee_id, project_id)
 );
@@ -35,13 +35,13 @@ create table if not exists employee_projects (
 -- Other names a person appears under in old data ("Prateek Jethwa" -> EMP014).
 create table if not exists employee_aliases (
   alias text primary key,            -- stored lower-case, trimmed
-  employee_id text not null references employees(id) on delete cascade
+  employee_id text not null references employees(id) on update cascade on delete cascade
 );
 
 -- One report per person, per report type (and project), per day.
 create table if not exists sales_reports (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id),
+  employee_id text not null references employees(id) on update cascade,
   report_date date not null,
   report_type text not null check (report_type in ('Normal','Sole Selling')),
   project_id uuid references projects(id),
@@ -55,9 +55,9 @@ create table if not exists sales_reports (
   source text not null default 'panel' check (source in ('panel','import')),
   import_key text unique,
   submitted_at timestamptz not null default now(),
-  submitted_by text references employees(id),
+  submitted_by text references employees(id) on update cascade,
   updated_at timestamptz,
-  updated_by text references employees(id),
+  updated_by text references employees(id) on update cascade,
   check ((report_type = 'Normal' and project_id is null) or (report_type = 'Sole Selling' and project_id is not null))
 );
 create unique index if not exists sales_reports_one_per_day_idx on sales_reports
@@ -67,7 +67,7 @@ create index if not exists sales_reports_date_idx on sales_reports (report_date)
 -- A visit someone scheduled. It belongs to that person (and project) only.
 create table if not exists site_visits (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id),
+  employee_id text not null references employees(id) on update cascade,
   report_type text not null check (report_type in ('Normal','Sole Selling')),
   project_id uuid references projects(id),
   client_name text not null,
@@ -83,7 +83,7 @@ create table if not exists site_visits (
 );
 create index if not exists site_visits_owner_idx on site_visits (employee_id, report_type, project_id, status);
 -- Set when HR/Admin close an old visit in bulk (outside any report).
-alter table site_visits add column if not exists closed_by text references employees(id);
+alter table site_visits add column if not exists closed_by text references employees(id) on update cascade;
 alter table site_visits add column if not exists closed_at timestamptz;
 
 -- What happened to a visit in a report: Done (today's visit or a future visit
@@ -93,7 +93,7 @@ create table if not exists visit_actions (
   id uuid primary key default gen_random_uuid(),
   report_id uuid references sales_reports(id) on delete cascade,
   visit_id uuid references site_visits(id) on delete cascade,
-  employee_id text not null references employees(id),
+  employee_id text not null references employees(id) on update cascade,
   report_type text not null,
   project_id uuid references projects(id),
   action_date date not null,
@@ -126,7 +126,7 @@ create index if not exists walk_ins_report_idx on walk_ins (report_id);
 create table if not exists report_changes (
   id bigint generated always as identity primary key,
   report_id uuid not null references sales_reports(id) on delete cascade,
-  changed_by text references employees(id),
+  changed_by text references employees(id) on update cascade,
   changed_at timestamptz not null default now(),
   field text not null,
   old_value text,
