@@ -3,9 +3,10 @@
 -- simple template), plus the old Google-Sheet history, with the same rules
 -- as the old Apps Script (Code.gs), web app (script.js) and Excel:
 --
---   * Present = both In and Out. Only one of them = "Missed punch" (not
---     counted until HR fixes it). No punches = Weekoff on the person's own
---     weekly off, otherwise Absent.
+--   * Present = both In and Out (old Excel rule). Only one of them, or no
+--     row at all = Weekoff on the person's own weekly off, otherwise Absent.
+--     Every day of a month up to the last uploaded day counts for every
+--     active employee, so the upload file needn't contain weekly offs.
 --   * Paid Leave = only what HR marks or the upload file says. Leave
 --     requests (the Leave page) never change attendance.
 --   * Working time = Out − In (no break deducted, like Code.gs).
@@ -135,8 +136,12 @@ language sql stable set search_path = public, private as $$
   with emp as (select * from employees where id = p_emp),
   span as (
     select greatest(p_from, coalesce((select joining_date from emp), p_from)) as f,
+           -- Active people: up to the last day uploaded for anyone. People who
+           -- left: up to their own last row (no weekly offs after leaving).
            least(p_to, private.today(),
-                 coalesce((select max(work_date) from attendance_days where employee_id = p_emp and work_date between p_from and p_to), p_from - 1)) as t
+                 coalesce((select max(work_date) from attendance_days
+                           where work_date between p_from and p_to
+                             and (employee_id = p_emp or (select status from emp) = 'Active')), p_from - 1)) as t
   ),
   base as (
     select g::date as d, a.in_time as tin, a.out_time as tout, a.status_set, a.remark, a.source as src,
@@ -155,7 +160,6 @@ language sql stable set search_path = public, private as $$
       case
         when c.status_set is not null then c.status_set
         when c.tin is not null and c.tout is not null then 'Present'
-        when c.tin is not null or c.tout is not null then 'Missed punch'
         when not private.is_working_day(c.d, c.week_off) then 'Weekoff'
         else 'Absent'
       end as st
@@ -190,7 +194,6 @@ language sql stable set search_path = public, private as $$
       count(*) filter (where status = 'Absent') as absent,
       count(*) filter (where status = 'Weekoff') as weekoff,
       count(*) filter (where status = 'Paid Leave') as paid_leave,
-      count(*) filter (where status = 'Missed punch') as missed,
       count(*) filter (where status = 'Present' and not private.is_working_day(day, (select week_off from employees where id = p_emp))) as wow_raw,
       -- Lates shown = every day In was after 10:30 (like the old Late card);
       -- a late day that is also short is charged once, as Short (script.js).
@@ -208,7 +211,7 @@ language sql stable set search_path = public, private as $$
     -- Absent shown (script.js "unpaid leave") = Absent − weekly-off working.
     'absent', absent - wow, 'absentDays', absent, 'weekoffWorked', wow,
     'weekoff', weekoff, 'paidLeave', paid_leave,
-    'missed', missed, 'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
+    'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
     'lateDeduction', greatest(lates_counted - private.att_free_lates(), 0) * 0.5,
     'shortDays', short_days,
     'netPayable', (present + weekoff + paid_leave + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
@@ -344,7 +347,6 @@ begin
       case
         when a.status_set is not null then a.status_set
         when a.tin is not null and a.tout is not null then 'Present'
-        when a.tin is not null or a.tout is not null then 'Missed punch'
         when not private.is_working_day(a.work_date, e.week_off) then 'Weekoff'
         else 'Absent'
       end as st,
@@ -356,7 +358,7 @@ begin
   )
   select coalesce(jsonb_agg(jsonb_build_object(
            'employee', private.person_json(employee_id), 'days', days, 'present', present, 'absent', absent,
-           'weekoff', weekoff, 'paidLeave', paid, 'late', late, 'short', short, 'missed', missed, 'kept', kept,
+           'weekoff', weekoff, 'paidLeave', paid, 'late', late, 'short', short, 'kept', kept,
            'from', f, 'to', t) order by employee_id), '[]'::jsonb)
   into v_people from (
     select employee_id, count(*) as days, min(work_date) as f, max(work_date) as t,
@@ -364,7 +366,6 @@ begin
       count(*) filter (where st = 'Weekoff') as weekoff, count(*) filter (where st = 'Paid Leave') as paid,
       count(*) filter (where st = 'Present' and tin > private.att_late_after()) as late,
       count(*) filter (where st = 'Present' and mins < private.att_full_day_minutes()) as short,
-      count(*) filter (where st = 'Missed punch') as missed,
       count(*) filter (where keep) as kept
     from ok group by employee_id
   ) p;
@@ -588,9 +589,10 @@ begin
   return coalesce((
     select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'summary', s, 'salary', private.att_salary(e, s, me)) order by e.name)
     from employees e, lateral (select private.att_summary(e.id, p_month) as s) x
-    where e.status = 'Active'
+    -- Admin has no attendance of their own.
+    where e.role <> 'Admin' and (e.status = 'Active'
        or exists (select 1 from attendance_days a where a.employee_id = e.id
-                  and a.work_date between private.month_start(p_month) and private.month_end(p_month))
+                  and a.work_date between private.month_start(p_month) and private.month_end(p_month)))
   ), '[]'::jsonb);
 end $$;
 
@@ -609,7 +611,7 @@ begin
   ), '[]'::jsonb);
 end $$;
 
--- Missed punches still to fix (this month and last).
+-- No longer used (a day with only In or only Out is Absent); kept for older app versions.
 create or replace function public.att_missed(p_token text) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
 declare
@@ -623,6 +625,23 @@ begin
                   union all
                   select * from private.att_days(e.id, private.month_start(private.today()), private.today())) d
     where d.status = 'Missed punch'
+  ), '[]'::jsonb);
+end $$;
+
+-- Every day of a month for everyone (HR/Admin), for the attendance list.
+-- Optional p_emp limits it to one person.
+create or replace function public.att_team_days(p_token text, p_month date, p_emp text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('employee', private.person_json(e.id), 'day', private.att_day_json(d)) order by d.day, e.name)
+    from employees e,
+         lateral private.att_days(e.id, private.month_start(p_month), private.month_end(p_month)) d
+    where (p_emp is null or e.id = p_emp) and e.role <> 'Admin'
+      and (e.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = e.id
+             and a.work_date between private.month_start(p_month) and private.month_end(p_month)))
   ), '[]'::jsonb);
 end $$;
 
@@ -654,8 +673,7 @@ begin
         'present', count(*) filter (where d.status = 'Present'),
         'late', count(*) filter (where d.late),
         'absent', count(*) filter (where d.status = 'Absent'),
-        'missed', count(*) filter (where d.status = 'Missed punch'),
         'onLeave', count(*) filter (where d.status = 'Paid Leave'))
       from employees e, lateral private.att_days(e.id, private.month_start(v_last), v_last) d
-      where e.status = 'Active' and d.day = v_last) end);
+      where e.status = 'Active' and e.role <> 'Admin' and d.day = v_last) end);
 end $$;

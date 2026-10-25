@@ -161,9 +161,10 @@ Report** (.xls, as downloaded) or the upload template
 (`public/templates/Y2B_Attendance_Upload_Template.xlsx`, also on the Upload
 tab). Rules (copied from the old Apps Script and sheet; `supabase/attendance.sql`
 has them at the top):
-- **Status:** In and Out → Present; only one of them → **Missed punch** (not
-  counted until HR fixes it); otherwise Weekoff on the person's own weekly
-  off, else Absent. Paid Leave is only what HR marks or the upload file says;
+- **Status:** In and Out → Present; otherwise Weekoff on the person's own
+  weekly off, else Absent. Every day of an uploaded month (up to the last
+  uploaded day) counts for every active employee, so the file needn't list
+  weekly offs. Paid Leave is only what HR marks or the upload file says;
   leave requests never change attendance.
 - **Late** = In after 10:30. The first 2 lates a month are free; from the 3rd,
   each is half a day ("Late Half"). **Short Day** = under 8 hours (Out − In) =
@@ -252,7 +253,7 @@ src/app/                     pages (App Router)
   login/                     sign-in
   (panel)/layout.tsx         sidebar + header shell, sign-in and /admin guards
   (panel)/dashboard/         employee dashboard
-  (panel)/attendance/        my month + team day/month, missed punch, upload, salary sheet (Admin)
+  (panel)/attendance/        attendance list (filters, edit), upload, salary sheet (Admin)
   (panel)/reports/           my reports + team reports (HR/Admin)
   (panel)/profile/           profile + change password
   (panel)/settings/          per-device preferences

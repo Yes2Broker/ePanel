@@ -50,7 +50,7 @@ export interface AdminDashboard {
 // ---------------------------------------------------------------------------
 // Attendance — see supabase/attendance.sql
 // ---------------------------------------------------------------------------
-export type AttStatus = "Present" | "Absent" | "Weekoff" | "Paid Leave" | "Missed punch";
+export type AttStatus = "Present" | "Absent" | "Weekoff" | "Paid Leave";
 
 export interface AttDay {
   date: string;
@@ -78,7 +78,6 @@ export interface AttSummary {
   weekoffWorked: number;
   weekoff: number;
   paidLeave: number;
-  missed: number;
   lates: number;
   latesCounted: number;
   lateHalves: number;
@@ -112,7 +111,7 @@ export interface AttImportResult {
   unmatched: { code: string; name: string | null; rows: number }[];
   errors: { row: number; message: string }[];
   errorCount: number;
-  people: { employee: PersonRef; days: number; present: number; absent: number; weekoff: number; paidLeave: number; late: number; short: number; missed: number; kept: number; from: string; to: string }[];
+  people: { employee: PersonRef; days: number; present: number; absent: number; weekoff: number; paidLeave: number; late: number; short: number; kept: number; from: string; to: string }[];
   comparison: { employee: PersonRef; date: string; in: string | null; out: string | null; sheetLate: string; sheetHalf: string; late: string; half: string }[];
   added: number;
   updated: number;
@@ -122,7 +121,7 @@ export interface AttImportResult {
 
 export interface AttDashboard {
   mine: AttSummary | null;
-  team: { date: string; present: number; late: number; absent: number; missed: number; onLeave: number } | null;
+  team: { date: string; present: number; late: number; absent: number; onLeave: number } | null;
 }
 
 // ---------------------------------------------------------------------------

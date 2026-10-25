@@ -73,8 +73,7 @@ export const api = {
   // Attendance (supabase/attendance.sql)
   attMonth: (employeeId: string | null, month: string) => rpc<AttMonth>("att_month", { p_emp: employeeId, p_month: month }),
   attTeamMonth: (month: string) => rpc<AttTeamMonthRow[]>("att_team_month", { p_month: month }),
-  attTeamDay: (date: string) => rpc<AttTeamDayRow[]>("att_team_day", { p_date: date }),
-  attMissed: () => rpc<{ employee: PersonRef; day: AttDay }[]>("att_missed"),
+  attTeamDays: (month: string, employeeId: string | null) => rpc<{ employee: PersonRef; day: AttDay }[]>("att_team_days", { p_month: month, p_emp: employeeId }),
   attSalarySheet: (month: string) => rpc<AttTeamMonthRow[]>("att_salary_sheet", { p_month: month }),
   attSetDay: (a: { employeeId: string; date: string; in: string; out: string; status: string; remark: string }) =>
     rpc<AttDay>("att_set_day", { p_emp: a.employeeId, p_date: a.date, p_in: a.in, p_out: a.out, p_status: a.status, p_remark: a.remark }),

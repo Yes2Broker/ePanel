@@ -1,15 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { ErrorBanner, Loading } from "@/components/ui/page";
-import { api } from "@/lib/api";
-import { useApi } from "@/lib/use-api";
 import { AttDay, AttMonth, AttSummary } from "@/types";
 import { cn, formatDate, formatINR, todayISO } from "@/lib/utils";
-import { AttPill, DayFlags, STATUS_CODE, STATUS_STYLE, hours } from "@/components/attendance/att-format";
-import { DayEdit, EditTarget } from "@/components/attendance/day-edit";
+import { STATUS_CODE, STATUS_STYLE } from "@/components/attendance/att-format";
 
 /** "2026-10" ± n months. */
 export function shiftMonth(month: string, n: number) {
@@ -43,7 +38,7 @@ const n1 = (v: number) => Number(v.toFixed(1));
 export function SummaryGrid({ s, salary }: { s: AttSummary; salary?: AttMonth["salary"] }) {
   const items: [string, string | number, string?][] = [
     ["Present", s.present],
-    ["Absent", s.absent, [s.weekoffWorked && `${s.absentDays} − ${s.weekoffWorked} weekly-off worked`, s.missed && `+ ${s.missed} missed punch`].filter(Boolean).join(" · ") || undefined],
+    ["Absent", s.absent, s.weekoffWorked ? `${s.absentDays} − ${s.weekoffWorked} weekly-off worked` : undefined],
     ["Weekoff", s.weekoff],
     ["Weekoff worked", s.weekoffWorked, "offsets absent"],
     ["Paid leave", s.paidLeave],
@@ -82,7 +77,7 @@ export function SummaryGrid({ s, salary }: { s: AttSummary; salary?: AttMonth["s
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function Calendar({ month, days, onPick }: { month: string; days: AttDay[]; onPick?: (d: AttDay) => void }) {
+export function Calendar({ month, days, onPick }: { month: string; days: AttDay[]; onPick?: (d: AttDay) => void }) {
   const byDate = new Map(days.map((d) => [d.date, d]));
   const first = new Date(`${month}-01T00:00:00Z`);
   const lead = (first.getUTCDay() + 6) % 7;
@@ -116,74 +111,10 @@ function Calendar({ month, days, onPick }: { month: string; days: AttDay[]; onPi
         })}
       </div>
       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1 text-[0.6875rem] text-ink-faint">
-        <span>P Present</span><span>A Absent</span><span>W Weekoff</span><span>PL Paid leave</span><span>MP Missed punch</span>
+        <span>P Present</span><span>A Absent</span><span>W Weekoff</span><span>PL Paid leave</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-status-warning" />Late</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-status-danger" />Late half / Short</span>
       </p>
     </Card>
-  );
-}
-
-/** One row per day, newest first. */
-export function DayList({ days, onPick }: { days: AttDay[]; onPick?: (d: AttDay) => void }) {
-  const rows = [...days].reverse();
-  if (!rows.length) return <p className="py-8 text-center text-sm text-ink-faint">No days yet.</p>;
-  return (
-    <Card className="divide-y divide-surface-border">
-      {rows.map((d) => (
-        <div key={d.date} className="flex items-center gap-3 px-3.5 py-2.5 sm:px-4">
-          <div className="w-16 shrink-0 text-sm text-ink">{formatDate(d.date, { weekday: true })}</div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <AttPill status={d.status} />
-              <DayFlags d={d} />
-            </div>
-            <p className="mt-0.5 break-words text-xs text-ink-muted">
-              {d.in || d.out ? `${d.in ?? "—"} – ${d.out ?? "—"}${d.minutes != null ? ` · ${hours(d.minutes)} h` : ""}` : ""}
-              {(d.in || d.out) && d.note ? " · " : ""}{d.note}
-            </p>
-          </div>
-          {onPick && (
-            <button onClick={() => onPick(d)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-surface hover:text-ink" aria-label={`Edit ${formatDate(d.date)}`}>
-              <Pencil className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      ))}
-    </Card>
-  );
-}
-
-/**
- * A person's month: totals, calendar and day list. `employeeId` null = me.
- * `canEdit` (HR/Admin) opens the day editor from the calendar or list.
- */
-export function MonthView({ employeeId, month, canEdit, onMonth }: { employeeId: string | null; month: string; canEdit?: boolean; onMonth: (m: string) => void }) {
-  const { data, loading, error, reload } = useApi(() => api.attMonth(employeeId, `${month}-01`), [employeeId, month]);
-  const [view, setView] = useState<"calendar" | "list">("calendar");
-  const [editing, setEditing] = useState<EditTarget | null>(null);
-  const pick = canEdit && data ? (d: AttDay) => setEditing({ employeeId: data.employee.id, name: data.employee.name, date: d.date, day: d }) : undefined;
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <MonthPicker month={month} onChange={onMonth} />
-        <div className="inline-flex rounded-full bg-white p-0.5 shadow-card" role="tablist">
-          {(["calendar", "list"] as const).map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={cn("min-h-10 rounded-full px-3.5 text-sm font-medium capitalize", view === v ? "bg-ink text-white" : "text-ink-muted")}>{v}</button>
-          ))}
-        </div>
-      </div>
-      <ErrorBanner message={error} onRetry={reload} />
-      {loading && !data ? <Loading /> : data && (
-        <>
-          {employeeId && <h2 className="break-words text-base font-semibold text-ink">{data.employee.name} <span className="font-normal text-ink-faint">· {data.employee.id}</span></h2>}
-          <SummaryGrid s={data.summary} salary={data.salary} />
-          {view === "calendar" ? <Calendar month={month} days={data.days} onPick={pick} /> : <DayList days={data.days} onPick={pick} />}
-          {canEdit && <p className="text-xs text-ink-faint">Tap a day to change it. Days after the last upload aren&apos;t shown yet.</p>}
-        </>
-      )}
-      <DayEdit target={editing} onClose={() => setEditing(null)} onSaved={reload} />
-    </div>
   );
 }

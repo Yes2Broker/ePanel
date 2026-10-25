@@ -6,15 +6,14 @@ export const STATUS_STYLE: Record<AttStatus, string> = {
   Absent: "bg-status-dangerBg text-status-danger",
   Weekoff: "bg-status-neutralBg text-ink-muted",
   "Paid Leave": "bg-brand-soft text-brand",
-  "Missed punch": "border border-status-danger text-status-danger",
 };
 
 /** Short code for the calendar cells. */
 export const STATUS_CODE: Record<AttStatus, string> = {
-  Present: "P", Absent: "A", Weekoff: "W", "Paid Leave": "PL", "Missed punch": "MP",
+  Present: "P", Absent: "A", Weekoff: "W", "Paid Leave": "PL",
 };
 
-export const ALL_STATUSES: AttStatus[] = ["Present", "Absent", "Weekoff", "Paid Leave", "Missed punch"];
+export const ALL_STATUSES: AttStatus[] = ["Present", "Absent", "Weekoff", "Paid Leave"];
 
 export function AttPill({ status, className }: { status: AttStatus; className?: string }) {
   return <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLE[status], className)}>{status}</span>;

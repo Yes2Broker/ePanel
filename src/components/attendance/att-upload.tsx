@@ -178,7 +178,6 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
                 <p className="break-words text-sm font-medium text-ink">{p.employee.name} <span className="font-normal text-ink-faint">· {p.employee.id}</span></p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   {p.days} days · P {p.present} · A {p.absent} · W {p.weekoff}{p.paidLeave ? ` · PL ${p.paidLeave}` : ""} · Late {p.late} · Short {p.short}
-                  {p.missed > 0 && <span className="font-medium text-status-danger"> · {p.missed} missed punch</span>}
                   {p.kept > 0 && ` · ${p.kept} kept`}
                 </p>
               </Card>
@@ -188,7 +187,7 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className={tableHeadCls}>
-                  {["Person", "Days", "Present", "Absent", "Weekoff", "Paid leave", "Late", "Short", "Missed punch", "Kept"].map((h, i) => (
+                  {["Person", "Days", "Present", "Absent", "Weekoff", "Paid leave", "Late", "Short", "Kept"].map((h, i) => (
                     <th key={h} className={cn("whitespace-nowrap px-3 py-2.5 font-medium", i ? "text-right" : "text-left")}>{h}</th>
                   ))}
                 </tr>
@@ -198,7 +197,6 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
                   <tr key={p.employee.id}>
                     <td className="px-3 py-2"><span className="whitespace-nowrap">{p.employee.name}</span> <span className="text-xs text-ink-faint">{p.employee.id}</span></td>
                     {[p.days, p.present, p.absent, p.weekoff, p.paidLeave, p.late, p.short].map((v, i) => <td key={i} className="px-3 py-2 text-right">{v}</td>)}
-                    <td className={cn("px-3 py-2 text-right", p.missed > 0 && "font-medium text-status-danger")}>{p.missed}</td>
                     <td className="px-3 py-2 text-right text-ink-muted" title="Days edited by HR are kept">{p.kept || ""}</td>
                   </tr>
                 ))}
