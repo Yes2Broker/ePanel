@@ -71,7 +71,7 @@ export function SummaryGrid({ s, salary }: { s: AttSummary; salary?: AttMonth["s
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
         {items.map(([label, value, note]) => (
           <Card key={label} className="min-w-0 p-2.5 sm:p-3">
-            <p className="truncate text-[0.6875rem] font-medium text-ink-muted sm:text-xs">{label}</p>
+            <p className="break-words text-[0.6875rem] font-medium leading-tight text-ink-muted sm:text-xs">{label}</p>
             <p className="text-lg font-semibold text-ink">{value}</p>
             {note && <p className="break-words text-[0.6875rem] leading-tight text-ink-faint">{note}</p>}
           </Card>
