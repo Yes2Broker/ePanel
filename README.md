@@ -131,7 +131,7 @@ Leave is a **request + approval only**. It never changes Attendance
 (status, payable days or salary). Rules (`supabase/leave.sql` has them at the top):
 - Full day or half day (first/second half = 0.5). Dates up to 7 days back,
   any date ahead. Each person's weekly off is never counted.
-- **Approval:** HR or Admin, never your own. HR can't act on an Admin's leave;
+- **Approval:** HR or Admin, never your own. HR's own leave goes to Admin only;
   an **Admin's own leave is approved automatically**.
   Rejecting needs a reason.
 - **Approver sees:** leave taken this month/year, and warnings — weekend

@@ -13,8 +13,8 @@
 --   * Half days (first / second half) count 0.5.
 --   * Each person's weekly off never counts as leave.
 --   * Dates: up to 7 days in the past, any date in the future.
---   * HR or Admin approve. Nobody approves their own. HR can't act on an
---     Admin's leave; an Admin's own leave is approved automatically.
+--   * HR or Admin approve. Nobody approves their own. HR's own leave goes
+--     to Admin only; an Admin's own leave is approved automatically.
 --   * Every action is written to leave_history.
 -- ===========================================================================
 
@@ -180,7 +180,8 @@ $$;
 -- May "me" approve / reject / cancel things for "emp"?
 create or replace function private.can_decide(me public.employees, emp public.employees) returns boolean
 language sql immutable as $$
-  select me.role in ('HR','Admin') and me.id <> emp.id and not (me.role = 'HR' and emp.role = 'Admin')
+  -- HR's own leave (and an Admin's) can only be decided by an Admin.
+  select me.role in ('HR','Admin') and me.id <> emp.id and not (me.role = 'HR' and emp.role in ('HR','Admin'))
 $$;
 
 create or replace function private.leave_log(p_app uuid, p_claim uuid, p_emp text, p_actor text, p_action text, p_details text)
@@ -648,7 +649,8 @@ begin
            order by case when a.status = 'Pending' then 0 else 1 end, a.start_date, a.created_at)
     from leave_applications a
     where case coalesce(p_status, 'Pending')
-            when 'Pending' then a.status = 'Pending'
+            -- Your own pending leave is in My leave, not in your approval queue.
+            when 'Pending' then a.status = 'Pending' and a.employee_id <> me.id
             when 'Upcoming' then a.status = 'Approved' and least(a.end_date, coalesce(a.cancelled_from - 1, a.end_date)) >= v_today
             else a.created_at >= now() - interval '60 days' or a.end_date >= v_today
           end
