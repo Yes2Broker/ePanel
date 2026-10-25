@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound } from "lucide-react";
+import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound, CalendarOff } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { CheckInCard } from "@/components/attendance/check-in-card";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
@@ -20,6 +20,7 @@ import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
 const on = {
   attendance: isFeatureEnabled("attendance"),
   reports: isFeatureEnabled("reports"),
+  leave: isFeatureEnabled("leave"),
 };
 const anyFeatureOn = FEATURE_KEYS.some(isFeatureEnabled);
 
@@ -28,6 +29,7 @@ export default function EmployeeDashboardPage() {
   const { prefs } = usePreferences();
   // Everything this call returns belongs to a feature, so skip it while they're all off.
   const { data, setData, loading, error, reload } = useApi(() => (anyFeatureOn ? api.employeeDashboard() : Promise.resolve(null)));
+  const leave = useApi(() => (on.leave ? api.leaveDashboard() : Promise.resolve(null)));
   if (!user) return null;
 
   const firstName = user.name.split(" ")[0];
@@ -45,6 +47,17 @@ export default function EmployeeDashboardPage() {
         <SummaryCard icon={Briefcase} label="Department" value={user.department} note={user.designation || undefined} />
         <SummaryCard icon={CalendarDays} label="Weekly Off" value={weekOffLabel(user.weekOff)} />
         <SummaryCard icon={UserRound} label="Reporting To" value={user.manager || "—"} href="/profile" />
+        {on.leave && permissions?.leave && leave.data && (
+          <SummaryCard
+            icon={CalendarOff} label="Next leave"
+            value={leave.data.nextLeave ? formatDate(leave.data.nextLeave.start, { weekday: true }) : "None"}
+            note={[
+              leave.data.nextLeave && `${leave.data.nextLeave.kind === "Comp-off" ? "Comp-off" : "Leave"} · ${Number(leave.data.nextLeave.days.toFixed(1))} day${leave.data.nextLeave.days === 1 ? "" : "s"}`,
+              leave.data.myPending ? `${leave.data.myPending} pending` : !leave.data.nextLeave && "Nothing planned",
+            ].filter(Boolean).join(" · ")}
+            href="/leave"
+          />
+        )}
       </div>
 
       <ComingSoonCard />

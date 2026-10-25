@@ -10,6 +10,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 **Employees**
 - **Dashboard** — your details, today's report status and recent reports.
 - **Daily Reports** — Normal and/or Sole Selling report, summary popup and image download (details below).
+- **Leave** — apply (full or half day, reason, optional photo/PDF), cancel, comp-off credits, company holidays (details below).
 - **Attendance** — coming soon.
 - **Profile** — view details and change your own password.
 - **Settings** — compact sidebar and which dashboard sections to show (per device).
@@ -19,6 +20,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 - **Employees** — add, edit, deactivate, reset passwords.
 - **Daily Reports → Team / Old visits / Projects** — totals, every report, history, file or fix any day.
 - **Permissions** — turn modules on/off per employee, and assign Sole Selling projects.
+- **Leave** — approve/reject requests and comp-off claims, team calendar, company holidays, monthly summary (CSV).
 
 **Links to other Yes2Broker sites** (open in a new tab, marked ↗ in the sidebar):
 - **Builder Data** — https://yes2broker.github.io/Builder-Data/ — shown to
@@ -48,7 +50,8 @@ files, in this order:
 2. `supabase/functions.sql` — everything the app calls
 3. `supabase/reports.sql` — Daily Reports (projects, reports, visits, history, import, email data)
 4. `supabase/builder_data_defaults.sql` — one-time Builder Data defaults (runs only once, however often you paste it)
-5. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
+5. `supabase/leave.sql` — Leave: requests, comp-offs, holidays, history (after reports.sql)
+6. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
 Your team was loaded once from a separate seed file kept out of Git.
 
 Both are safe to run again. Whenever `functions.sql` changes, re-run it.
@@ -121,11 +124,43 @@ change theirs from Profile → Change Password, and HR/Admin can reset it.
   password*) and `CRON_SECRET` in Vercel, then run `email_schedule.sql` with
   the same `CRON_SECRET`. "Send test email now" on the email tab checks it.
 
+## Leave
+
+Rules (`supabase/leave.sql` has them at the top):
+- **All leave is unpaid** — no quota, balance or carry forward. Full day or
+  half day (first/second half = 0.5). Dates up to 7 days back, any date ahead.
+- **Never counted:** each person's own weekly off and company holidays (no
+  sandwich rule). A holiday added later stops counting inside existing leave.
+- **Comp-off** = a paid day off. Filing a daily report on your weekly off or
+  a holiday lets you claim one for that date; HR/Admin approve; it must be
+  used within 30 days of the worked date, on one full working day.
+- **Approval:** HR or Admin, never your own. HR can't act on an Admin's leave;
+  an **Admin's own leave and comp-off claims are approved automatically**.
+  Rejecting needs a reason.
+- **Approver sees:** leave taken this month/year, and warnings — weekend
+  (peak site-visit days), "<Project> will have nobody on site on <date>",
+  "Already N people on leave that day".
+- **Cancel:** the employee cancels a pending request, or an approved one
+  before it starts. Once started, HR/Admin cancel the remaining days.
+- **Client visits** on leave days must be rescheduled (to a day outside the
+  leave) or handed over to a colleague on the same report/project before the
+  request can be sent.
+- **History:** every action (apply, approve, reject, cancel, visit moved,
+  comp-off, holiday change) is recorded with who and when.
+- **Daily Reports link:** in the Team view and the 10 PM email, people on
+  approved leave, their weekly off or a holiday show "On leave" / "Weekly off"
+  / "Holiday" instead of "not filed".
+- **Attachments** (photo or PDF, max 5 MB) are stored in the database and
+  only reachable through the panel's functions (the owner and HR/Admin).
+- The **Leave** permission is on by default for everyone.
+- Test data from checking a preview can be removed with
+  `supabase/leave_test_cleanup.sql` (only rows marked "TEST").
+
 ## Launching features one at a time
 
 Attendance is switched off for now and shows "Coming soon" (sidebar,
-dashboards, permissions page and its URLs). Daily Reports is live. Leave
-and personal tasks are not part of this panel.
+dashboards, permissions page and its URLs). Daily Reports and Leave are live.
+Personal tasks are not part of this panel.
 To launch one, set its `enabled` to `true` in **`src/lib/features.ts`** and
 merge. No SQL is needed, because the database side is already in place.
 

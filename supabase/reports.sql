@@ -180,6 +180,17 @@ language sql immutable as $$
          or (coalesce(v.reschedule_date, v.visit_date) < p_date and v.source = 'panel'))
 $$;
 
+-- Why someone isn't expected to file on a day ('On leave', 'Weekly off',
+-- 'Holiday', ...). The real version lives in leave.sql; this stand-in only
+-- exists until that runs, and re-running this file never replaces it.
+do $$
+begin
+  if to_regprocedure('private.day_off(public.employees,date)') is null then
+    execute $f$create function private.day_off(e public.employees, d date) returns text
+      language sql stable as 'select null::text'$f$;
+  end if;
+end $$;
+
 create or replace function private.project_json(p public.projects) returns jsonb
 language sql stable as $$ select jsonb_build_object('id', p.id, 'name', p.name, 'status', p.status) $$;
 
@@ -895,6 +906,7 @@ begin
                          'employeeId', e.id, 'employeeName', e.name,
                          'filedToday', exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_date = p_date
                                                and x.report_type = g.report_type and x.project_id is not distinct from g.project_id),
+                         'off', private.day_off(e, p_date),
                          'today', private.report_totals(e.id, g.report_type, g.project_id, p_date, p_date),
                          'mtd', private.report_totals(e.id, g.report_type, g.project_id, v_from, p_date)) order by e.name)
                       from employees e
@@ -966,6 +978,9 @@ language sql stable set search_path = public, private as $$
                'title', g.title, 'type', g.report_type, 'projectId', g.project_id,
                'rows', coalesce((
                   select jsonb_agg(jsonb_build_object('name', e.name,
+                           'off', private.day_off(e, b.d),
+                           'filed', exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_date = b.d
+                                            and x.report_type = g.report_type and x.project_id is not distinct from g.project_id),
                            'daily', private.report_totals(e.id, g.report_type, g.project_id, b.d, b.d),
                            'wtd', private.report_totals(e.id, g.report_type, g.project_id, b.w, b.d),
                            'mtd', private.report_totals(e.id, g.report_type, g.project_id, b.m, b.d)) order by e.name)

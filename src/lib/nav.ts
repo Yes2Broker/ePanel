@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, CalendarCheck, FileText, User, Settings,
-  Users, ShieldCheck, Building2, BarChart3, LucideIcon,
+  Users, ShieldCheck, Building2, BarChart3, CalendarOff, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
 import { FEATURES, FeatureKey, featureForPath, isFeatureEnabled } from "@/lib/features";
@@ -32,7 +32,8 @@ function itemsFor(user: Employee, permissions: Permissions | null) {
     employees: isManager && ({ href: "/admin/employees", label: "Employees", icon: Users } as NavItem),
     attendance: feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, isManager || can("attendance")),
     reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, isManager || can("normalReport") || can("soleSelling")),
-    builderData: can("builderData") && ({ href: BUILDER_DATA_URL, label: "Builder Data", icon: Building2, external: true } as NavItem),
+    leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, isManager || can("leave")),
+    builderData: can("builderData") &&({ href: BUILDER_DATA_URL, label: "Builder Data", icon: Building2, external: true } as NavItem),
     analytics: user.role === "Admin" && can("analytics") && ({ href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true } as NavItem),
     permissions: isManager && ({ href: "/admin/permissions", label: "Permissions", icon: ShieldCheck } as NavItem),
     profile: { href: "/profile", label: "Profile", icon: User } as NavItem,
@@ -45,27 +46,23 @@ const present = (items: (NavItem | false)[]) => items.filter((i): i is NavItem =
 /** Desktop / tablet sidebar. */
 export function navFor(user: Employee, permissions: Permissions | null): NavItem[] {
   const i = itemsFor(user, permissions);
-  return present([i.dashboard, i.employees, i.attendance, i.reports, i.builderData, i.analytics, i.permissions, i.profile, i.settings]);
+  return present([i.dashboard, i.employees, i.attendance, i.reports, i.leave, i.builderData, i.analytics, i.permissions, i.profile, i.settings]);
 }
 
 /**
- * Phone bottom bar. Employees get up to four direct items; HR and Admin get
- * three plus "More", which opens a sheet with the rest. Profile, Settings and
- * Log out are also in the avatar menu at the top.
+ * Phone bottom bar: three direct items plus "More" (a sheet with the rest,
+ * Install app and Log out). Everyone gets Dashboard, Reports and Leave when
+ * they have them; HR and Admin find Employees at the top of More.
  */
-export function bottomNavFor(user: Employee, permissions: Permissions | null): { bar: NavItem[]; more: NavItem[] | null } {
+export function bottomNavFor(user: Employee, permissions: Permissions | null): { bar: NavItem[]; more: NavItem[] } {
   const i = itemsFor(user, permissions);
-  const isManager = user.role === "Admin" || user.role === "HR";
-  if (isManager) {
-    // A switched-off Reports feature is still listed (as Coming soon) so the bar keeps its shape.
-    return {
-      bar: present([i.dashboard, i.reports, i.employees]),
-      more: present([i.attendance, i.builderData, i.analytics, i.permissions, i.settings]),
-    };
-  }
-  const bar = present([i.dashboard, i.reports && !i.reports.comingSoon && i.reports, i.builderData, i.profile]);
-  if (bar.length < 4) bar.push(i.settings);
-  return { bar, more: null };
+  const live = (item: NavItem | false) => !!item && !item.comingSoon && item;
+  const bar = present([i.dashboard, live(i.reports), live(i.leave)]);
+  if (bar.length < 3) bar.push(i.profile);
+  const inBar = new Set(bar.map((b) => b.href));
+  const more = present([i.employees, i.reports, i.leave, i.attendance, i.builderData, i.analytics, i.permissions, i.profile, i.settings])
+    .filter((m) => !inBar.has(m.href));
+  return { bar, more };
 }
 
 export function isActivePath(item: NavItem, pathname: string) {
@@ -80,6 +77,7 @@ export function pageTitle(pathname: string): string {
   if (pathname.startsWith("/reports/fill")) return "New report";
   if (pathname.startsWith("/reports/edit")) return "Edit report";
   if (pathname.startsWith("/reports/import")) return "Import old data";
+  if (pathname.startsWith("/leave")) return "Leave";
   const feature = featureForPath(pathname) ?? (pathname.startsWith("/coming-soon/") ? (pathname.split("/")[2] as FeatureKey) : null);
   if (feature && FEATURES[feature]) return FEATURES[feature].label;
   const titles: [string, string][] = [
