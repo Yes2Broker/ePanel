@@ -23,6 +23,7 @@ export const MODULE_KEYS = [
   "soleSelling",
   "builderData",
   "analytics",
+  "leave",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -198,6 +199,108 @@ export interface TeamSummaryGroup {
   type: SalesReportType;
   projectId: string | null;
   title: string;
-  rows: { employeeId: string; employeeName: string; filedToday: boolean; today: ReportTotals; mtd: ReportTotals }[];
+  // off: "On leave" | "Half-day leave" | "Weekly off" | "Holiday" on the summary date, else null.
+  rows: { employeeId: string; employeeName: string; filedToday: boolean; off?: string | null; today: ReportTotals; mtd: ReportTotals }[];
   totals: { today: ReportTotals; mtd: ReportTotals };
+}
+
+// ---------------------------------------------------------------------------
+// Leave — see supabase/leave.sql
+// ---------------------------------------------------------------------------
+export type LeaveKind = "Leave" | "Comp-off";
+export type LeaveStatus = "Pending" | "Approved" | "Rejected" | "Cancelled";
+export interface PersonRef { id: string; name: string; department: Department; role: Role }
+
+export interface LeaveApplication {
+  id: string;
+  employee: PersonRef;
+  kind: LeaveKind;
+  start: string;
+  end: string;
+  half: "first" | "second" | null;
+  reason: string;
+  days: number;
+  dayList: { date: string; portion: number }[];
+  status: LeaveStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  cancelledFrom: string | null;
+  cancelledBy: string | null;
+  cancelledAt: string | null;
+  cancelNote: string | null;
+  createdAt: string;
+  compOffDate: string | null;
+  attachment: { name: string; mime: string; size: number } | null;
+  canCancel: boolean;
+  canCancelRemaining: boolean;
+  canDecide: boolean;
+  // Approver list only
+  warnings?: string[];
+  taken?: { month: number; year: number };
+  visitChanges?: string[];
+}
+
+export interface CompOffClaim {
+  id: string;
+  employee: PersonRef;
+  workedDate: string;
+  reason: string;
+  note: string;
+  status: LeaveStatus;
+  expires: string;
+  usedBy: { id: string; date: string; status: LeaveStatus } | null;
+  expired: boolean;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  canCancel: boolean;
+  canDecide: boolean;
+  reports?: string[] | null;
+}
+
+export interface Holiday { date: string; name: string }
+
+export interface LeaveOverview {
+  today: string;
+  canApply: boolean;
+  weekOff: number | null;
+  stats: { month: number; year: number };
+  applications: LeaveApplication[];
+  claims: CompOffClaim[];
+  claimable: { date: string; reason: string }[];
+  holidays: Holiday[];
+}
+
+export interface LeaveVisit {
+  id: string;
+  client: string;
+  date: string;
+  type: SalesReportType;
+  title: string;
+  colleagues: { id: string; name: string }[];
+}
+
+export interface LeavePreview {
+  days: { date: string; portion: number }[];
+  total: number;
+  skipped: number;
+  visits: LeaveVisit[];
+}
+
+export interface LeaveCalendarDay {
+  date: string;
+  holiday: string | null;
+  leaves: { id: string; employeeId: string; name: string; kind: LeaveKind; portion: number; half: string | null; status: LeaveStatus }[];
+  weeklyOff: string[];
+}
+
+export interface LeaveSummaryRow { employee: PersonRef; unpaid: number; compOff: number; halfDays: number; total: number }
+
+export interface LeaveDashboard {
+  nextLeave: LeaveApplication | null;
+  myPending: number;
+  onLeaveToday: { id: string; name: string; portion: number }[] | null;
+  pendingApprovals: number | null;
 }

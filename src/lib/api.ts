@@ -3,6 +3,8 @@ import {
   AdminDashboard, AttendanceRecord, Employee, EmployeeDashboard, ModuleKey, Permissions,
   TeamAttendanceRow, Project, ReportOption, ReportFormData, ReportPayload,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType, StaleVisit,
+  LeaveOverview, LeaveKind, LeavePreview, LeaveApplication, CompOffClaim, LeaveCalendarDay, LeaveSummaryRow,
+  Holiday, LeaveDashboard,
 } from "@/types";
 
 /**
@@ -113,6 +115,32 @@ export const api = {
   listStaleVisits: () => rpc<StaleVisit[]>("list_stale_visits"),
   closeStaleVisits: (ids: string[], status: "Done" | "Cancelled", reason: string) =>
     rpc<number>("close_stale_visits", { p_ids: ids, p_status: status, p_reason: reason }),
+
+  // Leave (supabase/leave.sql)
+  leaveOverview: () => rpc<LeaveOverview>("leave_overview"),
+  leaveUploadChunk: (uploadId: string, seq: number, base64: string) =>
+    rpc<void>("leave_upload_chunk", { p_upload: uploadId, p_seq: seq, p_data: base64 }),
+  leavePreview: (f: { kind: LeaveKind; start: string; end: string; half: string | null; compOffId: string | null }) =>
+    rpc<LeavePreview>("leave_preview", { p_kind: f.kind, p_start: f.start, p_end: f.end, p_half: f.half, p_comp_off: f.compOffId }),
+  leaveApply: (data: Record<string, unknown>) => rpc<LeaveApplication>("leave_apply", { p_data: data }),
+  leaveCancel: (id: string, from: string | null, note: string) =>
+    rpc<LeaveApplication>("leave_cancel", { p_id: id, p_from: from, p_note: note }),
+  leaveTimeline: (id: string) => rpc<{ at: string; by: string | null; action: string; details: string | null }[]>("leave_timeline", { p_id: id }),
+  leaveAttachment: (id: string) => rpc<{ name: string; mime: string; data: string } | null>("leave_attachment", { p_id: id }),
+  compOffClaim: (date: string, note: string) => rpc<CompOffClaim>("comp_off_claim", { p_date: date, p_note: note }),
+  compOffCancel: (id: string) => rpc<CompOffClaim>("comp_off_cancel", { p_id: id }),
+  leaveQueue: (status: "Pending" | "Upcoming" | "All") => rpc<LeaveApplication[]>("leave_queue", { p_status: status }),
+  leaveDecide: (id: string, approve: boolean, note: string) =>
+    rpc<LeaveApplication>("leave_decide", { p_id: id, p_approve: approve, p_note: note }),
+  compOffList: (status: "Pending" | "All") => rpc<CompOffClaim[]>("comp_off_list", { p_status: status }),
+  compOffDecide: (id: string, approve: boolean, note: string) =>
+    rpc<CompOffClaim>("comp_off_decide", { p_id: id, p_approve: approve, p_note: note }),
+  leaveCalendar: (month: string) => rpc<{ from: string; to: string; days: LeaveCalendarDay[] }>("leave_calendar", { p_month: month }),
+  leaveMonthSummary: (month: string) => rpc<LeaveSummaryRow[]>("leave_month_summary", { p_month: month }),
+  holidayList: (year: number) => rpc<Holiday[]>("holiday_list", { p_year: year }),
+  holidaySave: (date: string, name: string) => rpc<void>("holiday_save", { p_date: date, p_name: name }),
+  holidayDelete: (date: string) => rpc<void>("holiday_delete", { p_date: date }),
+  leaveDashboard: () => rpc<LeaveDashboard>("leave_dashboard"),
 
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),

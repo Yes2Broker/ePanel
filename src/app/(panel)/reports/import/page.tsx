@@ -217,7 +217,7 @@ export default function ImportPage() {
     return <div className="pt-4"><EmptyState icon={FileUp} title="Only an Admin can import data" /></div>;
   }
 
-  // "Chirag Rawat (OLD05)" — also for people being created as inactive in step 2.
+  // "Chirag Rawat (EMP012)" — also for people being created as inactive in step 2.
   const personLabel = (id: string) => {
     const known = empById.get(id)?.name;
     const created = foundNames.find(([k]) => { const c = choiceFor(k); return c.mode === "create" && c.id.trim().toUpperCase() === id; })?.[1];
@@ -290,7 +290,7 @@ export default function ImportPage() {
                     <option value="__skip">Skip this person&apos;s rows</option>
                   </select>
                   {c.mode === "create" && (
-                    <input aria-label={`New employee code for ${raw}`} value={c.id} placeholder="Code, e.g. OLD01"
+                    <input aria-label={`New employee code for ${raw}`} value={c.id} placeholder="Code, e.g. EMP022"
                       onChange={(e) => setNames((n) => ({ ...n, [key]: { mode: "create", id: e.target.value } }))}
                       className="w-28 rounded-pill border border-surface-border px-3 py-2 text-sm uppercase" />
                   )}
@@ -406,8 +406,9 @@ function Stat({ label, value, note }: { label: string; value: number; note?: str
   );
 }
 
-/** Next free "OLDnn" code for a new inactive employee. */
+/** Next employee code after the highest one in use (e.g. EMP022), for a new inactive employee. */
 function suggestId(emps: Employee[], choices: Record<string, NameChoice>) {
-  const used = new Set([...emps.map((e) => e.id), ...Object.values(choices).flatMap((c) => (c.mode === "create" ? [c.id.toUpperCase()] : []))]);
-  for (let i = 1; ; i++) { const id = `OLD${String(i).padStart(2, "0")}`; if (!used.has(id)) return id; }
+  const used = [...emps.map((e) => e.id), ...Object.values(choices).flatMap((c) => (c.mode === "create" ? [c.id.toUpperCase()] : []))];
+  const max = Math.max(0, ...used.map((id) => /^EMP(\d+)$/.exec(id)?.[1]).filter(Boolean).map(Number));
+  return `EMP${String(max + 1).padStart(3, "0")}`;
 }

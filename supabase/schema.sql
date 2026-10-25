@@ -45,7 +45,7 @@ create unique index if not exists employees_email_lower_idx on employees (lower(
 -- ---------------------------------------------------------------------------
 create table if not exists sessions (
   token_hash text primary key,
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null
 );
@@ -55,7 +55,7 @@ create index if not exists sessions_employee_idx on sessions (employee_id);
 -- Attendance: one row per employee per working day.
 -- ---------------------------------------------------------------------------
 create table if not exists attendance (
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   work_date date not null,
   check_in timestamptz,
   check_out timestamptz,
@@ -73,14 +73,14 @@ create index if not exists attendance_date_idx on attendance (work_date);
 -- ---------------------------------------------------------------------------
 create table if not exists leave_requests (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   leave_type text not null check (leave_type in ('Casual','Sick','Earned','Unpaid')),
   start_date date not null,
   end_date date not null,
   reason text not null default '',
   status text not null default 'Pending' check (status in ('Pending','Approved','Rejected','Cancelled')),
   review_note text,
-  reviewed_by text references employees(id) on delete set null,
+  reviewed_by text references employees(id) on update cascade on delete set null,
   reviewed_at timestamptz,
   created_at timestamptz not null default now(),
   check (end_date >= start_date)
@@ -92,7 +92,7 @@ create index if not exists leave_requests_employee_idx on leave_requests (employ
 -- ---------------------------------------------------------------------------
 create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   title text not null,
   description text not null default '',
   priority text not null default 'Medium' check (priority in ('Low','Medium','High')),
@@ -110,13 +110,13 @@ create index if not exists tasks_employee_idx on tasks (employee_id, status);
 -- ---------------------------------------------------------------------------
 create table if not exists daily_reports (
   id uuid primary key default gen_random_uuid(),
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   report_date date not null,
   report_type text not null check (report_type in ('Normal','Sole Selling')),
   data jsonb not null default '{}'::jsonb,
   status text not null default 'Draft' check (status in ('Draft','Submitted','Approved','Rejected')),
   review_note text,
-  reviewed_by text references employees(id) on delete set null,
+  reviewed_by text references employees(id) on update cascade on delete set null,
   reviewed_at timestamptz,
   submitted_at timestamptz,
   created_at timestamptz not null default now(),
@@ -130,7 +130,7 @@ create index if not exists daily_reports_date_idx on daily_reports (report_date)
 -- this employee's role/department" (see private.default_permission).
 -- ---------------------------------------------------------------------------
 create table if not exists employee_permissions (
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id text not null references employees(id) on update cascade on delete cascade,
   module text not null,
   enabled boolean not null,
   primary key (employee_id, module)

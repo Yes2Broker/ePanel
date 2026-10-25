@@ -27,6 +27,13 @@ const COLS: { key: keyof ReportTotals; label: string; title: string }[] = [
   { key: "closureConversion", label: "CC%", title: "Closure Conversion" },
 ];
 
+/** No report that day: why, if they were off (leave, weekly off, holiday), else "not filed". */
+function NotFiled({ off }: { off?: string | null }) {
+  // A half day still means a report is expected.
+  if (off && off !== "Half-day leave") return <span className="text-xs font-normal text-ink-faint">{off}</span>;
+  return <span className="text-xs font-normal text-status-danger">not filed{off ? ` · ${off.toLowerCase()}` : ""}</span>;
+}
+
 /** One person's (or the total's) numbers as a labelled 3-column grid — the phone version of a table row. */
 function TotalsGrid({ t, cols, dim }: { t: ReportTotals; cols: typeof COLS; dim?: boolean }) {
   return (
@@ -163,7 +170,7 @@ export function TeamReports() {
                     <li key={r.employeeId} className="space-y-2 px-4 py-3">
                       <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium text-ink">
                         <span className="break-words">{r.employeeName}</span>
-                        {dim && <span className="text-xs font-normal text-status-danger">not filed</span>}
+                        {dim && <NotFiled off={r.off} />}
                       </p>
                       <TotalsGrid t={r[period]} cols={cols} dim={dim} />
                     </li>
@@ -191,7 +198,7 @@ export function TeamReports() {
                       return (
                         <tr key={r.employeeId} className="border-t border-surface-border">
                           <td className="px-4 py-2 font-medium text-ink">
-                            {r.employeeName}{dim && <span className="ml-1.5 text-xs font-normal text-status-danger">not filed</span>}
+                            {r.employeeName}{dim && <span className="ml-1.5"><NotFiled off={r.off} /></span>}
                           </td>
                           {cols.map((c) => <td key={c.key} className={cn("px-2 py-2 text-center", dim ? "text-ink-faint" : "text-ink")}>{t[c.key]}</td>)}
                         </tr>

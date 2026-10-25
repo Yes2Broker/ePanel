@@ -19,4 +19,5 @@ export const MODULES: { key: ModuleKey; label: string; comingSoon?: boolean; adm
   { key: "soleSelling", label: "Sole Selling Daily Report" },
   { key: "builderData", label: "Builder Data" },
   { key: "analytics", label: "Analytics", adminOnly: true },
+  { key: "leave", label: "Leave" },
 ];

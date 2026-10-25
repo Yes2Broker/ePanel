@@ -10,7 +10,8 @@ interface Totals { leads: number; calls: number; positive: number; scheduled: nu
 interface Group {
   title: string;
   type: "Normal" | "Sole Selling";
-  rows: { name: string; daily: Totals; wtd: Totals; mtd: Totals }[];
+  // off: "On leave", "Half-day leave", "Weekly off" or "Holiday" (null on a normal working day).
+  rows: { name: string; off?: string | null; filed?: boolean; daily: Totals; wtd: Totals; mtd: Totals }[];
   totals: { daily: Totals; wtd: Totals; mtd: Totals };
 }
 export interface EmailPayload { date: string; recipients: string[]; groups: Group[] }
@@ -45,6 +46,10 @@ function section(g: Group, key: "daily" | "wtd" | "mtd", label: string) {
   const cols = ["FL", "CM", "P", "SVS", "SVD", "B"];
   const rows = g.rows.map((r) => {
     const t = r[key];
+    // Off today and no report: say why instead of a row of zeros.
+    if (key === "daily" && r.off && !r.filed) {
+      return `<tr><td style="${tdName}">${esc(shortName(r.name))}</td><td colspan="6" style="${tdBase}color:#718096;font-style:italic;">${esc(r.off)}</td></tr>`;
+    }
     return `<tr><td style="${tdName}">${esc(shortName(r.name))}</td>${[t.leads, t.calls, t.positive, t.scheduled, t.done, t.tokens]
       .map((v) => `<td style="${tdBase}">${v}</td>`).join("")}</tr>`;
   }).join("") || `<tr><td colspan="7" style="${tdBase}color:#a0aec0;">No reports</td></tr>`;
@@ -88,6 +93,7 @@ export function buildText(g: Group, date: string) {
     lines.push(`--- ${label} ---`, "Name         | FL  | CM  | P   | SVS | SVD | B");
     for (const r of g.rows) {
       const t = r[key];
+      if (key === "daily" && r.off && !r.filed) { lines.push(`${shortName(r.name).padEnd(12)} | ${r.off}`); continue; }
       lines.push(`${shortName(r.name).padEnd(12)} | ${[t.leads, t.calls, t.positive, t.scheduled, t.done].map((v) => String(v).padEnd(3)).join(" | ")} | ${t.tokens}`);
     }
     const t = g.totals[key];

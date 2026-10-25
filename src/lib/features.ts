@@ -9,6 +9,7 @@ import { ModuleKey } from "@/types";
 export const FEATURES = {
   attendance: { label: "Attendance", enabled: false },
   reports: { label: "Daily Reports", enabled: true },
+  leave: { label: "Leave", enabled: true },
 } as const;
 
 export type FeatureKey = keyof typeof FEATURES;
@@ -23,6 +24,7 @@ export function isFeatureEnabled(key: FeatureKey) {
 export const FEATURE_ROUTES: Record<FeatureKey, string[]> = {
   attendance: ["/attendance", "/admin/attendance"],
   reports: ["/reports", "/admin/reports"],
+  leave: ["/leave", "/admin/leave"],
 };
 
 /** The feature a path belongs to, if any. Matches the prefix and anything below it. */
@@ -38,4 +40,5 @@ export const MODULE_FEATURE: Partial<Record<ModuleKey, FeatureKey>> = {
   attendance: "attendance",
   normalReport: "reports",
   soleSelling: "reports",
+  leave: "leave",
 };

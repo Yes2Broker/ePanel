@@ -62,7 +62,7 @@ $$;
 
 create or replace function private.modules() returns text[]
 language sql immutable as $$
-  select array['attendance','tasks','normalReport','soleSelling','builderData','analytics']
+  select array['attendance','tasks','normalReport','soleSelling','builderData','analytics','leave']
 $$;
 
 create or replace function private.employee_json(e public.employees) returns jsonb
@@ -84,6 +84,7 @@ language sql stable as $$
     when 'soleSelling' then e.department = 'Sales'
     when 'builderData' then e.department <> 'Tech'
     when 'analytics' then e.role = 'Admin'
+    when 'leave' then true
     else false
   end
 $$;

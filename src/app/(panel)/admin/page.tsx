@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, UserCheck, FileText, Building2 } from "lucide-react";
+import { Users, UserCheck, FileText, Building2, CalendarOff, Inbox } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
 import { TopPerformers } from "@/components/dashboard/top-performers";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
@@ -19,6 +19,7 @@ import { FEATURE_KEYS, isFeatureEnabled } from "@/lib/features";
 const on = {
   attendance: isFeatureEnabled("attendance"),
   reports: isFeatureEnabled("reports"),
+  leave: isFeatureEnabled("leave"),
 };
 // The stats call only feeds feature widgets, so skip it while every feature is off.
 const anyFeatureOn = FEATURE_KEYS.some(isFeatureEnabled);
@@ -27,6 +28,7 @@ export default function AdminDashboardPage() {
   const { permissions } = useSession();
   const employees = useApi(() => api.listEmployees());
   const { data, loading, error, reload } = useApi(() => (anyFeatureOn ? api.adminDashboard() : Promise.resolve(null)));
+  const leave = useApi(() => (on.leave ? api.leaveDashboard() : Promise.resolve(null)));
   // HR/Admin check in too; load their own row for the widget.
   const mine = useApi(
     () => (on.attendance && permissions?.attendance ? api.myAttendance(todayISO()) : Promise.resolve([])),
@@ -62,6 +64,15 @@ export default function AdminDashboardPage() {
             />
           )}
           {on.reports && data && <SummaryCard icon={FileText} label="Reports Today" value={data.reportsToday} note="filed today" href="/reports" />}
+          {on.leave && leave.data?.onLeaveToday && (
+            <SummaryCard icon={CalendarOff} label="On leave today" value={leave.data.onLeaveToday.length}
+              note={leave.data.onLeaveToday.map((p) => `${p.name.split(" ")[0]}${p.portion < 1 ? " (½)" : ""}`).join(", ") || "Everyone in"}
+              href="/leave?tab=calendar" />
+          )}
+          {on.leave && leave.data && leave.data.pendingApprovals != null && (
+            <SummaryCard icon={Inbox} label="Pending approvals" value={leave.data.pendingApprovals}
+              note="leave and comp-offs" href="/leave?tab=requests" />
+          )}
         </div>
       )}
 
