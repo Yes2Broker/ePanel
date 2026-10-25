@@ -137,7 +137,7 @@ export function TeamReports() {
             <div className="flex shrink-0 rounded-full bg-white p-0.5 shadow-card" role="tablist">
               {([["today", "Day"], ["mtd", "MTD"]] as [Period, string][]).map(([v, l]) => (
                 <button key={v} role="tab" aria-selected={period === v} aria-label={v === "today" ? formatDate(date, { weekday: true }) : "MTD"} onClick={() => setPeriod(v)}
-                  className={cn("min-h-9 rounded-full px-3 text-sm font-medium", period === v ? "bg-ink text-white" : "text-ink-muted")}>
+                  className={cn("min-h-10 rounded-full px-3.5 text-sm font-medium", period === v ? "bg-ink text-white" : "text-ink-muted")}>
                   {l}
                 </button>
               ))}
