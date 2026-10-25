@@ -1,7 +1,7 @@
 # Yes2Broker Employee Panel
 
 The internal panel for Yes2Broker staff: daily reports (Normal + Sole
-Selling) today, attendance next, and an HR/Admin side for managing
+Selling), attendance, leave, and an HR/Admin side for managing
 employees and module access. Built with Next.js (App Router),
 TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 
@@ -11,7 +11,7 @@ TypeScript, Tailwind CSS, lucide-react, Recharts and Supabase (Postgres).
 - **Dashboard** — your details, today's report status and recent reports.
 - **Daily Reports** — Normal and/or Sole Selling report, summary popup and image download (details below).
 - **Leave** — apply (full or half day, reason, optional photo/PDF), cancel, comp-off credits, company holidays (details below).
-- **Attendance** — coming soon.
+- **Attendance** — your month: calendar and list, payable days, lates, short days (details below).
 - **Profile** — view details and change your own password.
 - **Settings** — compact sidebar and which dashboard sections to show (per device).
 
@@ -51,7 +51,8 @@ files, in this order:
 3. `supabase/reports.sql` — Daily Reports (projects, reports, visits, history, import, email data)
 4. `supabase/builder_data_defaults.sql` — one-time Builder Data defaults (runs only once, however often you paste it)
 5. `supabase/leave.sql` — Leave: requests, comp-offs, holidays, history (after reports.sql)
-6. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
+6. `supabase/attendance.sql` — Attendance: uploaded days, edits + history, code mappings, salary sheet (after leave.sql)
+7. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit the secret first; see below)
 Your team was loaded once from a separate seed file kept out of Git.
 
 Both are safe to run again. Whenever `functions.sql` changes, re-run it.
@@ -156,10 +157,41 @@ Rules (`supabase/leave.sql` has them at the top):
 - Test data from checking a preview can be removed with
   `supabase/leave_test_cleanup.sql` (only rows marked "TEST").
 
+## Attendance
+
+Days come from the eTimeOffice machine: HR uploads the **Month IN/OUT
+Report** (.xls, as downloaded) or the upload template
+(`public/templates/Y2B_Attendance_Upload_Template.xlsx`, also on the Upload
+tab). Rules (copied from the old Apps Script and sheet; `supabase/attendance.sql`
+has them at the top):
+- **Status:** In and Out → Present; only one of them → **Missed punch** (not
+  counted until HR fixes it); otherwise Weekoff on the person's own weekly
+  off, else Absent. Company holidays are Paid Leave for everyone; approved
+  leave and comp-offs show on their days.
+- **Late** = In after 10:30. The first 2 lates a month are free; from the 3rd,
+  each is half a day ("Late Half"). **Short Day** = under 8 hours (Out − In) =
+  half a day. A day that is both late and short counts once, as Short.
+- **Net payable** = Present + Weekoff + Paid Leave + Comp-off − (late
+  deductions + short days × 0.5). **Salary** (Admin only) = monthly salary ÷
+  days in month × net payable.
+- **Working on your weekly off** adds a comp-off credit automatically
+  (approved, use within 30 days).
+- **Uploads** preview per person first. Machine codes match automatically
+  (0002 → EMP002); others are mapped once and remembered. Re-uploading never
+  duplicates a day and never changes a day HR edited.
+- **Edits** (HR/Admin): In/Out, status, remark on any past day; Late/Short
+  are worked out again; every change is recorded (who, when, old → new).
+- **Salaries never leave the database for anyone but an Admin** (employee
+  lists, attendance and the salary sheet all check this in SQL).
+- Admin can import the old Google Sheet history once (CSV of the
+  "Attendance" tab); statuses are kept, Late/Short recalculated, differences
+  shown before import.
+- Test data from checking a preview can be removed with
+  `supabase/attendance_test_cleanup.sql` (only rows with remark "TEST").
+
 ## Launching features one at a time
 
-Attendance is switched off for now and shows "Coming soon" (sidebar,
-dashboards, permissions page and its URLs). Daily Reports and Leave are live.
+Attendance, Daily Reports and Leave are live.
 Personal tasks are not part of this panel.
 To launch one, set its `enabled` to `true` in **`src/lib/features.ts`** and
 merge. No SQL is needed, because the database side is already in place.
@@ -223,7 +255,7 @@ src/app/                     pages (App Router)
   login/                     sign-in
   (panel)/layout.tsx         sidebar + header shell, sign-in and /admin guards
   (panel)/dashboard/         employee dashboard
-  (panel)/attendance/        my attendance + team view (HR/Admin)
+  (panel)/attendance/        my month + team day/month, missed punch, upload, salary sheet (Admin)
   (panel)/reports/           my reports + team reports (HR/Admin)
   (panel)/profile/           profile + change password
   (panel)/settings/          per-device preferences
@@ -249,5 +281,5 @@ src/components/              UI building blocks and feature dialogs
 
 ## Not built yet
 
-- Public holidays (only each person's weekly off is excluded from attendance).
+- An automatic eTimeOffice API import (uploads go through `att_import`, so one can be added later).
 - Self-service "forgot password" (HR/Admin resets it today).
