@@ -27,7 +27,7 @@ export function MonthPicker({ month, onChange }: { month: string; onChange: (m: 
   return (
     <div className="inline-flex items-center rounded-full bg-white shadow-card">
       <button onClick={() => onChange(shiftMonth(month, -1))} className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:text-ink" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-      <label className="relative min-w-[8.5rem] text-center text-sm font-medium text-ink">
+      <label className="relative flex h-10 min-w-[8.5rem] items-center justify-center text-sm font-medium text-ink">
         {monthLabel(month)}
         <input type="month" value={month} max={max} onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="Month"
           className="absolute inset-0 cursor-pointer opacity-0" />
