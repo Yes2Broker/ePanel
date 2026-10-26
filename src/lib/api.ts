@@ -38,7 +38,7 @@ const READS = new Set([
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
   "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
   "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard", "notifications_list", "notification_prefs_get",
-  "get_report_reminders",
+  "get_report_reminders", "get_report_reminder_time",
 ]);
 const pending = new Map<string, Promise<unknown>>();
 
@@ -188,6 +188,8 @@ export const api = {
   pushUnsubscribe: (endpoint: string) => rpc<void>("push_unsubscribe", { p_endpoint: endpoint }),
   getReportReminders: () => rpc<boolean>("get_report_reminders"),
   setReportReminders: (on: boolean) => rpc<boolean>("set_report_reminders", { p_on: on }),
+  getReportReminderTime: () => rpc<string>("get_report_reminder_time"),
+  setReportReminderTime: (time: string) => rpc<string>("set_report_reminder_time", { p_time: time }),
 
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),

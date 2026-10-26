@@ -10,11 +10,6 @@ import { TimeSelect, timeLabel } from "@/components/ui/pickers";
 import { api, errorMessage, getSessionToken } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 
-const addHour = (t: string, h: number) => {
-  const [hh, mm] = t.split(":").map(Number);
-  return `${String((hh + h + 24) % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-};
-
 /** Admin: who receives the daily report emails and when, plus a test-send button. */
 export function EmailSettings() {
   const toast = useToast();
@@ -41,6 +36,20 @@ export function EmailSettings() {
       toast(errorMessage(err), "error");
     }
   };
+  const remindAt = useApi(() => api.getReportReminderTime());
+  const [savingRemindAt, setSavingRemindAt] = useState(false);
+  const saveRemindAt = async (t: string) => {
+    setSavingRemindAt(true);
+    try {
+      remindAt.setData(await api.setReportReminderTime(t));
+      toast(`The reminder will go out at ${timeLabel(t)}.`);
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setSavingRemindAt(false);
+    }
+  };
+  const reminderAt = remindAt.data ?? "19:00";
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -86,14 +95,25 @@ export function EmailSettings() {
           <span className="text-sm text-ink-faint">India time, every day</span>
         </div>
       </Card>
-      <Card className="flex items-center justify-between gap-4 p-4 sm:p-5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2"><Bell className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Daily report reminder</h3></div>
-          <p className="mt-1 text-sm text-ink-faint">
-            A notification at {timeLabel(addHour(time.data ?? "22:00", -1))} to anyone who hasn&apos;t filed their report yet (not on leave or weekly off).
-          </p>
+      <Card className="space-y-3 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2"><Bell className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Daily report reminder</h3></div>
+            <p className="mt-1 text-sm text-ink-faint">
+              A notification at {timeLabel(reminderAt)} to anyone who hasn&apos;t filed their report yet (not on leave or weekly off).
+            </p>
+          </div>
+          <Toggle checked={reminders.data ?? true} disabled={reminders.data == null} onChange={saveReminders} label="Daily report reminder" />
         </div>
-        <Toggle checked={reminders.data ?? true} disabled={reminders.data == null} onChange={saveReminders} label="Daily report reminder" />
+        <ErrorBanner message={remindAt.error} onRetry={remindAt.reload} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-muted">Remind at</span>
+          <TimeSelect ariaLabel="Remind at (India time)" value={reminderAt} disabled={savingRemindAt || !remindAt.data} onChange={saveRemindAt} />
+          <span className="text-sm text-ink-faint">India time</span>
+        </div>
+        {remindAt.data && time.data && remindAt.data >= time.data && (
+          <p className="rounded-xl bg-status-warningBg px-3 py-2 text-sm text-status-warning">The reminder goes out after the email. Pick an earlier time.</p>
+        )}
       </Card>
       <Card className="space-y-3 p-4 sm:p-5">
         <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Recipients</h3></div>

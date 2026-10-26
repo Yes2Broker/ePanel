@@ -113,7 +113,15 @@ begin
          || ' · ' || rtrim(rtrim(to_char(v_total, 'FM990.0'), '0'), '.') || case when v_total <= 1 then ' day' else ' days' end;
 end $$;
 
--- Daily report reminder, 1 hour before the email time (cron, every 30 min).
+-- The reminder's own time (Daily Reports → Email), IST, "HH:MM" on the hour
+-- or half hour. 7:00 PM unless the Admin picks another.
+create or replace function private.reminder_time() returns text
+language plpgsql stable set search_path = public as $$
+begin
+  return coalesce((select value #>> '{}' from app_settings where key = 'report_reminder_time'), '19:00');
+end $$;
+
+-- Daily report reminder at the reminder time (cron, every 30 min).
 -- For employees and HR with a report to file. Runs once a day; Admin can
 -- turn it off on Daily Reports → Email.
 create or replace function private.make_report_reminders() returns int
@@ -121,14 +129,13 @@ language plpgsql volatile set search_path = public, private as $$
 declare
   v_now timestamp := now() at time zone private.tz();
   v_slot text := to_char(v_now, 'HH24') || ':' || case when extract(minute from v_now) < 30 then '00' else '30' end;
-  v_email time := private.email_time()::time;
   v_today date := private.today();
   e employees;
   v_missing text[];
   n int := 0;
 begin
   if coalesce((select value #>> '{}' from app_settings where key = 'report_reminders'), 'true') <> 'true' then return 0; end if;
-  if v_slot <> to_char(v_email - interval '1 hour', 'HH24:MI') then return 0; end if;
+  if v_slot <> private.reminder_time() then return 0; end if;
   insert into app_settings (key, value) values ('report_reminder_last_sent', to_jsonb(v_today::text))
   on conflict (key) do update set value = excluded.value where app_settings.value is distinct from excluded.value;
   get diagnostics n = row_count;
@@ -149,7 +156,7 @@ begin
     ) t;
     if v_missing is not null then
       perform private.notify(e.id, 'report_reminder', 'Daily report reminder',
-        format('You haven''t filed today''s %s yet. Please file it before %s.', array_to_string(v_missing, ' and '), to_char(v_email, 'FMHH12:MI AM')),
+        format('You haven''t filed today''s %s yet. Please file it before you leave.', array_to_string(v_missing, ' and ')),
         '/reports');
       n := n + 1;
     end if;
@@ -331,6 +338,29 @@ begin
   return coalesce(p_on, true);
 end $$;
 
+create or replace function public.get_report_reminder_time(p_token text) returns text
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can do this.' using errcode = '42501'; end if;
+  return private.reminder_time();
+end $$;
+
+create or replace function public.set_report_reminder_time(p_token text, p_time text) returns text
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can do this.' using errcode = '42501'; end if;
+  if coalesce(p_time, '') !~ '^([01][0-9]|2[0-3]):(00|30)$' then
+    raise exception 'Choose a time on the hour or half hour.' using errcode = '22023';
+  end if;
+  insert into app_settings (key, value) values ('report_reminder_time', to_jsonb(p_time))
+  on conflict (key) do update set value = excluded.value;
+  return p_time;
+end $$;
+
 -- ===========================================================================
 -- Grants
 -- ===========================================================================
@@ -345,7 +375,7 @@ begin
     where n.nspname = 'public' and p.proname in (
       'notifications_list','notifications_read','notification_prefs_get','notification_prefs_set','notify_test',
       'push_subscribe','push_unsubscribe','push_check','push_claim','push_done','report_email_failed',
-      'get_report_reminders','set_report_reminders'
+      'get_report_reminders','set_report_reminders','get_report_reminder_time','set_report_reminder_time'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);
