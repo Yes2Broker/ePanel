@@ -35,7 +35,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="Dashboard" subtitle="Your team at a glance." />
       <InstallBanner />
-      {on.attendance && <AttUpdateBanner />}
+      {on.attendance && <AttUpdateBanner where="dashboard" href={(m) => `/attendance?tab=mine&month=${m}`} />}
 
       <ErrorBanner message={employees.error} onRetry={employees.reload} />
       <ErrorBanner message={error} onRetry={reload} />

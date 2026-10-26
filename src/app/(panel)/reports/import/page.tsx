@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, FileUp, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/pickers";
+import { CheckBox, CheckRow } from "@/components/ui/checkbox";
 import { PrimaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
@@ -312,22 +313,21 @@ export default function ImportPage() {
           </ul>
           {activeProjects.length === 0 && <p className="text-xs text-status-danger">Add the projects first (Daily Reports → Projects).</p>}
           {(files["sole-summary"] || files["sole-past"]) && (
-            <label className="flex items-start gap-2 rounded-xl bg-surface p-3 text-sm text-ink">
-              <input type="checkbox" className="mt-0.5" checked={soleDoneHasWalkIns} onChange={(e) => setSoleDoneHasWalkIns(e.target.checked)} />
+            <button type="button" role="checkbox" aria-checked={soleDoneHasWalkIns} onClick={() => setSoleDoneHasWalkIns((v) => !v)}
+              className="flex w-full items-start gap-2.5 rounded-xl bg-surface p-3 text-left text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+              <span className="mt-0.5"><CheckBox checked={soleDoneHasWalkIns} /></span>
               <span>
                 In the old Sole Selling Sheet1 / Past Employee, <b>Site Visit Done already includes Walk In</b> — take walk-ins out.
                 <span className="mt-0.5 block text-xs text-ink-faint">In the panel, Site Visit Done never includes walk-ins. Check one old day: if its Site Visit Done equals the visits done plus the walk-ins, tick this.</span>
               </span>
-            </label>
+            </button>
           )}
           {soleStatuses.length > 0 && (
             <div className="rounded-xl bg-surface p-3 text-sm">
               <p className="mb-2 text-xs text-ink-muted">Rows in Sole Selling “Visits Done” with these Status values are walk-ins (shown in the Walk In list, not as visits):</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="grid gap-1.5 sm:grid-cols-2">
                 {soleStatuses.map((st) => (
-                  <label key={st} className="flex items-center gap-1.5">
-                    <input type="checkbox" checked={isWalkIn(st)} onChange={(e) => setWalkInStatuses((w) => ({ ...w, [st]: e.target.checked }))} /> {st}
-                  </label>
+                  <CheckRow key={st} checked={isWalkIn(st)} onChange={(on) => setWalkInStatuses((w) => ({ ...w, [st]: on }))} label={st} />
                 ))}
               </div>
             </div>

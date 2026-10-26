@@ -38,7 +38,7 @@ function AttendanceInner() {
       <PageHeader title="Attendance" subtitle={subtitle} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={tab} onChange={(t) => router.replace(`${pathname}?tab=${t}`)} />}
       {tab === "list" && <AttendanceList key={`${q.get("emp")}${q.get("month")}`} manager initialEmp={q.get("emp") ?? ""} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />}
-      {tab === "mine" && <><AttUpdateBanner /><AttendanceList manager={false} /></>}
+      {tab === "mine" && <><AttUpdateBanner /><AttendanceList key={`mine${q.get("month")}`} manager={false} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} /></>}
       {tab === "upload" && <AttendanceUpload />}
       {tab === "salary" && isAdmin && <SalarySheet />}
     </div>

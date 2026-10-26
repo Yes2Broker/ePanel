@@ -43,7 +43,7 @@ export default function EmployeeDashboardPage() {
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel." />
       <InstallBanner />
-      {on.attendance && <AttUpdateBanner />}
+      {on.attendance && <AttUpdateBanner where="dashboard" />}
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
         <SummaryCard icon={BadgeCheck} label="Employee ID" value={user.id} />
