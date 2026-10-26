@@ -171,7 +171,8 @@ begin
   return jsonb_build_object(
     'token', v_token,
     'employee', private.employee_json(v_emp),
-    'permissions', private.permissions_json(v_emp)
+    'permissions', private.permissions_json(v_emp),
+    'dashboard', private.dashboard_layout_json(v_emp.id)
   );
 end $$;
 
@@ -192,7 +193,8 @@ begin
                             created_at + make_interval(days => private.session_max_days()))
    where token_hash = encode(digest(p_token, 'sha256'), 'hex')
      and expires_at < now() + make_interval(days => private.session_days() - 1);
-  return jsonb_build_object('employee', private.employee_json(v_emp), 'permissions', private.permissions_json(v_emp));
+  return jsonb_build_object('employee', private.employee_json(v_emp), 'permissions', private.permissions_json(v_emp),
+                            'dashboard', private.dashboard_layout_json(v_emp.id));
 end $$;
 
 create or replace function public.change_my_password(p_token text, p_current text, p_new text) returns void
@@ -348,6 +350,46 @@ end $$;
 -- ===========================================================================
 -- Dashboards
 -- ===========================================================================
+-- Each person's "Customise dashboard" choice. No row = the role default.
+-- layout = [{"id": "payable", "on": true}, ...] in display order.
+create table if not exists dashboard_layouts (
+  employee_id text primary key references employees(id) on update cascade on delete cascade,
+  layout jsonb not null,
+  preset text not null,
+  updated_at timestamptz not null default now()
+);
+alter table dashboard_layouts enable row level security;
+revoke all on dashboard_layouts from anon, authenticated;
+
+-- Sent with the session (login_employee / get_me), so the dashboard needs no extra call.
+create or replace function private.dashboard_layout_json(p_emp text) returns jsonb
+language sql stable set search_path = public, private as $$
+  select jsonb_build_object('layout', layout, 'preset', preset) from dashboard_layouts where employee_id = p_emp
+$$;
+
+-- p_layout null = back to the role default.
+create or replace function public.save_dashboard_layout(p_token text, p_layout jsonb, p_preset text) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  v_emp employees := private.session_employee(p_token);
+begin
+  if p_layout is null then
+    delete from dashboard_layouts where employee_id = v_emp.id;
+    return null;
+  end if;
+  if jsonb_typeof(p_layout) <> 'array' or jsonb_array_length(p_layout) > 50 or length(p_layout::text) > 4000
+     or exists (select 1 from jsonb_array_elements(p_layout) x
+                where jsonb_typeof(x) <> 'object' or jsonb_typeof(x -> 'id') <> 'string' or jsonb_typeof(x -> 'on') <> 'boolean') then
+    raise exception 'Invalid dashboard layout.' using errcode = '22023';
+  end if;
+  if p_preset is null or p_preset !~ '^[a-z]{1,20}$' then
+    raise exception 'Invalid dashboard preset.' using errcode = '22023';
+  end if;
+  insert into dashboard_layouts (employee_id, layout, preset, updated_at) values (v_emp.id, p_layout, p_preset, now())
+  on conflict (employee_id) do update set layout = excluded.layout, preset = excluded.preset, updated_at = now();
+  return private.dashboard_layout_json(v_emp.id);
+end $$;
+
 create or replace function public.employee_dashboard(p_token text) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
 declare
@@ -362,7 +404,10 @@ begin
                                  order by r.report_date desc)
                                from (select * from sales_reports where employee_id = v_emp.id
                                      order by report_date desc, submitted_at desc limit 4) r), '[]'::jsonb),
-    'reportFiledToday', exists (select 1 from sales_reports where employee_id = v_emp.id and report_date = v_today)
+    'reportFiledToday', exists (select 1 from sales_reports where employee_id = v_emp.id and report_date = v_today),
+    'month', (select jsonb_build_object('reports', count(*), 'leads', coalesce(sum(leads), 0), 'calls', coalesce(sum(calls), 0))
+              from sales_reports where employee_id = v_emp.id and deleted_at is null
+                and report_date >= date_trunc('month', v_today)::date and report_date <= v_today)
   );
 end $$;
 
@@ -378,6 +423,11 @@ begin
     'activeEmployees', (select count(*) from employees where status = 'Active'),
     'reportsToday', (select count(*) from sales_reports where report_date = v_today),
     'pendingReports', 0,
+    'reportsThisMonth', (select count(*) from sales_reports where deleted_at is null and report_date between v_month_start and v_today),
+    'recentReports', coalesce((select jsonb_agg(jsonb_build_object('id', r.id, 'date', r.report_date, 'employeeName', e.name,
+                                 'title', private.report_title(r.report_type, r.project_id)) order by r.submitted_at desc)
+                               from (select * from sales_reports where deleted_at is null order by submitted_at desc limit 5) r
+                               join employees e on e.id = r.employee_id), '[]'::jsonb),
     -- Reports filed this month per active employee.
     'employeeStats', coalesce((
       select jsonb_agg(jsonb_build_object('employee', private.employee_json(e),
@@ -405,7 +455,7 @@ begin
       'login_employee','logout_employee','get_me','change_my_password',
       'list_employees','create_employee','update_employee','reset_employee_password',
       'get_employee_permissions','set_employee_permission',
-      'employee_dashboard','admin_dashboard'
+      'employee_dashboard','admin_dashboard','save_dashboard_layout'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);

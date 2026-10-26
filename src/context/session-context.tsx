@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Employee, Permissions } from "@/types";
+import { Employee, Permissions, SavedDashboard } from "@/types";
 import { clearApiCache } from "@/lib/use-api";
 import { api, ApiError, setSessionExpiredHandler, setSessionToken } from "@/lib/api";
 
@@ -10,6 +10,9 @@ interface SessionContextValue {
   user: Employee | null;
   permissions: Permissions | null;
   isManager: boolean;
+  /** Saved dashboard layout (null = role default). Comes with the session, so no extra call. */
+  dashboard: SavedDashboard | null;
+  setDashboard: (d: SavedDashboard | null) => void;
   loading: boolean;
   login: (email: string, password: string) => Promise<Employee>;
   logout: () => Promise<void>;
@@ -20,6 +23,7 @@ interface StoredSession {
   token: string;
   employee: Employee;
   permissions: Permissions;
+  dashboard?: SavedDashboard | null;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -118,6 +122,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     apply({ token: session.token, ...me });
   };
 
+  // Shown at once and kept in the stored session; the caller saves it to the database.
+  const setDashboard = useCallback((dashboard: SavedDashboard | null) => {
+    setSession((current) => {
+      if (!current) return current;
+      const next = { ...current, dashboard };
+      writeStored(next);
+      return next;
+    });
+  }, []);
+
   const user = session?.employee ?? null;
 
   return (
@@ -126,6 +140,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         user,
         permissions: session?.permissions ?? null,
         isManager: user?.role === "Admin" || user?.role === "HR",
+        dashboard: session?.dashboard ?? null,
+        setDashboard,
         loading,
         login,
         logout,

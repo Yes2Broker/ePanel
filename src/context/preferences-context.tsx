@@ -5,12 +5,10 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 /** Per-device display preferences. Kept in localStorage only. */
 export interface Preferences {
   compactSidebar: boolean;
-  dashboard: { reports: boolean };
 }
 
 const DEFAULTS: Preferences = {
   compactSidebar: false,
-  dashboard: { reports: true },
 };
 
 const STORAGE_KEY = "y2b-preferences";
@@ -28,7 +26,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw);
-        setPrefs({ ...DEFAULTS, ...saved, dashboard: { ...DEFAULTS.dashboard, ...saved.dashboard } });
+        setPrefs({ ...DEFAULTS, compactSidebar: !!saved.compactSidebar });
       }
     } catch {
       // ignore unreadable storage

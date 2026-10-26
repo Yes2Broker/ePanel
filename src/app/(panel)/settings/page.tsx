@@ -5,17 +5,9 @@ import { Card } from "@/components/ui/card";
 import { SecondaryButton, Toggle } from "@/components/ui/button";
 import { usePwa } from "@/context/pwa-context";
 import { PageHeader } from "@/components/ui/page";
-import { useSession } from "@/context/session-context";
-import { Preferences, usePreferences } from "@/context/preferences-context";
-import { FeatureKey, isFeatureEnabled } from "@/lib/features";
-
-// Only sections whose feature is launched can be shown or hidden.
-const DASHBOARD_SECTIONS = ([
-  { key: "reports", label: "Recent reports" },
-] satisfies { key: keyof Preferences["dashboard"] & FeatureKey; label: string }[]).filter((s) => isFeatureEnabled(s.key));
+import { usePreferences } from "@/context/preferences-context";
 
 export default function SettingsPage() {
-  const { isManager } = useSession();
   const { prefs, update } = usePreferences();
   const { canInstall, install, installed } = usePwa();
 
@@ -44,20 +36,6 @@ export default function SettingsPage() {
           <Toggle checked={prefs.compactSidebar} onChange={(v) => update({ compactSidebar: v })} />
         </div>
       </Card>
-
-      {!isManager && DASHBOARD_SECTIONS.length > 0 && (
-        <Card className="p-4 sm:p-5">
-          <h3 className="mb-3 text-sm font-semibold text-ink">Dashboard sections</h3>
-          <div className="space-y-3">
-            {DASHBOARD_SECTIONS.map(({ key, label }) => (
-              <div key={key} className="flex min-h-11 items-center justify-between">
-                <p className="text-sm text-ink">{label}</p>
-                <Toggle checked={prefs.dashboard[key]} onChange={(v) => update({ dashboard: { ...prefs.dashboard, [key]: v } })} />
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       <Card className="flex items-center justify-between gap-4 p-4 sm:p-5">
         <div>

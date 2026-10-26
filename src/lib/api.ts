@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import {
-  AdminDashboard, Employee, EmployeeDashboard, ModuleKey, Permissions,
+  AdminDashboard, Employee, EmployeeDashboard, ModuleKey, Permissions, DashboardItem, SavedDashboard,
   Project, ReportOption, ReportFormData, ReportPayload,
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
@@ -67,6 +67,8 @@ interface SessionPayload {
   token: string;
   employee: Employee;
   permissions: Permissions;
+  /** Saved "Customise dashboard" layout; absent/null = the role default. */
+  dashboard?: SavedDashboard | null;
 }
 
 type EmployeeInput = Omit<Employee, "salary"> & { salary: number | "" };
@@ -163,6 +165,8 @@ export const api = {
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),
   adminDashboard: () => rpc<AdminDashboard>("admin_dashboard"),
+  saveDashboardLayout: (layout: DashboardItem[] | null, preset: string | null) =>
+    rpc<SavedDashboard | null>("save_dashboard_layout", { p_layout: layout, p_preset: preset }),
 };
 
 /** The current session token, for calls to the panel's own server routes. */

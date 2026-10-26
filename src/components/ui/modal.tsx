@@ -30,25 +30,27 @@ function useModalStack(open: boolean, onClose: () => void) {
 
 /**
  * Popup. Phones: a bottom sheet that can grow to the full screen height.
- * Larger screens: a centred dialog. The header (with the close button) and the
- * optional footer stay put while the body scrolls.
+ * Larger screens: a centred dialog, or with `panel` a full-height panel on the
+ * right (the page stays visible beside it). The header (with the close button)
+ * and the optional footer stay put while the body scrolls.
  */
 export function Modal({
-  open, onClose, title, subtitle, children, footer, wide, size = "md", bodyClassName,
+  open, onClose, title, subtitle, children, footer, wide, size = "md", bodyClassName, panel,
 }: {
   open: boolean; onClose: () => void; title: string; subtitle?: React.ReactNode; children: React.ReactNode;
-  footer?: React.ReactNode; wide?: boolean; size?: "sm" | "md" | "lg"; bodyClassName?: string;
+  footer?: React.ReactNode; wide?: boolean; size?: "sm" | "md" | "lg"; bodyClassName?: string; panel?: boolean;
 }) {
   useModalStack(open, onClose);
   if (!open) return null;
   const width = wide || size === "lg" ? "sm:max-w-2xl" : size === "sm" ? "sm:max-w-[400px]" : "sm:max-w-md";
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
+    // !mt-0: a parent's space-y-* margin must not shift a fixed popup down.
+    <div className={cn("fixed inset-0 z-50 !mt-0 flex items-end justify-center", panel ? "sm:items-stretch sm:justify-end" : "sm:items-center sm:p-4")} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={cn("absolute inset-0", panel ? "bg-ink/40 sm:bg-ink/20" : "bg-ink/40")} onClick={onClose} />
       <div
         className={cn(
-          "relative z-10 flex max-h-sheet w-full flex-col overflow-hidden rounded-t-card bg-white shadow-lg sm:max-h-[90vh] sm:rounded-card",
-          width
+          "relative z-10 flex max-h-sheet w-full flex-col overflow-hidden rounded-t-card bg-white shadow-lg",
+          panel ? "sm:h-full sm:max-h-none sm:max-w-sm sm:rounded-none" : cn("sm:max-h-[90vh] sm:rounded-card", width)
         )}
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-surface-border py-2 pl-5 pr-2">

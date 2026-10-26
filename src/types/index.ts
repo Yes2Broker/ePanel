@@ -32,6 +32,7 @@ export type Permissions = Record<ModuleKey, boolean>;
 export interface EmployeeDashboard {
   recentReports: { id: string; date: string; type: SalesReportType; title: string }[];
   reportFiledToday: boolean;
+  month?: { reports: number; leads: number; calls: number };
 }
 
 export interface EmployeeStat {
@@ -44,8 +45,14 @@ export interface AdminDashboard {
   activeEmployees: number;
   reportsToday: number;
   pendingReports: number;
+  reportsThisMonth?: number;
+  recentReports?: { id: string; date: string; employeeName: string; title: string }[];
   employeeStats: EmployeeStat[];
 }
+
+/** One "Customise dashboard" row, in display order. */
+export interface DashboardItem { id: string; on: boolean }
+export interface SavedDashboard { layout: DashboardItem[]; preset: string }
 
 // ---------------------------------------------------------------------------
 // Attendance — see supabase/attendance.sql
