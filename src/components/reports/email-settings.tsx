@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, Mail, Send } from "lucide-react";
+import { Bell, Clock, Mail, Send } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
+import { PrimaryButton, SecondaryButton, Toggle } from "@/components/ui/button";
 import { ErrorBanner, Loading } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { TimeSelect, timeLabel } from "@/components/ui/pickers";
 import { api, errorMessage, getSessionToken } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+
+const addHour = (t: string, h: number) => {
+  const [hh, mm] = t.split(":").map(Number);
+  return `${String((hh + h + 24) % 24).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+};
 
 /** Admin: who receives the daily report emails and when, plus a test-send button. */
 export function EmailSettings() {
@@ -25,6 +30,15 @@ export function EmailSettings() {
       toast(errorMessage(err), "error");
     } finally {
       setSavingTime(false);
+    }
+  };
+  const reminders = useApi(() => api.getReportReminders());
+  const saveReminders = async (on: boolean) => {
+    try {
+      reminders.setData(await api.setReportReminders(on));
+      toast(on ? "Reminders are on." : "Reminders are off.");
+    } catch (err) {
+      toast(errorMessage(err), "error");
     }
   };
   const [text, setText] = useState("");
@@ -71,6 +85,15 @@ export function EmailSettings() {
           <TimeSelect ariaLabel="Send at (India time)" value={time.data ?? "22:00"} disabled={savingTime || !time.data} onChange={saveTime} />
           <span className="text-sm text-ink-faint">India time, every day</span>
         </div>
+      </Card>
+      <Card className="flex items-center justify-between gap-4 p-4 sm:p-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2"><Bell className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Daily report reminder</h3></div>
+          <p className="mt-1 text-sm text-ink-faint">
+            A notification at {timeLabel(addHour(time.data ?? "22:00", -1))} to anyone who hasn&apos;t filed their report yet (not on leave or weekly off).
+          </p>
+        </div>
+        <Toggle checked={reminders.data ?? true} disabled={reminders.data == null} onChange={saveReminders} label="Daily report reminder" />
       </Card>
       <Card className="space-y-3 p-4 sm:p-5">
         <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Recipients</h3></div>

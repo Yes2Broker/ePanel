@@ -10,6 +10,7 @@ import { pageTitle } from "@/lib/nav";
 import { LogoIcon } from "@/components/ui/logo";
 import { useSession } from "@/context/session-context";
 import { usePwa } from "@/context/pwa-context";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 const menuItemCls = "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface hover:text-ink md:min-h-9";
 
@@ -51,6 +52,8 @@ export function Header({ user }: { user: Employee }) {
         </span>
       </div>
 
+      <div className="flex shrink-0 items-center gap-2">
+      <NotificationBell />
       <div className="relative shrink-0" ref={menuRef}>
         <button
           onClick={() => setMenuOpen((o) => !o)}
@@ -87,6 +90,7 @@ export function Header({ user }: { user: Employee }) {
             </button>
           </div>
         )}
+      </div>
       </div>
     </header>
   );

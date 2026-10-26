@@ -13,6 +13,8 @@ employee management. Next.js 14 (App Router) + Supabase (Postgres).
    `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    (Supabase → Project Settings → API). For the 10 PM report email also set
    `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `CRON_SECRET` (in Vercel too).
+   For phone / PC notifications also set `VAPID_PRIVATE_KEY` (with
+   `CRON_SECRET` and `email_schedule.sql`, which also sends any leftover pushes).
 3. **Database**: in Supabase → SQL Editor, run the files below in order.
 4. **Run**:
    ```bash
@@ -27,15 +29,16 @@ is loaded once from a seed file kept out of Git.
 
 1. `supabase/schema.sql` — tables and security
 2. `supabase/functions.sql` — sign-in, employees, permissions, dashboards
-3. `supabase/reports.sql` — Daily Reports
-4. `supabase/leave.sql` — Leave
-5. `supabase/attendance.sql` — Attendance and the salary sheet
-6. `supabase/cleanup_unused.sql` — one time: drops functions and old tables
+3. `supabase/notifications.sql` — the bell and push notifications
+4. `supabase/reports.sql` — Daily Reports
+5. `supabase/leave.sql` — Leave
+6. `supabase/attendance.sql` — Attendance and the salary sheet
+7. `supabase/cleanup_unused.sql` — one time: drops functions and old tables
    the panel no longer uses (only tables nothing depends on)
-7. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit
-   the secret first)
+8. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit
+   the secret first); it also sends notifications that are still waiting
 
-Files 1–5 are safe to re-run on the live database: they only create what's
+Files 1–6 are safe to re-run on the live database: they only create what's
 missing and replace functions. Re-run a file whenever it changes.
 
 ## Security

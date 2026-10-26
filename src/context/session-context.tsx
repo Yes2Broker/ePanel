@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Employee, Permissions, SavedDashboard } from "@/types";
 import { clearApiCache } from "@/lib/use-api";
 import { api, ApiError, setSessionExpiredHandler, setSessionToken } from "@/lib/api";
+import { forgetDevice } from "@/lib/push-client";
 
 interface SessionContextValue {
   user: Employee | null;
@@ -108,6 +109,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    await forgetDevice().catch(() => {});
     try {
       await api.logout();
     } catch {

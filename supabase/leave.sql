@@ -459,6 +459,10 @@ begin
     update leave_applications set status = 'Approved', decided_by = me.id, decided_at = now(), decision_note = 'Auto-approved (Admin)'
     where id = a.id returning * into a;
     perform private.leave_log(a.id, null, me.id, me.id, 'Auto-approved', 'Admin''s own leave');
+  else
+    -- HR / Admin (or only Admin for HR's own leave).
+    perform private.notify_deciders(me, me.id, 'leave_request', 'New leave request',
+      me.name || ' · ' || private.leave_label(a.id) || ' · ' || a.reason, '/leave');
   end if;
   return private.leave_json(a, me);
 end $$;
@@ -501,6 +505,8 @@ begin
         where id = a.id returning * into a;
         perform private.leave_log(a.id, null, a.employee_id, me.id, 'Cancelled remaining days',
           'From ' || private.fmt_day(p_from) || coalesce(' · ' || nullif(trim(p_note), ''), ''));
+        perform private.notify_deciders(emp, me.id, 'leave_cancelled', 'Leave cancelled',
+          emp.name || ' · days from ' || private.fmt_day(p_from) || ' cancelled' || case when me.id <> emp.id then ' by ' || me.name else '' end, '/leave');
         return private.leave_json(a, me);
       end if;
     end if;
@@ -510,6 +516,8 @@ begin
   update leave_applications set status = 'Cancelled', cancelled_by = me.id, cancelled_at = now(), cancel_note = nullif(trim(p_note), '')
   where id = a.id returning * into a;
   perform private.leave_log(a.id, null, a.employee_id, me.id, 'Cancelled', nullif(trim(p_note), ''));
+  perform private.notify_deciders(emp, me.id, 'leave_cancelled', 'Leave cancelled',
+    emp.name || ' · ' || private.leave_label(a.id) || case when me.id <> emp.id then ' · cancelled by ' || me.name else '' end, '/leave');
   return private.leave_json(a, me);
 end $$;
 
@@ -600,6 +608,10 @@ begin
     decided_by = me.id, decided_at = now(), decision_note = nullif(trim(p_note), '')
   where id = a.id returning * into a;
   perform private.leave_log(a.id, null, a.employee_id, me.id, case when p_approve then 'Approved' else 'Rejected' end, nullif(trim(p_note), ''));
+  perform private.notify(a.employee_id, 'leave_decision', case when p_approve then 'Leave approved' else 'Leave rejected' end,
+    private.leave_label(a.id) || case when not p_approve then ' · Reason: ' || trim(p_note)
+                                      when nullif(trim(p_note), '') is not null then ' · ' || trim(p_note) else '' end,
+    case when emp.role = 'HR' then '/leave?tab=mine' else '/leave' end);
   return private.leave_json(a, me);
 end $$;
 

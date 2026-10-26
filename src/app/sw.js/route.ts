@@ -67,6 +67,34 @@ self.addEventListener("fetch", (event) => {
   }
   // Everything else (page data for in-app navigation, etc.): network only.
 });
+
+// Notifications (Web Push). The payload is { id, title, body, link }.
+self.addEventListener("push", (event) => {
+  let n = {};
+  try { n = event.data ? event.data.json() : {}; } catch (e) { n = { title: event.data && event.data.text() }; }
+  event.waitUntil((async () => {
+    await self.registration.showNotification(n.title || "ePanel", {
+      body: n.body || "", icon: "/icon-192.png", badge: "/icon-192.png",
+      tag: n.id ? "n" + n.id : undefined, data: { link: n.link || "/" },
+    });
+    // Open tabs refresh their bell.
+    for (const c of await self.clients.matchAll({ type: "window" })) c.postMessage("notifications-changed");
+  })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.link) || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const tab = tabs.find((c) => new URL(c.url).origin === self.location.origin);
+    if (tab) {
+      await tab.focus();
+      return tab.navigate ? tab.navigate(url) : undefined;
+    }
+    return self.clients.openWindow(url);
+  })());
+});
 `;
 
 export function GET() {

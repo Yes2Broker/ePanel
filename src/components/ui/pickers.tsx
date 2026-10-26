@@ -35,7 +35,7 @@ function usePopover() {
   return { open, setOpen, close, triggerRef };
 }
 
-function Popover({ open, onClose, anchor, title, children, width }: {
+export function Popover({ open, onClose, anchor, title, children, width }: {
   open: boolean; onClose: () => void; anchor: React.RefObject<HTMLElement>; title: string; children: React.ReactNode; width?: number;
 }) {
   const panel = useRef<HTMLDivElement>(null);

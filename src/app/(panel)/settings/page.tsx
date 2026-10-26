@@ -6,6 +6,7 @@ import { SecondaryButton, Toggle } from "@/components/ui/button";
 import { usePwa } from "@/context/pwa-context";
 import { PageHeader } from "@/components/ui/page";
 import { usePreferences } from "@/context/preferences-context";
+import { NotificationSettings } from "@/components/notifications/notification-settings";
 
 export default function SettingsPage() {
   const { prefs, update } = usePreferences();
@@ -25,6 +26,8 @@ export default function SettingsPage() {
           {canInstall && <SecondaryButton onClick={install} className="shrink-0"><Download className="h-4 w-4" /> Install app</SecondaryButton>}
         </div>
       </Card>
+
+      <NotificationSettings />
 
       <Card className="hidden p-4 sm:p-5 lg:block">
         <h3 className="mb-3 text-sm font-semibold text-ink">Sidebar</h3>

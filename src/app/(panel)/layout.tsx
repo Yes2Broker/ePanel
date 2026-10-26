@@ -9,6 +9,7 @@ import { useRequireSession } from "@/context/session-context";
 import { navFor } from "@/lib/nav";
 import { Loading, Skeleton } from "@/components/ui/page";
 import { ComingSoonPage } from "@/components/feature/coming-soon";
+import { PushPrompt } from "@/components/notifications/push-prompt";
 import { featureForPath, isFeatureEnabled } from "@/lib/features";
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
@@ -56,6 +57,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
       <div className="flex min-w-0 flex-1 flex-col">
         <Header user={user} />
         <main className="min-w-0 flex-1 px-4 pb-[calc(var(--nav-h)+1.5rem)] md:pb-8 lg:px-8">
+          <PushPrompt />
           {lockedFeature ? <ComingSoonPage feature={lockedFeature} /> : children}
         </main>
       </div>

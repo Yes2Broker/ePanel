@@ -122,12 +122,25 @@ create or replace function private.month_start(d date) returns date language sql
 create or replace function private.month_end(d date) returns date language sql immutable as $$ select (date_trunc('month', d) + interval '1 month - 1 day')::date $$;
 
 -- Mark a person's month "updated – please check" (see attendance_checks).
-create or replace function private.att_mark_updated(p_emp text, p_day date) returns void
-language sql volatile set search_path = public, private as $$
+-- The first time it becomes "please check" (new, or checked before), the
+-- person gets a notification, unless p_notify is false (an HR edit sends its
+-- own "a day was changed").
+drop function if exists private.att_mark_updated(text, date);
+create or replace function private.att_mark_updated(p_emp text, p_day date, p_notify boolean default true) returns void
+language plpgsql volatile set search_path = public, private as $$
+declare
+  v_was_checked boolean;
+begin
+  select checked_at is not null into v_was_checked from attendance_checks
+  where employee_id = p_emp and month = private.month_start(p_day) for update;
   insert into attendance_checks (employee_id, month, updated_at, checked_at)
   values (p_emp, private.month_start(p_day), now(), null)
-  on conflict (employee_id, month) do update set updated_at = now(), checked_at = null
-$$;
+  on conflict (employee_id, month) do update set updated_at = now(), checked_at = null;
+  if p_notify and coalesce(v_was_checked, true) then
+    perform private.notify(p_emp, 'att_updated', 'Attendance updated',
+      format('Your %s attendance has been updated, please check it.', to_char(p_day, 'FMMonth YYYY')), private.att_link(p_emp, p_day));
+  end if;
+end $$;
 
 -- "10:05", "9:5", "10:05:00", "--:--" → time or null. Anything else raises.
 create or replace function private.att_time(p text) returns time
@@ -609,6 +622,7 @@ declare
   v_status text := nullif(trim(coalesce(p_status, '')), '');
   v_remark text := trim(coalesce(p_remark, ''));
   r private.att_day;
+  v_start timestamptz;
 begin
   if not exists (select 1 from employees where id = p_emp) then
     raise exception 'Employee not found.' using errcode = 'P0002';
@@ -631,6 +645,7 @@ begin
   if v_status in ('Absent','Weekoff','Paid Leave') then v_in := null; v_out := null; end if;
 
   select * into old from attendance_days where employee_id = p_emp and work_date = p_date for update;
+  v_start := clock_timestamp();
   if old.in_time is distinct from v_in then
     insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
     values (p_emp, p_date, me.id, 'In Time', to_char(old.in_time, 'HH24:MI'), to_char(v_in, 'HH24:MI'));
@@ -654,7 +669,14 @@ begin
     status_set = excluded.status_set, remark = excluded.remark, edited_by = me.id, edited_at = now(), updated_at = now();
   if old.employee_id is null or old.in_time is distinct from v_in or old.out_time is distinct from v_out
      or old.status_set is distinct from v_status or old.remark is distinct from v_remark then
-    perform private.att_mark_updated(p_emp, p_date);
+    perform private.att_mark_updated(p_emp, p_date, false);
+    if p_emp <> me.id then
+      perform private.notify(p_emp, 'att_day', 'Attendance changed',
+        format('%s changed your attendance for %s: %s', me.name, to_char(p_date, 'Dy FMDD Mon'),
+          coalesce((select string_agg(c.field || ' ' || coalesce(c.old_value, '—') || ' → ' || coalesce(c.new_value, '—'), ', ' order by c.id)
+                    from attendance_changes c where c.employee_id = p_emp and c.work_date = p_date and c.changed_at >= v_start), 'updated')),
+        private.att_link(p_emp, p_date));
+    end if;
   end if;
 
   select * into r from private.att_days(p_emp, private.month_start(p_date), private.month_end(p_date)) where day = p_date;
@@ -747,9 +769,18 @@ create or replace function public.att_mark_checked(p_token text, p_month date) r
 language plpgsql volatile security definer set search_path = public, private as $$
 declare
   me employees := private.session_employee(p_token);
+  n int;
 begin
   update attendance_checks set checked_at = now()
   where employee_id = me.id and month = private.month_start(p_month) and checked_at is null;
+  get diagnostics n = row_count;
+  -- The last one to check: tell HR and Admin.
+  if n > 0 and not exists (select 1 from attendance_checks where month = private.month_start(p_month) and checked_at is null) then
+    select count(*) into n from attendance_checks where month = private.month_start(p_month);
+    perform private.notify_roles(array['HR','Admin'], null, 'att_checked', 'Attendance checked',
+      format('%s of %s people checked their %s attendance.', n, n, to_char(p_month, 'FMMonth YYYY')),
+      '/attendance?month=' || to_char(p_month, 'YYYY-MM'));
+  end if;
 end $$;
 
 -- HR/Admin: who has checked an updated month.

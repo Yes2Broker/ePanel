@@ -318,3 +318,9 @@ export interface LeaveDashboard {
   onLeaveToday: { id: string; name: string; portion: number }[] | null;
   pendingApprovals: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Notifications — see supabase/notifications.sql
+// ---------------------------------------------------------------------------
+export interface AppNotification { id: number; type: string; title: string; body: string; link: string | null; createdAt: string; read: boolean }
+export interface NotificationList { unread: number; items: AppNotification[] }

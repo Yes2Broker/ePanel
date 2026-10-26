@@ -4,7 +4,7 @@ import {
   Project, ReportOption, ReportFormData, ReportPayload,
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
-  LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard,
+  LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
 } from "@/types";
 
 /**
@@ -37,7 +37,8 @@ const READS = new Set([
   "att_uploads", "att_dashboard", "att_my_updates", "att_checks", "list_projects", "get_employee_projects", "report_options", "report_form", "get_report",
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
   "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
-  "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard",
+  "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard", "notifications_list", "notification_prefs_get",
+  "get_report_reminders",
 ]);
 const pending = new Map<string, Promise<unknown>>();
 
@@ -53,6 +54,19 @@ function rpc<T>(fn: string, args: Record<string, unknown> = {}, withToken = true
   return p;
 }
 
+// Actions that may notify someone: right after one, ask the server to send
+// the pushes at once (the every-30-minute cron is only the backup).
+const NOTIFIES = new Set([
+  "leave_apply", "leave_decide", "leave_cancel", "att_set_day", "att_import", "att_delete_upload", "att_mark_checked",
+  "save_sales_report", "delete_sales_report", "notify_test",
+]);
+
+function sendPushesNow() {
+  fetch("/api/push/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: sessionToken }), keepalive: true })
+    .catch(() => {});
+  window.dispatchEvent(new Event("notifications-changed"));
+}
+
 async function call<T>(fn: string, args: Record<string, unknown>, withToken: boolean): Promise<T> {
   const { data, error } = await supabase.rpc(fn, withToken ? { p_token: sessionToken, ...args } : args);
   if (error) {
@@ -60,6 +74,7 @@ async function call<T>(fn: string, args: Record<string, unknown>, withToken: boo
     if (error.code === "28000") onSessionExpired?.();
     throw new ApiError(error.message, error.code);
   }
+  if (NOTIFIES.has(fn) && !(fn === "att_import" && args.p_dry)) sendPushesNow();
   return data as T;
 }
 
@@ -161,6 +176,18 @@ export const api = {
   leaveDecide: (id: string, approve: boolean, note: string) =>
     rpc<LeaveApplication>("leave_decide", { p_id: id, p_approve: approve, p_note: note }),
   leaveDashboard: () => rpc<LeaveDashboard>("leave_dashboard"),
+
+  // Notifications (supabase/notifications.sql)
+  notifications: () => rpc<NotificationList>("notifications_list"),
+  markNotificationRead: (id: number | null) => rpc<void>("notifications_read", { p_id: id }),
+  notificationPrefs: () => rpc<{ off: string[] }>("notification_prefs_get"),
+  setNotificationPref: (type: string, on: boolean) => rpc<{ off: string[] }>("notification_prefs_set", { p_type: type, p_on: on }),
+  notifyTest: () => rpc<void>("notify_test"),
+  pushSubscribe: (s: { endpoint: string; p256dh: string; auth: string }) =>
+    rpc<void>("push_subscribe", { p_endpoint: s.endpoint, p_p256dh: s.p256dh, p_auth: s.auth, p_user_agent: navigator.userAgent }),
+  pushUnsubscribe: (endpoint: string) => rpc<void>("push_unsubscribe", { p_endpoint: endpoint }),
+  getReportReminders: () => rpc<boolean>("get_report_reminders"),
+  setReportReminders: (on: boolean) => rpc<boolean>("set_report_reminders", { p_on: on }),
 
   // Dashboards
   employeeDashboard: () => rpc<EmployeeDashboard>("employee_dashboard"),

@@ -634,6 +634,11 @@ begin
       positive = (p_payload ->> 'positive')::int, tokens = (p_payload ->> 'tokens')::int,
       updated_at = now(), updated_by = v_me.id
     where id = v_old.id returning * into r;
+    if v_me.id <> v_emp.id then
+      perform private.notify(v_emp.id, 'report_changed', 'Report edited',
+        format('%s edited your %s for %s.', v_me.name, private.report_title(r.report_type, r.project_id), to_char(r.report_date, 'Dy FMDD Mon')),
+        '/reports?open=' || r.id);
+    end if;
     perform private.audit(r.id, v_me.id, 'Today Leads', v_old.leads::text, r.leads::text);
     perform private.audit(r.id, v_me.id, 'Today Calls', v_old.calls::text, r.calls::text);
     perform private.audit(r.id, v_me.id, 'Positive Calls', v_old.positive::text, r.positive::text);
@@ -1201,6 +1206,11 @@ begin
     raise exception 'Report not found.' using errcode = 'P0002';
   end if;
   update sales_reports set deleted_at = now(), deleted_by = v_me.id where id = p_report_id;
+  if r.employee_id <> v_me.id then
+    perform private.notify(r.employee_id, 'report_changed', 'Report deleted',
+      format('%s deleted your %s for %s. You can file that day again.', v_me.name, private.report_title(r.report_type, r.project_id),
+             to_char(r.report_date, 'Dy FMDD Mon')), '/reports');
+  end if;
   insert into report_changes (report_id, changed_by, field, old_value, new_value)
   values (p_report_id, v_me.id, 'Report', 'Submitted', 'Deleted');
 end $$;
