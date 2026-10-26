@@ -1,3 +1,4 @@
+import { ASSIST_ENABLED } from "@/lib/features";
 import { ModuleKey } from "@/types";
 
 export const DEPARTMENTS = ["Sales", "Tech", "HR", "Admin", "Management"] as const;
@@ -19,4 +20,5 @@ export const MODULES: { key: ModuleKey; label: string; comingSoon?: boolean; adm
   { key: "builderData", label: "Builder Data" },
   { key: "analytics", label: "Analytics", adminOnly: true },
   { key: "leave", label: "Leave" },
+  { key: "assist", label: "Y2B Assist", comingSoon: !ASSIST_ENABLED },
 ];

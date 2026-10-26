@@ -10,6 +10,7 @@ import { navFor } from "@/lib/nav";
 import { Loading, Skeleton } from "@/components/ui/page";
 import { ComingSoonPage } from "@/components/feature/coming-soon";
 import { PushPrompt } from "@/components/notifications/push-prompt";
+import { Assist } from "@/components/assist/assist";
 import { featureForPath, isFeatureEnabled } from "@/lib/features";
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
@@ -62,6 +63,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
       <BottomNav />
+      <Assist />
     </div>
   );
 }

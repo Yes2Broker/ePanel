@@ -14,6 +14,12 @@ export const FEATURES = {
 
 export type FeatureKey = keyof typeof FEATURES;
 
+/**
+ * Y2B Assist (the AI helper). false = hidden for everyone and /api/assist
+ * refuses. Per person it's the "Y2B Assist" permission (on by default).
+ */
+export const ASSIST_ENABLED = true;
+
 export const FEATURE_KEYS = Object.keys(FEATURES) as FeatureKey[];
 
 export function isFeatureEnabled(key: FeatureKey) {
