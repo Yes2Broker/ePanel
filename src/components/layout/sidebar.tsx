@@ -71,7 +71,7 @@ export function Sidebar() {
             >
               <span className="relative shrink-0">
                 <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.25 : 1.75} />
-                {item.href === "/attendance" && attUpdated && <UpdateDot className={compact ? undefined : "lg:hidden"} />}
+                {item.href === "/attendance" && attUpdated && <UpdateDot />}
               </span>
               <span className={cn("flex-1 items-center justify-between gap-2", labels)}>
                 <span className="flex items-center gap-1.5 whitespace-nowrap">

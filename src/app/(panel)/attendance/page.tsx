@@ -29,7 +29,7 @@ function AttendanceInner() {
   const subtitle = {
     list: "One row per person per day. Tap a row to change it.",
     upload: "eTimeOffice report or the upload template. Preview first, then import.",
-    salary: "Monthly salary ÷ days in month × net payable days. Admin only.",
+    salary: "Salary sheet",
     mine: "Late after 10:30 (first 2 a month free, then ½ day each). Under 8 hours = ½ day.",
   }[tab];
 

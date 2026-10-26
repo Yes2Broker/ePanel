@@ -13,7 +13,7 @@ import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { AttDay, AttTeamMonthRow, PersonRef } from "@/types";
-import { cn, formatDate, formatINR, todayISO } from "@/lib/utils";
+import { cn, formatDate, todayISO } from "@/lib/utils";
 import { AttPill, hours } from "@/components/attendance/att-format";
 import { DayEdit, EditTarget } from "@/components/attendance/day-edit";
 import { Calendar, MonthPicker, SummaryGrid, monthLabel } from "@/components/attendance/month-view";
@@ -192,29 +192,87 @@ function DayTable({ rows, showName, onPick }: { rows: Row[]; showName: boolean; 
   );
 }
 
-const SALARY_COLUMNS = ["Name", "Days in month", "Present", "Absent", "Weekoff", "Weekoff worked", "Paid leave", "Lates",
-  "Late deductions", "Short days", "Net payable", "Monthly salary", "Final salary"] as const;
-// Column positions used below.
-const C = { days: 1, present: 2, absent: 3, weekoff: 4, worked: 5, paid: 6, lates: 7, lateDed: 8, short: 9, net: 10, monthly: 11, final: 12 };
+/** Salary sheet columns: short header, what it means (tooltip), and how totals work. */
+const COLS = [
+  { key: "name", head: "Name", tip: "Employee" },
+  { key: "days", head: "Days", tip: "Days in month" },
+  { key: "present", head: "Present", tip: "Days present", total: true },
+  { key: "absent", head: "Absent", tip: "Absent days (after weekly-off worked offsets them)", total: true },
+  { key: "weekoff", head: "Weekly off", tip: "Weekly off days" },
+  { key: "worked", head: "W/O worked", tip: "Days worked on the weekly off (offset absent days)" },
+  { key: "paid", head: "Paid leave", tip: "Paid leave days" },
+  { key: "lates", head: "Lates", tip: "Late days (first 2 a month are free)", total: true },
+  { key: "lateDed", head: "Late ded.", tip: "Days deducted for lates (½ day per late after the 2nd)", ded: true },
+  { key: "short", head: "Short days", tip: "Days under 8 hours (½ day deducted each)", total: true },
+  { key: "net", head: "Net days", tip: "Net payable days", total: true },
+  { key: "monthly", head: "Monthly", tip: "Monthly salary", total: true, money: true },
+  { key: "final", head: "Final", tip: "Final salary = monthly ÷ days in month × net days", total: true, money: true },
+] as const;
+type ColKey = (typeof COLS)[number]["key"];
+
+const inr = (v: number) => `₹ ${Math.round(v).toLocaleString("en-IN")}`;
+
+/** One person's numbers by column. Salary columns are null when no salary is set. */
+function salaryRow(r: AttTeamMonthRow): Record<ColKey, string | number | null> {
+  const s = r.summary;
+  const set = hasSalary(r);
+  return {
+    name: r.employee.name, days: s.daysInMonth, present: s.present, absent: s.absent, weekoff: s.weekoff, worked: s.weekoffWorked,
+    paid: s.paidLeave, lates: s.lates, lateDed: n1(s.lateDeduction), short: s.shortDays, net: n1(s.netPayable),
+    monthly: set ? r.salary!.monthly : null, final: set ? r.salary!.final : null,
+  };
+}
 
 /** Admin only: salary per person for a month, and the Excel download. */
 export function SalarySheet() {
   const toast = useToast();
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const { data, loading, error, reload } = useApi(() => api.attSalarySheet(`${month}-01`), [month]);
-  const rows = useMemo(() => (data ?? []).map((r) => {
-    const s = r.summary;
-    return [r.employee.name, s.daysInMonth, s.present, s.absent, s.weekoff, s.weekoffWorked, s.paidLeave, s.lates,
-      n1(s.lateDeduction), s.shortDays, n1(s.netPayable), r.salary?.monthly ?? 0, r.salary?.final ?? 0] as (string | number)[];
-  }), [data]);
-  const total = rows.reduce((t, r) => t + Number(r[C.final]), 0);
   const [open, setOpen] = useState<AttTeamMonthRow | null>(null);
+  const rows = useMemo(() => (data ?? []).map(salaryRow), [data]);
+  const totals = useMemo(() => {
+    const t: Partial<Record<ColKey, number>> = {};
+    for (const c of COLS) if ("total" in c && c.total) t[c.key] = n1(rows.reduce((sum, r) => sum + Number(r[c.key] ?? 0), 0));
+    return t;
+  }, [rows]);
+
+  // Uploaded only part of the month? Salaries then cover those days only.
+  const daysInMonth = data?.[0]?.summary.daysInMonth ?? 0;
+  const lastDay = (data ?? []).reduce<string | null>((m, r) => (r.summary.lastDay && (!m || r.summary.lastDay > m) ? r.summary.lastDay : m), null);
+  const partial = !!data?.length && (!lastDay || Number(lastDay.slice(8)) < daysInMonth);
+  const partialNote = partial ? (lastDay ? `Attendance uploaded till ${formatDate(lastDay)}. Salaries are for those days only.` : "No attendance uploaded for this month yet.") : "";
+
+  const show = (c: (typeof COLS)[number], v: string | number | null) => {
+    if (c.key === "name") return v;
+    if ("money" in c && c.money) return v == null ? (c.key === "final" ? "Salary not set" : "–") : inr(Number(v));
+    if ("ded" in c && c.ded) return Number(v) ? v : "–";
+    return v ?? 0;
+  };
 
   const download = async () => {
     try {
-      const XLSX = await import("xlsx");
-      const ws = XLSX.utils.aoa_to_sheet([[...SALARY_COLUMNS], ...rows, [], ["Total", ...Array(C.final - 1).fill(""), total]]);
-      ws["!cols"] = SALARY_COLUMNS.map((c, i) => ({ wch: i === 0 ? 24 : Math.max(10, c.length + 2) }));
+      const XLSX = await import("xlsx-js-style");
+      const border = { bottom: { style: "thin", color: { rgb: "E5E5E5" } } };
+      const head = { font: { bold: true }, fill: { fgColor: { rgb: "F3F3F1" } }, border, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      const money = "₹ #,##,##0";
+      const aoa: unknown[][] = [];
+      if (partialNote) aoa.push([{ v: partialNote, t: "s", s: { font: { bold: true, color: { rgb: "B45309" } } } }]);
+      aoa.push(COLS.map((c) => ({ v: c.head, t: "s", s: head })));
+      for (const r of rows) {
+        aoa.push(COLS.map((c) => {
+          const v = r[c.key];
+          if (c.key === "name") return { v, t: "s" };
+          if ("money" in c && c.money) return v == null ? { v: c.key === "final" ? "Salary not set" : "", t: "s", s: { font: { color: { rgb: "9CA3AF" } } } }
+            : { v, t: "n", z: money, s: { font: { bold: c.key === "final", color: { rgb: c.key === "monthly" ? "6B7280" : "111827" } } } };
+          return { v: Number(v ?? 0), t: "n", s: { font: { bold: c.key === "net" } } };
+        }));
+      }
+      const tot = { font: { bold: true }, fill: { fgColor: { rgb: "F3F3F1" } } };
+      aoa.push(COLS.map((c) => c.key === "name" ? { v: "Total", t: "s", s: tot }
+        : totals[c.key] != null ? { v: totals[c.key], t: "n", ...("money" in c && c.money ? { z: money } : {}), s: tot } : { v: "", t: "s", s: tot }));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = COLS.map((c) => ({ wch: c.key === "name" ? 24 : "money" in c && c.money ? 13 : 10 }));
+      if (partialNote) ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: COLS.length - 1 } }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, monthLabel(month).slice(0, 31));
       XLSX.writeFile(wb, `Y2B-Salary-Sheet-${month}.xlsx`);
@@ -223,14 +281,15 @@ export function SalarySheet() {
     }
   };
 
+  const num = "px-1.5 py-2 text-right tabular-nums whitespace-nowrap";
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthPicker month={month} onChange={setMonth} />
         <SecondaryButton onClick={download} disabled={!rows.length}><Download className="h-4 w-4" /> Salary Sheet (Excel)</SecondaryButton>
       </div>
-      <p className="text-xs text-ink-faint">Final salary = monthly salary ÷ days in month × net payable days. Weekly-off working offsets absent days.</p>
       <ErrorBanner message={error} onRetry={reload} />
+      {partialNote && <p className="rounded-xl bg-status-warningBg px-3 py-2 text-sm text-status-warning">{partialNote}</p>}
       {loading && !data ? <Loading /> : !rows.length ? <EmptyState icon={Users} title="No one this month" /> : (
         <>
           {/* Phones: one short card per person; tap for the details. */}
@@ -243,39 +302,59 @@ export function SalarySheet() {
                   <p className="text-xs text-ink-muted">Net {n1(r.summary.netPayable)} / {r.summary.daysInMonth} days</p>
                 </div>
                 <p className={cn("shrink-0 text-right font-semibold", hasSalary(r) ? "text-base text-ink" : "text-sm text-ink-faint")}>
-                  {hasSalary(r) ? formatINR(r.salary!.final) : "Salary not set"}
+                  {hasSalary(r) ? inr(r.salary!.final) : "Salary not set"}
                 </p>
                 <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />
               </button>
             ))}
-            <p className="px-1 text-right text-sm font-semibold text-ink">Total {formatINR(total)}</p>
+            <p className="px-1 text-right text-sm font-semibold text-ink">Total {inr(totals.final ?? 0)}</p>
           </div>
-          <Card className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm">
+          <Card className="hidden max-h-[70vh] overflow-auto p-0 md:block">
+            <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
-                <tr className={tableHeadCls}>
-                  {SALARY_COLUMNS.map((c, i) => <th key={c} className={cn("px-2 py-2.5 align-bottom font-medium leading-tight", i < 1 ? "text-left" : "text-right")}>{c}</th>)}
+                <tr>
+                  {COLS.map((c) => (
+                    <th key={c.key} title={c.tip} scope="col"
+                      className={cn("sticky top-0 z-10 whitespace-nowrap border-b border-surface-border bg-white px-1.5 py-2.5 text-xs font-medium text-ink-faint",
+                        c.key === "name" ? "left-0 z-20 pl-3 text-left" : cn("w-px text-right", "money" in c && c.money ? "min-w-[5.5rem]" : "min-w-[3.25rem]"))}>
+                      {c.head}
+                    </th>
+                  ))}
+                  <th className="sticky top-0 z-10 w-px border-b border-surface-border bg-white px-1" aria-hidden />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-border">
+              <tbody>
                 {rows.map((r, ri) => (
-                  <tr key={(data ?? [])[ri]?.employee.id ?? ri} onClick={() => data && setOpen(data[ri])} className="cursor-pointer hover:bg-surface">
-                    {r.map((v, i) => (
-                      <td key={i} className={cn("whitespace-nowrap px-2 py-2", i < 1 ? "text-left" : "text-right", i === C.final && "font-semibold")}>
-                        {i >= C.monthly ? (Number(r[C.monthly]) > 0 ? formatINR(Number(v)) : i === C.monthly ? <span className="text-ink-faint">Salary not set</span> : "") : i === C.lateDed && !Number(v) ? "" : v}
-                      </td>
-                    ))}
+                  <tr key={data![ri].employee.id} onClick={() => setOpen(data![ri])} className="group cursor-pointer">
+                    {COLS.map((c) => {
+                      const v = r[c.key];
+                      const muted = (c.key !== "name" && (v === 0 || v == null)) || c.key === "monthly";
+                      return (
+                        <td key={c.key} className={cn("border-b border-surface-border bg-white group-hover:bg-surface",
+                          c.key === "name" ? "sticky left-0 whitespace-nowrap py-2 pl-3 pr-2 text-left font-medium text-ink" : num,
+                          muted && "text-ink-faint", c.key === "net" && "font-semibold text-ink", c.key === "final" && v != null && "font-bold text-ink",
+                          c.key === "final" && v == null && "text-xs")}>
+                          {show(c, v)}
+                        </td>
+                      );
+                    })}
+                    <td className="w-px border-b border-surface-border bg-white px-1.5 text-ink-faint group-hover:bg-surface"><ChevronRight className="h-4 w-4" /></td>
                   </tr>
                 ))}
-                <tr className="font-semibold">
-                  <td className="px-2 py-2" colSpan={C.final}>Total</td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right">{formatINR(total)}</td>
+                <tr className="font-bold text-ink">
+                  {COLS.map((c) => (
+                    <td key={c.key} className={cn("bg-surface", c.key === "name" ? "sticky left-0 py-2.5 pl-3 pr-2 text-left" : num)}>
+                      {c.key === "name" ? "Total" : totals[c.key] != null ? ("money" in c && c.money ? inr(totals[c.key]!) : totals[c.key]) : ""}
+                    </td>
+                  ))}
+                  <td className="bg-surface" />
                 </tr>
               </tbody>
             </table>
           </Card>
         </>
       )}
+      <p className="text-xs text-ink-faint">Final salary = monthly salary ÷ days in month × net payable days. Weekly-off worked offsets absent days.</p>
       <SalaryDetails row={open} month={month} onClose={() => setOpen(null)} />
     </div>
   );
@@ -299,8 +378,8 @@ function SalaryDetails({ row, month, onClose }: { row: AttTeamMonthRow | null; m
     ["Lates", `${s.lates} (2 free)${s.lateDeduction > 0 ? ` · −${n1(s.lateDeduction)} day${s.lateDeduction === 1 ? "" : "s"}` : ""}`],
     ["Short days", `${s.shortDays}${s.shortDays > 0 ? ` · −${n1(s.shortDays * 0.5)} day${s.shortDays * 0.5 === 1 ? "" : "s"}` : ""}`],
     ["Net payable days", String(n1(s.netPayable))],
-    ["Monthly salary", set ? formatINR(row.salary!.monthly) : "Salary not set"],
-    ["Per-day salary", set ? formatINR(Math.round(perDay)) : "—"],
+    ["Monthly salary", set ? inr(row.salary!.monthly) : "Salary not set"],
+    ["Per-day salary", set ? inr(perDay) : "—"],
   ];
   return (
     <Modal open onClose={onClose} title={row.employee.name} subtitle={monthLabel(month)} size="sm">
@@ -313,7 +392,7 @@ function SalaryDetails({ row, month, onClose }: { row: AttTeamMonthRow | null; m
         ))}
         <div className="flex items-baseline justify-between gap-3 py-2.5">
           <dt className="font-semibold text-ink">Final salary</dt>
-          <dd className="text-right text-lg font-semibold text-ink">{set ? formatINR(row.salary!.final) : "Salary not set"}</dd>
+          <dd className="text-right text-lg font-semibold text-ink">{set ? inr(row.salary!.final) : "Salary not set"}</dd>
         </div>
       </dl>
       <Link href={`/attendance?tab=list&emp=${row.employee.id}&month=${month}`} onClick={onClose}
