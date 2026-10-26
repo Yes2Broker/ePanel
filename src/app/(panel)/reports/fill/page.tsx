@@ -13,7 +13,7 @@ function Fill() {
   const employeeId = q.get("employee");
   return (
     <ReportFormPage
-      backHref={employeeId ? "/reports?tab=team" : "/reports"}
+      backHref="/reports"
       load={() => api.reportForm({ type, projectId: q.get("project"), date: q.get("date"), employeeId })}
     />
   );

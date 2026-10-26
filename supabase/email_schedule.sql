@@ -1,4 +1,7 @@
--- OPTIONAL STEP 4. Sends the daily report emails at exactly 10:00 PM India time.
+-- OPTIONAL. Sends the daily report emails at the time set on Daily Reports →
+-- Email (IST, on the hour or half hour; 10:00 PM by default). The job runs
+-- every 30 minutes; the database only hands out the data in the chosen half
+-- hour and only once a day, so an email is never sent twice.
 -- Run after reports.sql, once Vercel has GMAIL_USER, GMAIL_APP_PASSWORD and
 -- CRON_SECRET set and the site is deployed. Safe to re-run (it replaces the
 -- schedule). It doesn't touch any report or employee data.
@@ -25,11 +28,11 @@ begin
   values ('report_email', encode(extensions.digest(v_secret, 'sha256'), 'hex'))
   on conflict (name) do update set secret_hash = excluded.secret_hash;
 
-  -- 16:30 UTC = 22:00 IST, every day.
+  -- Every 30 minutes (IST is UTC+5:30, so :00 and :30 line up with IST too).
   perform cron.unschedule(jobid) from cron.job where jobname = 'daily-report-email';
   perform cron.schedule(
     'daily-report-email',
-    '30 16 * * *',
+    '*/30 * * * *',
     format(
       $job$select net.http_post(url := %L, headers := %L::jsonb, body := '{}'::jsonb, timeout_milliseconds := 60000)$job$,
       v_url || '/api/cron/daily-report-email',
@@ -38,5 +41,5 @@ begin
   );
 end $$;
 
--- Check: one row, schedule "30 16 * * *".
+-- Check: one row, schedule "*/30 * * * *".
 select jobname, schedule, active from cron.job where jobname = 'daily-report-email';

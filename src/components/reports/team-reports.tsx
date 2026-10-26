@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronRight, SlidersHorizontal, X, Info } from "lucide-react";
+import { SlidersHorizontal, X, Info } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { ErrorBanner, Loading, selectCls } from "@/components/ui/page";
-import { ReportSummaryById } from "@/components/reports/report-summary";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { ReportTotals, SalesReportType } from "@/types";
@@ -48,16 +47,13 @@ function TotalsGrid({ t, cols, dim }: { t: ReportTotals; cols: typeof COLS; dim?
   );
 }
 
-export function TeamReports() {
+/** Summary tab: Day / MTD totals per person and report, with filters. */
+export function TeamSummary() {
   const [date, setDate] = useState(todayISO());
   const [type, setType] = useState<SalesReportType | "">("");
   const [projectId, setProjectId] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [period, setPeriod] = useState<Period>("today");
-  const [from, setFrom] = useState(todayISO().slice(0, 8) + "01");
-  const [to, setTo] = useState(todayISO());
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [fileOpen, setFileOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -65,7 +61,6 @@ export function TeamReports() {
   const employees = useApi(() => api.listEmployees());
   const filters = { type: type || null, projectId: projectId || null, employeeId: employeeId || null };
   const summary = useApi(() => api.teamReportSummary({ date, ...filters }), [date, type, projectId, employeeId]);
-  const list = useApi(() => api.listSalesReports({ from, to, ...filters }), [from, to, type, projectId, employeeId]);
 
   const chips = [
     type && { label: type, clear: () => { setType(""); setProjectId(""); } },
@@ -103,7 +98,6 @@ export function TeamReports() {
           <SecondaryButton onClick={() => setFiltersOpen(true)} className="min-h-10 whitespace-nowrap px-3">
             <SlidersHorizontal className="h-4 w-4" /> Filters{chips.length ? ` (${chips.length})` : ""}
           </SecondaryButton>
-          <SecondaryButton onClick={() => setFileOpen(true)} className="ml-auto min-h-10 whitespace-nowrap px-3"><Plus className="h-4 w-4" /> File for someone</SecondaryButton>
         </div>
         {chips.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -117,9 +111,6 @@ export function TeamReports() {
       </div>
       <Card className="hidden flex-wrap items-end gap-2.5 p-4 md:flex">
         {filterFields}
-        <div className="ml-auto">
-          <SecondaryButton onClick={() => setFileOpen(true)}><Plus className="h-4 w-4" /> File for someone</SecondaryButton>
-        </div>
       </Card>
       <Modal open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters" size="sm"
         footer={<div className="grid grid-cols-2 gap-2">
@@ -218,49 +209,11 @@ export function TeamReports() {
         <p className="hidden text-xs text-ink-faint md:block">{LEGEND}</p>
       </section>
 
-      {/* ---- Individual reports ---- */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink">Reports</h2>
-          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center">
-            <label className="min-w-0 text-xs text-ink-muted">From
-              <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={cn(selectCls, "mt-1 block w-full min-w-0 px-2.5 text-sm md:mt-0 md:inline-block md:w-auto")} />
-            </label>
-            <label className="min-w-0 text-xs text-ink-muted">To
-              <input type="date" value={to} min={from} max={todayISO()} onChange={(e) => e.target.value && setTo(e.target.value)} className={cn(selectCls, "mt-1 block w-full min-w-0 px-2.5 text-sm md:mt-0 md:inline-block md:w-auto")} />
-            </label>
-          </div>
-        </div>
-        <ErrorBanner message={list.error} onRetry={list.reload} />
-        <Card className="overflow-hidden p-0">
-          {list.loading && !list.data ? <Loading /> : (list.data ?? []).length === 0 ? (
-            <p className="py-10 text-center text-sm text-ink-faint">No reports in this range.</p>
-          ) : (
-            <ul className="divide-y divide-surface-border">
-              {(list.data ?? []).map((r) => (
-                <li key={r.id}>
-                  <button onClick={() => setOpenId(r.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface">
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-medium text-ink">{r.employeeName}</p>
-                      <p className="break-words text-xs text-ink-muted">{r.title} · {formatDate(r.date, { weekday: true })}</p>
-                      <p className="break-words text-xs text-ink-faint">FL {r.leads} · CM {r.calls} · P {r.positive} · SVS {r.scheduled} · SVD {r.done}{r.type === "Sole Selling" ? ` · WI ${r.walkIn}` : ""} · B {r.tokens}{r.source === "import" ? " · imported" : ""}{r.updatedAt ? " · edited" : ""}</p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </section>
-
-      {openId && <ReportSummaryById reportId={openId} isManager onClose={() => { setOpenId(null); list.reload(); summary.reload(); }} />}
-      <FileForSomeone open={fileOpen} onClose={() => setFileOpen(false)} employees={employees.data ?? []} projects={projects.data ?? []} />
     </div>
   );
 }
 
-function FileForSomeone({ open, onClose, employees, projects }: {
+export function FileForSomeone({ open, onClose, employees, projects }: {
   open: boolean; onClose: () => void;
   employees: { id: string; name: string; status: string }[]; projects: { id: string; name: string; status: string }[];
 }) {

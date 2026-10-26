@@ -60,8 +60,21 @@ create table if not exists sales_reports (
   updated_by text references employees(id) on update cascade,
   check ((report_type = 'Normal' and project_id is null) or (report_type = 'Sole Selling' and project_id is not null))
 );
+-- Soft delete (Admin): a deleted report is hidden everywhere (lists, totals,
+-- the 10 PM email) but kept, with its history. The person can file that day again.
+alter table sales_reports add column if not exists deleted_at timestamptz;
+alter table sales_reports add column if not exists deleted_by text references employees(id) on update cascade;
+-- One live report per person, day and report (deleted ones don't count).
+do $$
+begin
+  if exists (select 1 from pg_indexes where indexname = 'sales_reports_one_per_day_idx'
+             and indexdef not like '%deleted_at IS NULL%') then
+    drop index sales_reports_one_per_day_idx;
+  end if;
+end $$;
 create unique index if not exists sales_reports_one_per_day_idx on sales_reports
-  (employee_id, report_date, report_type, coalesce(project_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  (employee_id, report_date, report_type, coalesce(project_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  where deleted_at is null;
 create index if not exists sales_reports_date_idx on sales_reports (report_date);
 
 -- A visit someone scheduled. It belongs to that person (and project) only.
@@ -225,7 +238,7 @@ language sql stable set search_path = public, private as $$
     'closureConversion', private.pct(coalesce(sum(tokens), 0), coalesce(sum(done), 0))
   )
   from sales_reports
-  where (p_emp is null or employee_id = p_emp) and report_type = p_type
+  where deleted_at is null and (p_emp is null or employee_id = p_emp) and report_type = p_type
     and project_id is not distinct from p_project and report_date between p_from and p_to
 $$;
 
@@ -326,7 +339,7 @@ begin
     select jsonb_agg(private.project_json(p) || jsonb_build_object(
       'people', (select count(*) from employee_projects ep join employees e on e.id = ep.employee_id
                  where ep.project_id = p.id and e.status = 'Active'),
-      'reports', (select count(*) from sales_reports r where r.project_id = p.id))
+      'reports', (select count(*) from sales_reports r where r.project_id = p.id and r.deleted_at is null))
       order by p.status, lower(p.name))
     from projects p), '[]'::jsonb);
 end $$;
@@ -387,13 +400,13 @@ begin
     from (
       select jsonb_build_object('type', 'Normal', 'projectId', null, 'projectName', null,
                'title', 'Normal Daily Report', 'sort', '0',
-               'todayReportId', (select id from sales_reports where employee_id = v_emp.id and report_date = v_today
+               'todayReportId', (select id from sales_reports where deleted_at is null and employee_id = v_emp.id and report_date = v_today
                                  and report_type = 'Normal')) as o
       where coalesce((private.permissions_json(v_emp) ->> 'normalReport')::boolean, false)
       union all
       select jsonb_build_object('type', 'Sole Selling', 'projectId', p.id, 'projectName', p.name,
                'title', 'Sole Selling – ' || p.name, 'sort', '1' || lower(p.name),
-               'todayReportId', (select id from sales_reports where employee_id = v_emp.id and report_date = v_today
+               'todayReportId', (select id from sales_reports where deleted_at is null and employee_id = v_emp.id and report_date = v_today
                                  and report_type = 'Sole Selling' and project_id = p.id))
       from employee_projects ep join projects p on p.id = ep.project_id
       where ep.employee_id = v_emp.id and p.status = 'Active'
@@ -410,7 +423,7 @@ declare
   r sales_reports;
 begin
   select * into r from sales_reports where id = p_report_id;
-  if not found then
+  if not found or r.deleted_at is not null then
     raise exception 'Report not found.' using errcode = 'P0002';
   end if;
   if private.is_manager(v_me) then
@@ -471,7 +484,7 @@ begin
     end if;
     if v_type = 'Normal' then v_project := null; end if;
     select id into v_existing from sales_reports
-    where employee_id = v_emp.id and report_date = v_date and report_type = v_type and project_id is not distinct from v_project;
+    where deleted_at is null and employee_id = v_emp.id and report_date = v_date and report_type = v_type and project_id is not distinct from v_project;
     if v_existing is not null then
       return jsonb_build_object('existingReportId', v_existing);
     end if;
@@ -504,6 +517,7 @@ begin
                order by v.booked_on, v.created_at)
       from site_visits v
       where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
+        and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
         and (private.visit_needs_action(v, v_date)
              or (r.id is not null and exists (select 1 from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'today')))
     ), '[]'::jsonb),
@@ -513,6 +527,7 @@ begin
                'date', coalesce(v.reschedule_date, v.visit_date)) order by coalesce(v.reschedule_date, v.visit_date), v.created_at)
       from site_visits v
       where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
+        and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
         and ((v.status = 'Pending' and coalesce(v.reschedule_date, v.visit_date) > v_date
               and (r.id is null or v.booked_report_id is distinct from r.id))
              or (r.id is not null and exists (select 1 from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'future')))
@@ -589,7 +604,7 @@ begin
     if v_type = 'Sole Selling' and not exists (select 1 from projects where id = v_project and status = 'Active') then
       raise exception 'This project is closed or doesn''t exist.' using errcode = '22023';
     end if;
-    if exists (select 1 from sales_reports where employee_id = v_emp.id and report_date = v_date
+    if exists (select 1 from sales_reports where deleted_at is null and employee_id = v_emp.id and report_date = v_date
                and report_type = v_type and project_id is not distinct from v_project) then
       raise exception 'A report for this day has already been submitted. Open it from your past reports to edit it.' using errcode = '23505';
     end if;
@@ -850,7 +865,8 @@ end $$;
 create or replace function public.report_history(p_token text, p_report_id uuid) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
 begin
-  perform private.require_manager(p_token);
+  -- The person who filed it, or HR/Admin.
+  perform private.report_access(p_token, p_report_id, false);
   return coalesce((
     select jsonb_agg(jsonb_build_object('at', c.changed_at, 'by', (select name from employees where id = c.changed_by),
              'field', c.field, 'old', c.old_value, 'new', c.new_value) order by c.changed_at, c.id)
@@ -867,7 +883,7 @@ begin
              'canEdit', r.source = 'panel' and now() <= r.submitted_at + interval '24 hours')
              order by r.report_date desc, r.report_type, r.project_id)
     from sales_reports r
-    where r.employee_id = v_emp.id
+    where r.employee_id = v_emp.id and r.deleted_at is null
       and (p_month is null or date_trunc('month', r.report_date) = date_trunc('month', p_month))
   ), '[]'::jsonb);
 end $$;
@@ -882,7 +898,7 @@ begin
   return coalesce((
     select jsonb_agg(private.report_row_json(r) order by r.report_date desc, (select name from employees where id = r.employee_id))
     from sales_reports r
-    where r.report_date between p_from and p_to
+    where r.deleted_at is null and r.report_date between p_from and p_to
       and (p_type is null or r.report_type = p_type)
       and (p_project is null or r.project_id = p_project)
       and (p_employee_id is null or r.employee_id = p_employee_id)
@@ -904,14 +920,14 @@ begin
              'title', private.report_title(g.report_type, g.project_id),
              'rows', coalesce((select jsonb_agg(jsonb_build_object(
                          'employeeId', e.id, 'employeeName', e.name,
-                         'filedToday', exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_date = p_date
+                         'filedToday', exists (select 1 from sales_reports x where x.deleted_at is null and x.employee_id = e.id and x.report_date = p_date
                                                and x.report_type = g.report_type and x.project_id is not distinct from g.project_id),
                          'off', private.day_off(e, p_date),
                          'today', private.report_totals(e.id, g.report_type, g.project_id, p_date, p_date),
                          'mtd', private.report_totals(e.id, g.report_type, g.project_id, v_from, p_date)) order by e.name)
                       from employees e
                       where (p_employee_id is null or e.id = p_employee_id)
-                        and exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_date between v_from and p_date
+                        and exists (select 1 from sales_reports x where x.deleted_at is null and x.employee_id = e.id and x.report_date between v_from and p_date
                                     and x.report_type = g.report_type and x.project_id is not distinct from g.project_id)), '[]'::jsonb),
              'totals', jsonb_build_object(
                 'today', private.report_totals(p_employee_id, g.report_type, g.project_id, p_date, p_date),
@@ -921,7 +937,7 @@ begin
       select 'Normal'::text as report_type, null::uuid as project_id
       union all
       select 'Sole Selling', p.id from projects p
-      where p.status = 'Active' or exists (select 1 from sales_reports x where x.project_id = p.id and x.report_date between v_from and p_date)
+      where p.status = 'Active' or exists (select 1 from sales_reports x where x.deleted_at is null and x.project_id = p.id and x.report_date between v_from and p_date)
     ) g
     where (p_type is null or g.report_type = p_type) and (p_project is null or g.project_id = p_project)
   ), '[]'::jsonb);
@@ -959,6 +975,39 @@ begin
   return to_jsonb(v_clean);
 end $$;
 
+-- When the daily email goes out, IST, on the half hour ("22:00" by default).
+create or replace function private.email_time() returns text
+language sql stable set search_path = public as $$
+  select coalesce((select value #>> '{}' from app_settings where key = 'report_email_time'), '22:00')
+$$;
+
+create or replace function public.get_report_email_time(p_token text) returns text
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  v_me employees := private.session_employee(p_token);
+begin
+  if v_me.role <> 'Admin' then
+    raise exception 'Only an Admin can do this.' using errcode = '42501';
+  end if;
+  return private.email_time();
+end $$;
+
+create or replace function public.set_report_email_time(p_token text, p_time text) returns text
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  v_me employees := private.session_employee(p_token);
+begin
+  if v_me.role <> 'Admin' then
+    raise exception 'Only an Admin can do this.' using errcode = '42501';
+  end if;
+  if p_time !~ '^([01][0-9]|2[0-3]):(00|30)$' then
+    raise exception 'Choose a time on the hour or half hour.' using errcode = '22023';
+  end if;
+  insert into app_settings (key, value) values ('report_email_time', to_jsonb(p_time))
+  on conflict (key) do update set value = excluded.value;
+  return p_time;
+end $$;
+
 -- One email per group: Normal, plus each active project. Rows = anyone with a
 -- report this month or week (for that group). WTD starts on Monday.
 create or replace function private.email_payload(p_date date) returns jsonb
@@ -979,13 +1028,13 @@ language sql stable set search_path = public, private as $$
                'rows', coalesce((
                   select jsonb_agg(jsonb_build_object('name', e.name,
                            'off', private.day_off(e, b.d),
-                           'filed', exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_date = b.d
+                           'filed', exists (select 1 from sales_reports x where x.deleted_at is null and x.employee_id = e.id and x.report_date = b.d
                                             and x.report_type = g.report_type and x.project_id is not distinct from g.project_id),
                            'daily', private.report_totals(e.id, g.report_type, g.project_id, b.d, b.d),
                            'wtd', private.report_totals(e.id, g.report_type, g.project_id, b.w, b.d),
                            'mtd', private.report_totals(e.id, g.report_type, g.project_id, b.m, b.d)) order by e.name)
                   from employees e
-                  where exists (select 1 from sales_reports x where x.employee_id = e.id and x.report_type = g.report_type
+                  where exists (select 1 from sales_reports x where x.deleted_at is null and x.employee_id = e.id and x.report_type = g.report_type
                                 and x.project_id is not distinct from g.project_id
                                 and x.report_date between least(b.m, b.w) and b.d)), '[]'::jsonb),
                'totals', jsonb_build_object(
@@ -997,13 +1046,30 @@ language sql stable set search_path = public, private as $$
   )
 $$;
 
--- Called by the panel's 10 PM job with the shared secret (see email_schedule.sql).
+-- Called every 30 minutes by the scheduler with the shared secret (see
+-- email_schedule.sql). Returns the day's data only in the saved half hour
+-- (IST) and only once per day: the day is claimed here, so a second call
+-- that day gets null and sends nothing.
 create or replace function public.report_email_payload(p_secret text) returns jsonb
-language plpgsql stable security definer set search_path = public, extensions, private as $$
+language plpgsql volatile security definer set search_path = public, extensions, private as $$
+declare
+  v_now timestamp := now() at time zone private.tz();
+  v_slot text := to_char(v_now, 'HH24') || ':' || case when extract(minute from v_now) < 30 then '00' else '30' end;
+  n int;
 begin
   if not exists (select 1 from private.app_secrets
                  where name = 'report_email' and secret_hash = encode(digest(coalesce(p_secret, ''), 'sha256'), 'hex')) then
     raise exception 'Not allowed.' using errcode = '42501';
+  end if;
+  if v_slot <> private.email_time() then
+    return null;
+  end if;
+  insert into app_settings (key, value) values ('report_email_last_sent', to_jsonb(private.today()::text))
+  on conflict (key) do update set value = excluded.value
+    where app_settings.value is distinct from excluded.value;
+  get diagnostics n = row_count;
+  if n = 0 then
+    return null; -- already sent today
   end if;
   return private.email_payload(private.today());
 end $$;
@@ -1078,7 +1144,7 @@ begin
 
   for v_item in select * from jsonb_array_elements(coalesce(p_data -> 'doneVisits', '[]'::jsonb)) loop
     select id into v_report from sales_reports
-    where employee_id = v_item ->> 'employeeId' and report_date = (v_item ->> 'date')::date
+    where deleted_at is null and employee_id = v_item ->> 'employeeId' and report_date = (v_item ->> 'date')::date
       and report_type = v_item ->> 'type' and project_id is not distinct from nullif(v_item ->> 'projectId', '')::uuid;
     if coalesce((v_item ->> 'walkIn')::boolean, false) then
       if v_report is null then v_unlinked := v_unlinked + 1; continue; end if;
@@ -1100,7 +1166,7 @@ begin
 
   for v_item in select * from jsonb_array_elements(coalesce(p_data -> 'scheduledVisits', '[]'::jsonb)) loop
     select id into v_report from sales_reports
-    where employee_id = v_item ->> 'employeeId' and report_date = (v_item ->> 'bookedOn')::date
+    where deleted_at is null and employee_id = v_item ->> 'employeeId' and report_date = (v_item ->> 'bookedOn')::date
       and report_type = v_item ->> 'type' and project_id is not distinct from nullif(v_item ->> 'projectId', '')::uuid;
     insert into site_visits (employee_id, report_type, project_id, client_name, booked_on, booked_report_id, visit_date,
                              reschedule_date, status, cancel_reason, source, import_key)
@@ -1118,40 +1184,25 @@ begin
 end $$;
 
 -- ===========================================================================
--- Old pending visits (HR / Admin)
--- Imported visits whose date has passed without Done / Reschedule / Cancel.
--- They don't block anyone's report; HR/Admin close them here in bulk.
+-- Delete (Admin only): a soft delete. The report disappears from every list,
+-- total and the 10 PM email, but stays in the database with its history.
 -- ===========================================================================
-create or replace function public.list_stale_visits(p_token text) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-begin
-  perform private.require_manager(p_token);
-  return coalesce((
-    select jsonb_agg(jsonb_build_object(
-             'id', v.id, 'client', v.client_name, 'employeeId', v.employee_id,
-             'employeeName', (select name from employees where id = v.employee_id),
-             'type', v.report_type, 'projectName', (select name from projects where id = v.project_id),
-             'bookedOn', v.booked_on, 'date', coalesce(v.reschedule_date, v.visit_date))
-           order by (select name from employees where id = v.employee_id), coalesce(v.reschedule_date, v.visit_date))
-    from site_visits v
-    where v.status = 'Pending' and v.source = 'import' and coalesce(v.reschedule_date, v.visit_date) < private.today()
-  ), '[]'::jsonb);
-end $$;
-
-create or replace function public.close_stale_visits(p_token text, p_ids uuid[], p_status text, p_reason text) returns int
+create or replace function public.delete_sales_report(p_token text, p_report_id uuid) returns void
 language plpgsql volatile security definer set search_path = public, private as $$
 declare
-  v_me employees := private.require_manager(p_token);
-  n int;
+  v_me employees := private.session_employee(p_token);
+  r sales_reports;
 begin
-  if p_status not in ('Done','Cancelled') then
-    raise exception 'Choose Done or Cancelled.' using errcode = '22023';
+  if v_me.role <> 'Admin' then
+    raise exception 'Only an Admin can delete a report.' using errcode = '42501';
   end if;
-  update site_visits set status = p_status, closed_by = v_me.id, closed_at = now(),
-    cancel_reason = case when p_status = 'Cancelled' then coalesce(nullif(trim(p_reason), ''), 'Closed by ' || v_me.name) else cancel_reason end
-  where id = any (coalesce(p_ids, '{}')) and status = 'Pending' and source = 'import';
-  get diagnostics n = row_count;
-  return n;
+  select * into r from sales_reports where id = p_report_id for update;
+  if not found or r.deleted_at is not null then
+    raise exception 'Report not found.' using errcode = 'P0002';
+  end if;
+  update sales_reports set deleted_at = now(), deleted_by = v_me.id where id = p_report_id;
+  insert into report_changes (report_id, changed_by, field, old_value, new_value)
+  values (p_report_id, v_me.id, 'Report', 'Submitted', 'Deleted');
 end $$;
 
 -- Keep stored counts in line with the rules above (e.g. walk-ins no longer in
@@ -1182,7 +1233,7 @@ begin
       'report_options','report_form','save_sales_report','get_report','report_history',
       'my_sales_reports','list_sales_reports','team_report_summary',
       'get_report_email_recipients','set_report_email_recipients','report_email_payload','report_email_payload_admin',
-      'list_employee_aliases','import_reports','list_stale_visits','close_stale_visits'
+      'list_employee_aliases','import_reports','delete_sales_report','get_report_email_time','set_report_email_time'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);

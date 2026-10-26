@@ -254,6 +254,7 @@ language sql stable set search_path = public as $$
   select * from site_visits v
   where v.employee_id = p_emp and v.status = 'Pending'
     and coalesce(v.reschedule_date, v.visit_date) = any (p_days)
+    and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
   order by coalesce(v.reschedule_date, v.visit_date), v.created_at
 $$;
 

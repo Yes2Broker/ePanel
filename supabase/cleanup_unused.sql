@@ -31,7 +31,8 @@ begin
             'delete_report','delete_task','holiday_delete','holiday_list','holiday_save',
             'leave_calendar','leave_month_summary','list_leave_requests','list_tasks','list_team_reports',
             'my_attendance','my_leaves','my_reports','request_leave','review_leave','review_report',
-            'save_report','save_task','set_attendance','set_task_status','team_attendance'))
+            'save_report','save_task','set_attendance','set_task_status','team_attendance',
+            'list_stale_visits','close_stale_visits'))
        or (n.nspname = 'private' and p.proname in (
             'att_sync_comp_off','claim_json','comp_off_days','is_holiday','late_after','report_json',
             'report_module','tracking_start','rate_start','attendance_json','task_json','attendance_rate'))

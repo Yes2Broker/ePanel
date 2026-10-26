@@ -178,7 +178,7 @@ function Section({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function HistoryPanel({ reportId, onClose }: { reportId: string; onClose: () => void }) {
+export function HistoryPanel({ reportId, onClose }: { reportId: string; onClose: () => void }) {
   const { data, loading, error } = useApi(() => api.reportHistory(reportId), [reportId]);
   return (
     <Modal open onClose={onClose} title="Change history" size="lg"
@@ -203,8 +203,8 @@ function HistoryPanel({ reportId, onClose }: { reportId: string; onClose: () => 
 
 /** Loads a report by id and shows the popup. */
 export function ReportSummaryById({
-  reportId, onClose, isManager,
-}: { reportId: string; onClose: () => void; isManager: boolean }) {
+  reportId, onClose,
+}: { reportId: string; onClose: () => void }) {
   const { data, error } = useApi(() => api.getReport(reportId), [reportId]);
   if (error || !data) {
     return (
@@ -217,7 +217,7 @@ export function ReportSummaryById({
     <ReportSummary
       report={data}
       onClose={onClose}
-      showHistory={isManager}
+      showHistory
       editHref={data.canEdit ? `/reports/edit/${data.id}` : null}
     />
   );

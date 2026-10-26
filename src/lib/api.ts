@@ -3,7 +3,7 @@ import {
   AdminDashboard, Employee, EmployeeDashboard, ModuleKey, Permissions,
   Project, ReportOption, ReportFormData, ReportPayload,
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
-  SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType, StaleVisit,
+  SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard,
 } from "@/types";
 
@@ -36,7 +36,7 @@ const READS = new Set([
   "list_employees", "get_employee_permissions", "att_month", "att_team_days", "att_salary_sheet", "att_day_changes",
   "att_uploads", "att_dashboard", "list_projects", "get_employee_projects", "report_options", "report_form", "get_report",
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
-  "list_employee_aliases", "list_stale_visits", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
+  "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
   "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard",
 ]);
 const pending = new Map<string, Promise<unknown>>();
@@ -134,11 +134,11 @@ export const api = {
     rpc<TeamSummaryGroup[]>("team_report_summary", { p_date: f.date, p_type: f.type, p_project: f.projectId, p_employee_id: f.employeeId }),
   getReportEmailRecipients: () => rpc<string[]>("get_report_email_recipients"),
   setReportEmailRecipients: (emails: string[]) => rpc<string[]>("set_report_email_recipients", { p_emails: emails }),
+  getReportEmailTime: () => rpc<string>("get_report_email_time"),
+  setReportEmailTime: (time: string) => rpc<string>("set_report_email_time", { p_time: time }),
+  deleteSalesReport: (id: string) => rpc<void>("delete_sales_report", { p_report_id: id }),
   listEmployeeAliases: () => rpc<{ alias: string; employeeId: string }[]>("list_employee_aliases"),
   importReports: (data: unknown) => rpc<Record<string, number>>("import_reports", { p_data: data }),
-  listStaleVisits: () => rpc<StaleVisit[]>("list_stale_visits"),
-  closeStaleVisits: (ids: string[], status: "Done" | "Cancelled", reason: string) =>
-    rpc<number>("close_stale_visits", { p_ids: ids, p_status: status, p_reason: reason }),
 
   // Leave (supabase/leave.sql)
   leaveOverview: () => rpc<LeaveOverview>("leave_overview"),

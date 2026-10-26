@@ -236,17 +236,6 @@ export interface ReportPayload {
   walkIns: string[];
 }
 
-export interface StaleVisit {
-  id: string;
-  client: string;
-  employeeId: string;
-  employeeName: string;
-  type: SalesReportType;
-  projectName: string | null;
-  bookedOn: string;
-  date: string;
-}
-
 export interface TeamSummaryGroup {
   type: SalesReportType;
   projectId: string | null;
