@@ -521,6 +521,8 @@ declare
   c record;
   v_added boolean;
   v_removed int := 0; v_restored int := 0; v_kept int := 0;
+  v_changed text[] := '{}';  -- "EMP003|2026-10-01" for every person + month the undo changed
+  k text;
 begin
   select * into u from attendance_uploads where id = p_upload for update;
   if not found or u.deleted_at is not null then
@@ -571,10 +573,19 @@ begin
       update attendance_days set upload_id = null, updated_at = now() where employee_id = d.employee_id and work_date = d.work_date;
       v_restored := v_restored + 1;
     end if;
-    -- The person's month changed again. If they had already checked it, ask
-    -- them to check again; an unchecked mark stays as it is.
-    update attendance_checks set updated_at = now(), checked_at = null
-    where employee_id = d.employee_id and month = private.month_start(d.work_date) and checked_at is not null;
+    v_changed := v_changed || (d.employee_id || '|' || private.month_start(d.work_date)::text);
+  end loop;
+
+  -- "Please check" marks, per person + month the undo changed (days only kept
+  -- by HR edits don't count, so those marks stay as they were):
+  --   no days left that month → no mark at all; otherwise → check again.
+  foreach k in array coalesce((select array_agg(distinct x) from unnest(v_changed) x), '{}') loop
+    if not exists (select 1 from attendance_days where employee_id = split_part(k, '|', 1)
+                   and work_date between split_part(k, '|', 2)::date and private.month_end(split_part(k, '|', 2)::date)) then
+      delete from attendance_checks where employee_id = split_part(k, '|', 1) and month = split_part(k, '|', 2)::date;
+    else
+      perform private.att_mark_updated(split_part(k, '|', 1), split_part(k, '|', 2)::date);
+    end if;
   end loop;
 
   update attendance_uploads set deleted_at = now(), deleted_by = me.id where id = u.id;
