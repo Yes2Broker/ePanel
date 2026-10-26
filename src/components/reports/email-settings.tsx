@@ -4,17 +4,11 @@ import { useEffect, useState } from "react";
 import { Clock, Mail, Send } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
-import { ErrorBanner, Loading, selectCls } from "@/components/ui/page";
+import { ErrorBanner, Loading } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
+import { TimeSelect, timeLabel } from "@/components/ui/pickers";
 import { api, errorMessage, getSessionToken } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
-
-// Every half hour of the day, "00:00" … "23:30".
-const SLOTS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
-const slotLabel = (t: string) => {
-  const [h, m] = t.split(":").map(Number);
-  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-};
 
 /** Admin: who receives the daily report emails and when, plus a test-send button. */
 export function EmailSettings() {
@@ -26,7 +20,7 @@ export function EmailSettings() {
     setSavingTime(true);
     try {
       time.setData(await api.setReportEmailTime(t));
-      toast(`The daily email will go out at ${slotLabel(t)}.`);
+      toast(`The daily email will go out at ${timeLabel(t)}.`);
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {
@@ -74,15 +68,13 @@ export function EmailSettings() {
         <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Send at</h3></div>
         <ErrorBanner message={time.error} onRetry={time.reload} />
         <div className="flex flex-wrap items-center gap-2">
-          <select value={time.data ?? "22:00"} disabled={savingTime || !time.data} onChange={(e) => saveTime(e.target.value)} aria-label="Send at (India time)" className={selectCls}>
-            {SLOTS.map((t) => <option key={t} value={t}>{slotLabel(t)}</option>)}
-          </select>
+          <TimeSelect ariaLabel="Send at (India time)" value={time.data ?? "22:00"} disabled={savingTime || !time.data} onChange={saveTime} />
           <span className="text-sm text-ink-faint">India time, every day</span>
         </div>
       </Card>
       <Card className="space-y-3 p-4 sm:p-5">
         <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Recipients</h3></div>
-        <p className="text-sm text-ink-faint">Every day at {slotLabel(time.data ?? "22:00")} (India time) one email goes out for the Normal report and one for each active sole selling project, with Daily, WTD and MTD tables.</p>
+        <p className="text-sm text-ink-faint">Every day at {timeLabel(time.data ?? "22:00")} (India time) one email goes out for the Normal report and one for each active sole selling project, with Daily, WTD and MTD tables.</p>
         <ErrorBanner message={error} onRetry={reload} />
         {loading && !data ? <Loading /> : (
           <>

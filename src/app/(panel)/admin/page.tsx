@@ -2,6 +2,7 @@
 
 import { Users, UserCheck, FileText, Building2, CalendarOff, Inbox, Clock } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
+import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { PerformanceTable } from "@/components/dashboard/performance-table";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
@@ -34,6 +35,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="Dashboard" subtitle="Your team at a glance." />
       <InstallBanner />
+      {on.attendance && <AttUpdateBanner />}
 
       <ErrorBanner message={employees.error} onRetry={employees.reload} />
       <ErrorBanner message={error} onRetry={reload} />

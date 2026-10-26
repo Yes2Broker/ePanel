@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { AttDay, AttMonth, AttSummary } from "@/types";
 import { cn, formatDate, formatINR, todayISO } from "@/lib/utils";
 import { STATUS_CODE, STATUS_STYLE } from "@/components/attendance/att-format";
+import { MonthField } from "@/components/ui/pickers";
 
 /** "2026-10" ± n months. */
 function shiftMonth(month: string, n: number) {
@@ -22,11 +23,9 @@ export function MonthPicker({ month, onChange }: { month: string; onChange: (m: 
   return (
     <div className="inline-flex items-center rounded-full bg-white shadow-card">
       <button onClick={() => onChange(shiftMonth(month, -1))} className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:text-ink" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-      <label className="relative flex h-10 min-w-[8.5rem] items-center justify-center text-sm font-medium text-ink">
-        {monthLabel(month)}
-        <input type="month" value={month} max={max} onChange={(e) => e.target.value && onChange(e.target.value)} aria-label="Month"
-          className="absolute inset-0 cursor-pointer opacity-0" />
-      </label>
+      <MonthField value={month} max={max} onChange={onChange} ariaLabel="Month"
+        className="flex h-10 min-w-[8.5rem] items-center justify-center rounded-full text-sm font-medium text-ink hover:bg-surface"
+        label={monthLabel(month)} />
       <button onClick={() => onChange(shiftMonth(month, 1))} disabled={month >= max} className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:text-ink disabled:opacity-30" aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
     </div>
   );

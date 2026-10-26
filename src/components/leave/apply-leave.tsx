@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Paperclip, X, CalendarClock, UserRoundCheck } from "lucide-react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
+import { DatePicker, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
@@ -129,22 +130,19 @@ export function ApplyLeave({ open, onClose, onDone }: { open: boolean; onClose: 
         {/* Dates */}
         <div className={cn("grid gap-3", !single && "grid-cols-2")}>
           <Field label={single ? "Date" : "From"}>
-            <input type="date" value={start} min={addDays(today, -7)}
-              onChange={(e) => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} className={cn(inputCls, "min-w-0 px-2.5")} />
+            <DatePicker variant="field" ariaLabel={single ? "Date" : "From"} value={start} min={addDays(today, -7)}
+              onChange={(v) => { setStart(v); if (v > end) setEnd(v); }} />
           </Field>
           {!single && (
             <Field label="To">
-              <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className={cn(inputCls, "min-w-0 px-2.5")} />
+              <DatePicker variant="field" ariaLabel="To" value={end} min={start} onChange={setEnd} />
             </Field>
           )}
         </div>
         {start === end && (
           <Field label="Full or half day">
-            <select value={half} onChange={(e) => setHalf(e.target.value as typeof half)} className={inputCls}>
-              <option value="">Full day</option>
-              <option value="first">First half (0.5 day)</option>
-              <option value="second">Second half (0.5 day)</option>
-            </select>
+            <Select variant="field" ariaLabel="Full or half day" value={half} onChange={(v) => setHalf(v as typeof half)}
+              options={[{ value: "", label: "Full day" }, { value: "first", label: "First half (0.5 day)" }, { value: "second", label: "Second half (0.5 day)" }]} />
           </Field>
         )}
         {start !== end && <p className="-mt-2 text-xs text-ink-faint">Half days: choose the same From and To date.</p>}
@@ -183,15 +181,13 @@ export function ApplyLeave({ open, onClose, onDone }: { open: boolean; onClose: 
                     </button>
                   </div>
                   {c.action === "reschedule" && (
-                    <input type="date" aria-label={`New date for ${v.client}`} value={c.date} min={today} onChange={(e) => setChoice(v.id, { date: e.target.value })}
-                      className={cn(inputCls, c.date && leaveDays.has(c.date) && "border-status-danger")} />
+                    <DatePicker variant="field" ariaLabel={`New date for ${v.client}`} value={c.date} min={today} onChange={(d) => setChoice(v.id, { date: d })}
+                      invalid={!!c.date && leaveDays.has(c.date)} placeholder="Pick a new date" />
                   )}
                   {c.action === "reschedule" && c.date && leaveDays.has(c.date) && <p className="text-xs text-status-danger">That day is part of your leave.</p>}
                   {c.action === "handover" && (
-                    <select aria-label={`Colleague for ${v.client}`} value={c.to} onChange={(e) => setChoice(v.id, { to: e.target.value })} className={inputCls}>
-                      <option value="">Choose a colleague</option>
-                      {v.colleagues.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </select>
+                    <Select variant="field" ariaLabel={`Colleague for ${v.client}`} value={c.to} onChange={(to) => setChoice(v.id, { to })} placeholder="Choose a colleague"
+                      options={v.colleagues.map((o) => ({ value: o.id, label: o.name }))} />
                   )}
                 </div>
               );

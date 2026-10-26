@@ -3,18 +3,19 @@
 import { useMemo, useState } from "react";
 import { Search, Plus, Eye, Pencil, KeyRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/pickers";
 import { PrimaryButton } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/pills";
 import { Modal } from "@/components/ui/modal";
 import { Avatar } from "@/components/ui/avatar";
-import { ErrorBanner, Loading, PageHeader, selectCls, tableHeadCls } from "@/components/ui/page";
+import { ErrorBanner, Loading, PageHeader, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { EmployeeFormDialog, EmployeeFormValues } from "@/components/employees/employee-form-dialog";
 import { ResetPasswordDialog } from "@/components/employees/reset-password-dialog";
 import { useSession } from "@/context/session-context";
 import { DEPARTMENTS, ROLES, weekOffLabel } from "@/lib/constants";
 import { Employee } from "@/types";
-import { formatINR, formatDate, cn } from "@/lib/utils";
+import { formatINR, formatDate } from "@/lib/utils";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 
@@ -97,19 +98,12 @@ export default function AdminEmployeesPage() {
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID…" aria-label="Search employees by name, email or ID"
             className="min-h-11 w-full rounded-pill border border-surface-border bg-white py-2 pl-8 pr-3 text-base focus:outline-none focus:ring-2 focus:ring-brand sm:min-h-10 sm:w-60 sm:text-sm" />
         </div>
-        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={cn(selectCls, "col-span-2 sm:col-auto")} aria-label="Department">
-          <option value="All">All departments</option>
-          {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-        </select>
-        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className={selectCls} aria-label="Role">
-          <option value="All">All roles</option>
-          {ROLES.map((r) => <option key={r}>{r}</option>)}
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectCls} aria-label="Status">
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
-          <option value="All">All statuses</option>
-        </select>
+        <Select ariaLabel="Department" value={deptFilter} onChange={setDeptFilter} className="col-span-2 sm:col-auto"
+          options={[{ value: "All", label: "All departments" }, ...DEPARTMENTS.map((d) => ({ value: d, label: d }))]} />
+        <Select ariaLabel="Role" value={roleFilter} onChange={setRoleFilter}
+          options={[{ value: "All", label: "All roles" }, ...ROLES.map((r) => ({ value: r, label: r }))]} />
+        <Select ariaLabel="Status" value={statusFilter} onChange={setStatusFilter}
+          options={[{ value: "Active", label: "Active" }, { value: "Inactive", label: "Inactive" }, { value: "All", label: "All statuses" }]} />
       </div>
 
       {/* Phones and tablets: one card per person, actions as big buttons. */}

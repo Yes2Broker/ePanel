@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
+import { DatePicker, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
@@ -45,29 +46,24 @@ export function EmployeeFormDialog({
           <Field label="Email (optional)"><input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
           <Field label="Mobile Number"><input type="tel" inputMode="tel" autoComplete="off" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
           <Field label="Salary"><input type="number" inputMode="numeric" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
-          <Field label="Date of Joining"><input type="date" value={form.joiningDate} onChange={(e) => set("joiningDate", e.target.value)} className={inputCls} /></Field>
+          <Field label="Date of Joining"><DatePicker variant="field" ariaLabel="Date of Joining" value={form.joiningDate} onChange={(v) => set("joiningDate", v)} /></Field>
           <Field label="Department">
-            <select value={form.department} onChange={(e) => set("department", e.target.value as Department)} className={inputCls}>
-              {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-            </select>
+            <Select variant="field" ariaLabel="Department" value={form.department} onChange={(v) => set("department", v as Department)}
+              options={DEPARTMENTS.map((d) => ({ value: d, label: d }))} />
           </Field>
           <Field label="Designation"><input value={form.designation} onChange={(e) => set("designation", e.target.value)} className={inputCls} /></Field>
           <Field label="Role">
-            <select value={form.role} onChange={(e) => set("role", e.target.value as Role)} className={inputCls}>
-              {ROLES.filter((r) => canAssignAdmin || r !== "Admin").map((r) => <option key={r}>{r}</option>)}
-            </select>
+            <Select variant="field" ariaLabel="Role" value={form.role} onChange={(v) => set("role", v as Role)}
+              options={ROLES.filter((r) => canAssignAdmin || r !== "Admin").map((r) => ({ value: r, label: r }))} />
           </Field>
           <Field label="Reporting Manager"><input value={form.manager} onChange={(e) => set("manager", e.target.value)} className={inputCls} /></Field>
           <Field label="Weekly Off">
-            <select value={form.weekOff ?? ""} onChange={(e) => set("weekOff", e.target.value ? Number(e.target.value) : null)} className={inputCls}>
-              {WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}
-              <option value="">No weekly off</option>
-            </select>
+            <Select variant="field" ariaLabel="Weekly Off" value={form.weekOff == null ? "" : String(form.weekOff)} onChange={(v) => set("weekOff", v ? Number(v) : null)}
+              options={[...WEEKDAYS.map((d, i) => ({ value: String(i + 1), label: d })), { value: "", label: "No weekly off" }]} />
           </Field>
           <Field label="Employment Status">
-            <select value={form.status} onChange={(e) => set("status", e.target.value as EmploymentStatus)} className={inputCls}>
-              <option>Active</option><option>Inactive</option>
-            </select>
+            <Select variant="field" ariaLabel="Employment Status" value={form.status} onChange={(v) => set("status", v as EmploymentStatus)}
+              options={[{ value: "Active", label: "Active" }, { value: "Inactive", label: "Inactive" }]} />
           </Field>
           {!initial && (
             <Field label="Initial Password">

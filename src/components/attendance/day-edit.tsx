@@ -8,8 +8,9 @@ import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { AttDay } from "@/types";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { AttPill, DayFlags, hours } from "@/components/attendance/att-format";
+import { Select, TimeInput } from "@/components/ui/pickers";
 
 export interface EditTarget { employeeId: string; name: string; date: string; day: AttDay | null }
 
@@ -31,8 +32,10 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
   }, [target]);
 
   const noTimes = form.status === "Absent" || form.status === "Weekoff" || form.status === "Paid Leave";
+  const hhmm = (t: string) => !t || /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
   const save = async () => {
     if (!target) return;
+    if (!noTimes && (!hhmm(form.in) || !hhmm(form.out))) { toast("Type times as HH:MM, e.g. 09:45 or 18:30.", "error"); return; }
     setSaving(true);
     try {
       const d = await api.attSetDay({ employeeId: target.employeeId, date: target.date, in: noTimes ? "" : form.in, out: noTimes ? "" : form.out, status: form.status, remark: form.remark });
@@ -62,18 +65,13 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
             </div>
           )}
           <Field label="Status">
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={inputCls}>
-              <option value="">From the punches (automatic)</option>
-              <option value="Present">Present</option>
-              <option value="Absent">Absent</option>
-              <option value="Weekoff">Weekoff</option>
-              <option value="Paid Leave">Paid Leave</option>
-            </select>
+            <Select variant="field" ariaLabel="Status" value={form.status} onChange={(v) => setForm({ ...form, status: v })}
+              options={[{ value: "", label: "From the punches (automatic)" }, ...["Present", "Absent", "Weekoff", "Paid Leave"].map((v) => ({ value: v, label: v }))]} />
           </Field>
           {!noTimes && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="In time"><input type="time" value={form.in} onChange={(e) => setForm({ ...form, in: e.target.value })} className={cn(inputCls, "min-w-0 px-2.5")} /></Field>
-              <Field label="Out time"><input type="time" value={form.out} onChange={(e) => setForm({ ...form, out: e.target.value })} className={cn(inputCls, "min-w-0 px-2.5")} /></Field>
+              <Field label="In time (HH:MM)"><TimeInput ariaLabel="In time" value={form.in} onChange={(v) => setForm({ ...form, in: v })} /></Field>
+              <Field label="Out time (HH:MM)"><TimeInput ariaLabel="Out time" value={form.out} onChange={(v) => setForm({ ...form, out: v })} /></Field>
             </div>
           )}
           <Field label={form.status === "Paid Leave" ? "Remark (required)" : "Remark"}>

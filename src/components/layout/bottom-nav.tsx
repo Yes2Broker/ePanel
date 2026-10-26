@@ -8,6 +8,8 @@ import { NavItem, bottomNavFor, isActivePath } from "@/lib/nav";
 import { useSession } from "@/context/session-context";
 import { usePwa } from "@/context/pwa-context";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
+import { UpdateDot } from "@/components/layout/sidebar";
+import { useAttUpdates } from "@/lib/att-updates";
 import { Modal } from "@/components/ui/modal";
 import { NavLink } from "@/components/layout/sidebar";
 
@@ -55,13 +57,14 @@ function useKeyboardOpen() {
   return open;
 }
 
-function BarButton({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
+function BarButton({ item, active, onClick, dot }: { item: NavItem; active: boolean; onClick?: () => void; dot?: boolean }) {
   const Icon = item.icon;
   const body = (
     <>
       <span className="relative">
         <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.25 : 1.75} />
         {item.external && <ExternalLink className="absolute -right-2.5 -top-1 h-3 w-3" aria-hidden />}
+        {dot && <UpdateDot />}
       </span>
       <span className="max-w-full break-words text-center text-[0.6875rem] leading-[1.1]">{item.short ?? item.label}</span>
     </>
@@ -76,6 +79,7 @@ function BarButton({ item, active, onClick }: { item: NavItem; active: boolean; 
       {body}
       {item.external && <span className="sr-only">(opens in a new tab)</span>}
       {active && <span className="sr-only">(current page)</span>}
+      {dot && <span className="sr-only">(updated – please check)</span>}
     </NavLink>
   );
 }
@@ -97,6 +101,7 @@ export function BottomNav() {
   }, [keyboard]);
 
   useEffect(() => setMoreOpen(false), [pathname]);
+  const attUpdated = (useAttUpdates().data?.length ?? 0) > 0;
 
   if (!user) return null;
   const { bar, more } = bottomNavFor(user, permissions);
@@ -112,7 +117,7 @@ export function BottomNav() {
         )}
       >
         <div className="mx-auto flex h-16 max-w-lg items-stretch">
-          {bar.map((item) => <BarButton key={item.href} item={item} active={isActivePath(item, pathname)} />)}
+          {bar.map((item) => <BarButton key={item.href} item={item} active={isActivePath(item, pathname)} dot={item.href === "/attendance" && attUpdated} />)}
           {more && (
             <button
               onClick={() => setMoreOpen(true)}

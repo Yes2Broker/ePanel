@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loading, PageHeader, Tabs } from "@/components/ui/page";
+import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { useSession } from "@/context/session-context";
 import { AttendanceList, SalarySheet } from "@/components/attendance/att-manage";
 import { AttendanceUpload } from "@/components/attendance/att-upload";
@@ -37,7 +38,7 @@ function AttendanceInner() {
       <PageHeader title="Attendance" subtitle={subtitle} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={tab} onChange={(t) => router.replace(`${pathname}?tab=${t}`)} />}
       {tab === "list" && <AttendanceList key={`${q.get("emp")}${q.get("month")}`} manager initialEmp={q.get("emp") ?? ""} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />}
-      {tab === "mine" && <AttendanceList manager={false} />}
+      {tab === "mine" && <><AttUpdateBanner /><AttendanceList manager={false} /></>}
       {tab === "upload" && <AttendanceUpload />}
       {tab === "salary" && isAdmin && <SalarySheet />}
     </div>

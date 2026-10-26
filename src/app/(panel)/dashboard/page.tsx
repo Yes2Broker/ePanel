@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CalendarCheck, FileText, Briefcase, BadgeCheck, CalendarDays, UserRound, CalendarOff, Clock, Hourglass } from "lucide-react";
 import { SummaryCard } from "@/components/dashboard/summary-card";
+import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { Card } from "@/components/ui/card";
@@ -42,6 +43,7 @@ export default function EmployeeDashboardPage() {
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel." />
       <InstallBanner />
+      {on.attendance && <AttUpdateBanner />}
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
         <SummaryCard icon={BadgeCheck} label="Employee ID" value={user.id} />

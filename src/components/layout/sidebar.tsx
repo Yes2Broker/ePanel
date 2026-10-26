@@ -9,6 +9,7 @@ import { useSession } from "@/context/session-context";
 import { usePreferences } from "@/context/preferences-context";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
 import { FullLogo, LogoIcon } from "@/components/ui/logo";
+import { useAttUpdates } from "@/lib/att-updates";
 
 /** A nav link: internal pages use the router, other Yes2Broker sites open in a new tab. */
 export function NavLink({ item, className, children, onClick, title }: {
@@ -24,10 +25,16 @@ export function NavLink({ item, className, children, onClick, title }: {
  * Tablet and desktop (768px+). Tablets get the icon-only rail; desktops get
  * the full sidebar unless "Compact sidebar" is on. Phones use the bottom bar.
  */
+/** Small red dot: "your attendance was updated, please check it". */
+export function UpdateDot() {
+  return <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-status-danger" aria-hidden />;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, permissions } = useSession();
   const { prefs } = usePreferences();
+  const attUpdated = (useAttUpdates().data?.length ?? 0) > 0;
   if (!user) return null;
   const nav = navFor(user, permissions);
   const compact = prefs.compactSidebar;
@@ -62,7 +69,10 @@ export function Sidebar() {
                 item.comingSoon && !isActive && "opacity-70"
               )}
             >
-              <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
+              <span className="relative shrink-0">
+                <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.25 : 1.75} />
+                {item.href === "/attendance" && attUpdated && <UpdateDot />}
+              </span>
               <span className={cn("flex-1 items-center justify-between gap-2", labels)}>
                 <span className="flex items-center gap-1.5 whitespace-nowrap">
                   {item.label}
@@ -71,6 +81,7 @@ export function Sidebar() {
                 {item.comingSoon && <ComingSoonBadge />}
               </span>
               <span className={cn("sr-only", !compact && "lg:hidden")}>{item.label}</span>
+              {item.href === "/attendance" && attUpdated && <span className="sr-only">(updated – please check)</span>}
             </NavLink>
           );
         })}

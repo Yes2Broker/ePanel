@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, FileUp, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/pickers";
 import { PrimaryButton } from "@/components/ui/button";
-import { EmptyState, ErrorBanner, Loading, PageHeader, selectCls } from "@/components/ui/page";
+import { EmptyState, ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -252,13 +253,11 @@ export default function ImportPage() {
             );
           })}
         </div>
-        <label className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
           Dates in the sheets are written as
-          <select value={order} onChange={(e) => setOrder(e.target.value as DateOrder)} className={selectCls}>
-            <option value="DMY">Day/Month/Year (24/10/2026)</option>
-            <option value="MDY">Month/Day/Year (10/24/2026)</option>
-          </select>
-        </label>
+          <Select ariaLabel="Date format in the sheets" value={order} onChange={(v) => setOrder(v as DateOrder)}
+            options={[{ value: "DMY", label: "Day/Month/Year (24/10/2026)" }, { value: "MDY", label: "Month/Day/Year (10/24/2026)" }]} />
+        </div>
       </Card>
 
       {/* 2. Names */}
@@ -279,16 +278,10 @@ export default function ImportPage() {
                 <li key={key} className="flex flex-wrap items-center gap-2 py-2.5">
                   <span className="min-w-[10rem] flex-1 text-sm font-medium text-ink">{raw}</span>
                   {c.mode === "employee" && c.suggested && !names[key] && <span className="rounded-full bg-status-warningBg px-2 py-0.5 text-xs text-status-warning">check</span>}
-                  <select aria-label={`Employee for ${raw}`} value={value} className={cn(selectCls, !value && "border-status-danger")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setNames((n) => ({ ...n, [key]: v === "__create" ? { mode: "create", id: suggestId(emps, n) } : v === "__skip" ? { mode: "skip" } : v ? { mode: "employee", employeeId: v } : { mode: "none" } }));
-                    }}>
-                    <option value="">Choose…</option>
-                    {emps.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id}){e.status === "Inactive" ? " · inactive" : ""}</option>)}
-                    <option value="__create">➕ Create as inactive employee</option>
-                    <option value="__skip">Skip this person&apos;s rows</option>
-                  </select>
+                  <Select ariaLabel={`Employee for ${raw}`} value={value} invalid={!value} placeholder="Choose…"
+                    onChange={(v) => setNames((n) => ({ ...n, [key]: v === "__create" ? { mode: "create", id: suggestId(emps, n) } : v === "__skip" ? { mode: "skip" } : v ? { mode: "employee", employeeId: v } : { mode: "none" } }))}
+                    options={[{ value: "", label: "Choose…" }, ...emps.map((e) => ({ value: e.id, label: `${e.name} (${e.id})${e.status === "Inactive" ? " · inactive" : ""}` })),
+                      { value: "__create", label: "➕ Create as inactive employee" }, { value: "__skip", label: "Skip this person's rows" }]} />
                   {c.mode === "create" && (
                     <input aria-label={`New employee code for ${raw}`} value={c.id} placeholder="Code, e.g. EMP022"
                       onChange={(e) => setNames((n) => ({ ...n, [key]: { mode: "create", id: e.target.value } }))}
@@ -311,11 +304,9 @@ export default function ImportPage() {
             {soleEmployees.map((id) => (
               <li key={id} className="flex flex-wrap items-center gap-2 py-2.5">
                 <span className="min-w-[10rem] flex-1 text-sm font-medium text-ink">{personLabel(id)}</span>
-                <select aria-label={`Project for ${personLabel(id)}`} value={projectOf(id)} onChange={(e) => setProjectFor((p) => ({ ...p, [id]: e.target.value }))}
-                  className={cn(selectCls, !projectOf(id) && "border-status-danger")}>
-                  <option value="">Choose project…</option>
-                  {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "Closed" ? " (closed)" : ""}</option>)}
-                </select>
+                <Select ariaLabel={`Project for ${personLabel(id)}`} value={projectOf(id)} invalid={!projectOf(id)} placeholder="Choose project…"
+                  onChange={(v) => setProjectFor((p) => ({ ...p, [id]: v }))}
+                  options={activeProjects.map((p) => ({ value: p.id, label: `${p.name}${p.status === "Closed" ? " (closed)" : ""}` }))} />
               </li>
             ))}
           </ul>

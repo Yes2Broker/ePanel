@@ -25,13 +25,14 @@ function ReportsInner() {
   const options = useApi(() => api.reportOptions());
 
   const tabs: { value: Tab; label: string }[] = isManager ? [
-    { value: "reports", label: "Reports" },
     { value: "summary", label: "Summary" },
+    { value: "reports", label: "Reports" },
     { value: "projects", label: "Projects" },
     ...(isAdmin ? [{ value: "email" as Tab, label: "Email" }] : []),
   ] : [];
   const requested = q.get("tab") as Tab | null;
-  const tab: Tab = requested && tabs.some((t) => t.value === requested) ? requested : "reports";
+  // HR/Admin open on the Summary; employees only have their reports.
+  const tab: Tab = requested && tabs.some((t) => t.value === requested) ? requested : isManager ? "summary" : "reports";
   const setTab = (t: Tab) => router.replace(`${pathname}?tab=${t}`);
   const openId = q.get("open");
   const canFile = (options.data?.length ?? 0) > 0;

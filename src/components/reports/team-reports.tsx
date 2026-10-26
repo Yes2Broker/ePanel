@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SlidersHorizontal, X, Info } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { DatePicker, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
-import { Modal, Field, inputCls } from "@/components/ui/modal";
-import { ErrorBanner, Loading, selectCls } from "@/components/ui/page";
+import { Modal, Field } from "@/components/ui/modal";
+import { ErrorBanner, Loading } from "@/components/ui/page";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { ReportTotals, SalesReportType } from "@/types";
@@ -70,23 +71,18 @@ export function TeamSummary() {
 
   const filterFields = (
     <>
-      <label className="block text-xs text-ink-muted">Type
-        <select value={type} onChange={(e) => { setType(e.target.value as SalesReportType | ""); if (e.target.value === "Normal") setProjectId(""); }} className={cn(selectCls, "mt-1 block w-full md:w-auto")}>
-          <option value="">All reports</option><option value="Normal">Normal</option><option value="Sole Selling">Sole Selling</option>
-        </select>
-      </label>
-      <label className="block text-xs text-ink-muted">Project
-        <select value={projectId} disabled={type === "Normal"} onChange={(e) => setProjectId(e.target.value)} className={cn(selectCls, "mt-1 block w-full md:w-auto")}>
-          <option value="">All projects</option>
-          {(projects.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}{p.status === "Closed" ? " (closed)" : ""}</option>)}
-        </select>
-      </label>
-      <label className="block text-xs text-ink-muted">Person
-        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className={cn(selectCls, "mt-1 block w-full md:w-auto")}>
-          <option value="">Everyone</option>
-          {(employees.data ?? []).map((e) => <option key={e.id} value={e.id}>{e.name}{e.status === "Inactive" ? " (inactive)" : ""}</option>)}
-        </select>
-      </label>
+      <div className="block text-xs text-ink-muted">Type
+        <Select ariaLabel="Type" value={type} className="mt-1 flex w-full md:w-auto" onChange={(v) => { setType(v as SalesReportType | ""); if (v === "Normal") setProjectId(""); }}
+          options={[{ value: "", label: "All reports" }, { value: "Normal", label: "Normal" }, { value: "Sole Selling", label: "Sole Selling" }]} />
+      </div>
+      <div className="block text-xs text-ink-muted">Project
+        <Select ariaLabel="Project" value={projectId} disabled={type === "Normal"} className="mt-1 flex w-full md:w-auto" onChange={setProjectId}
+          options={[{ value: "", label: "All projects" }, ...(projects.data ?? []).map((p) => ({ value: p.id, label: `${p.name}${p.status === "Closed" ? " (closed)" : ""}` }))]} />
+      </div>
+      <div className="block text-xs text-ink-muted">Person
+        <Select ariaLabel="Person" value={employeeId} className="mt-1 flex w-full md:w-auto" onChange={setEmployeeId}
+          options={[{ value: "", label: "Everyone" }, ...(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.name}${e.status === "Inactive" ? " (inactive)" : ""}` }))]} />
+      </div>
     </>
   );
 
@@ -131,7 +127,7 @@ export function TeamSummary() {
             </button>
           </h2>
           <div className="flex min-w-0 items-center gap-2">
-            <input type="date" value={date} max={todayISO()} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Totals date" className={cn(selectCls, "w-[9.5rem] min-w-0 px-2.5 text-sm")} />
+            <DatePicker ariaLabel="Totals date" value={date} max={todayISO()} onChange={setDate} />
             <div className="flex shrink-0 rounded-full bg-white p-0.5 shadow-card" role="tablist">
               {([["today", "Day"], ["mtd", "MTD"]] as [Period, string][]).map(([v, l]) => (
                 <button key={v} role="tab" aria-selected={period === v} aria-label={v === "today" ? formatDate(date, { weekday: true }) : "MTD"} onClick={() => setPeriod(v)}
@@ -231,19 +227,15 @@ export function FileForSomeone({ open, onClose, employees, projects }: {
     <Modal open={open} onClose={onClose} title="File a report for someone">
       <form onSubmit={go} className="space-y-4">
         <Field label="Employee">
-          <select required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className={inputCls}>
-            <option value="">Select employee</option>
-            {employees.filter((e) => e.status === "Active").map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
+          <Select variant="field" ariaLabel="Employee" value={employeeId} onChange={setEmployeeId} placeholder="Select employee"
+            options={employees.filter((e) => e.status === "Active").map((e) => ({ value: e.id, label: e.name }))} />
         </Field>
         <Field label="Report">
-          <select value={report} onChange={(e) => setReport(e.target.value)} className={inputCls}>
-            <option value="normal">Normal Daily Report</option>
-            {projects.filter((p) => p.status === "Active").map((p) => <option key={p.id} value={`sole:${p.id}`}>Sole Selling – {p.name}</option>)}
-          </select>
+          <Select variant="field" ariaLabel="Report" value={report} onChange={setReport}
+            options={[{ value: "normal", label: "Normal Daily Report" }, ...projects.filter((p) => p.status === "Active").map((p) => ({ value: `sole:${p.id}`, label: `Sole Selling – ${p.name}` }))]} />
         </Field>
         <Field label="Date">
-          <input type="date" required value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+          <DatePicker variant="field" ariaLabel="Date" value={date} max={todayISO()} onChange={setDate} />
         </Field>
         <p className="text-xs text-ink-faint">If that day is already filed, it opens so you can edit it instead.</p>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">

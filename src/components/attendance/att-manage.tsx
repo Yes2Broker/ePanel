@@ -5,8 +5,9 @@ import Link from "next/link";
 import { ChevronRight, Download, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SecondaryButton } from "@/components/ui/button";
-import { EmptyState, ErrorBanner, Loading, selectCls, tableHeadCls } from "@/components/ui/page";
+import { EmptyState, ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { Modal } from "@/components/ui/modal";
+import { Select } from "@/components/ui/pickers";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -67,15 +68,11 @@ export function AttendanceList({ manager, initialMonth, initialEmp }: { manager:
       <div className="flex flex-wrap items-center gap-2">
         <MonthPicker month={month} onChange={setMonth} />
         {manager && (
-          <select value={emp} onChange={(e) => { setEmp(e.target.value); if (!e.target.value) setView("list"); }} aria-label="Employee" className={selectCls}>
-            <option value="">All employees</option>
-            {(people.data ?? []).filter((e) => e.status === "Active" && e.role !== "Admin").map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
+          <Select ariaLabel="Employee" value={emp} onChange={(v) => { setEmp(v); if (!v) setView("list"); }}
+            options={[{ value: "", label: "All employees" }, ...(people.data ?? []).filter((e) => e.status === "Active" && e.role !== "Admin").map((e) => ({ value: e.id, label: e.name }))]} />
         )}
-        <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Status" className={selectCls}>
-          <option value="">All statuses</option>
-          {STATUS_FILTERS.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
+        <Select ariaLabel="Status" value={status} onChange={(v) => setStatus(v as StatusFilter)}
+          options={[{ value: "", label: "All statuses" }, ...STATUS_FILTERS.map((f) => ({ value: f, label: f }))]} />
         {one && (
           <div className="inline-flex rounded-full bg-white p-0.5 shadow-card" role="tablist">
             {(["list", "calendar"] as const).map((v) => (
@@ -86,6 +83,7 @@ export function AttendanceList({ manager, initialMonth, initialEmp }: { manager:
         )}
       </div>
 
+      {manager && <ChecksCard month={month} emp={emp} />}
       {person.data && <SummaryGrid s={person.data.summary} salary={person.data.salary} />}
       <ErrorBanner message={error} onRetry={reload} />
       {loading ? <Loading /> : view === "calendar" && person.data ? (
@@ -98,6 +96,42 @@ export function AttendanceList({ manager, initialMonth, initialEmp }: { manager:
       {manager && <p className="text-xs text-ink-faint">Tap a row to change that day. Days after the last upload aren&apos;t shown yet.</p>}
       <DayEdit target={editing} onClose={() => setEditing(null)} onSaved={reload} />
     </div>
+  );
+}
+
+/**
+ * HR/Admin: who has checked their updated attendance for the month. With one
+ * employee selected, just their badge.
+ */
+function ChecksCard({ month, emp }: { month: string; emp: string }) {
+  const { data } = useApi(() => api.attChecks(month), [month]);
+  const [open, setOpen] = useState(false);
+  if (!data?.length) return null;
+  const done = data.filter((c) => c.checkedAt).length;
+  const badge = (checkedAt: string | null) => checkedAt
+    ? <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-status-successBg px-2 py-0.5 text-xs font-medium text-status-success">✓ Checked {formatDate(checkedAt.slice(0, 10))}</span>
+    : <span className="whitespace-nowrap rounded-full bg-status-warningBg px-2 py-0.5 text-xs font-medium text-status-warning">Not checked yet</span>;
+  if (emp) {
+    const c = data.find((x) => x.employee.id === emp);
+    return c ? <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">Attendance check: {badge(c.checkedAt)}</div> : null;
+  }
+  return (
+    <Card className="p-0">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-2.5 text-left">
+        <span className="text-sm text-ink"><b className="font-semibold">{done} of {data.length}</b> checked their {monthLabel(month)} attendance</span>
+        <span className="text-xs font-medium text-brand">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <ul className="divide-y divide-surface-border border-t border-surface-border">
+          {data.map((c) => (
+            <li key={c.employee.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+              <span className="text-sm text-ink">{c.employee.name}</span>
+              {badge(c.checkedAt)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Clock, Eye, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { DatePicker, MonthField, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, ErrorBanner, Loading, selectCls, tableHeadCls } from "@/components/ui/page";
+import { EmptyState, ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -148,25 +149,20 @@ export function ReportsTable({ manager }: { manager: boolean }) {
           </div>
         )}
         {period === "month" ? (
-          <input type="month" value={month} max={todayISO().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Month" className={cn(selectCls, "min-w-0")} />
+          <MonthField ariaLabel="Month" value={month} max={todayISO().slice(0, 7)} onChange={setMonth} />
         ) : (
           <>
-            <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="From" className={cn(selectCls, "min-w-0")} />
-            <input type="date" value={to} min={from} max={todayISO()} onChange={(e) => e.target.value && setTo(e.target.value)} aria-label="To" className={cn(selectCls, "min-w-0")} />
+            <DatePicker ariaLabel="From" value={from} max={to} onChange={setFrom} />
+            <DatePicker ariaLabel="To" value={to} min={from} max={todayISO()} onChange={setTo} />
           </>
         )}
         {manager && (
           <>
-            <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person" className={selectCls}>
-              <option value="">Everyone</option>
-              {(people.data ?? []).map((e) => <option key={e.id} value={e.id}>{e.name}{e.status === "Inactive" ? " (inactive)" : ""}</option>)}
-            </select>
-            <select value={report} onChange={(e) => setReport(e.target.value)} aria-label="Report" className={selectCls}>
-              <option value="">All reports</option>
-              <option value="normal">Normal</option>
-              <option value="sole">Sole Selling (all projects)</option>
-              {(projects.data ?? []).map((p) => <option key={p.id} value={`sole:${p.id}`}>Sole Selling · {p.name}{p.status === "Closed" ? " (closed)" : ""}</option>)}
-            </select>
+            <Select ariaLabel="Person" value={person} onChange={setPerson}
+              options={[{ value: "", label: "Everyone" }, ...(people.data ?? []).map((e) => ({ value: e.id, label: `${e.name}${e.status === "Inactive" ? " (inactive)" : ""}` }))]} />
+            <Select ariaLabel="Report" value={report} onChange={setReport}
+              options={[{ value: "", label: "All reports" }, { value: "normal", label: "Normal" }, { value: "sole", label: "Sole Selling (all projects)" },
+                ...(projects.data ?? []).map((p) => ({ value: `sole:${p.id}`, label: `Sole Selling · ${p.name}${p.status === "Closed" ? " (closed)" : ""}` }))]} />
             <SecondaryButton onClick={() => setFileOpen(true)} className="min-h-10 sm:ml-auto"><Plus className="h-4 w-4" /> File for someone</SecondaryButton>
           </>
         )}

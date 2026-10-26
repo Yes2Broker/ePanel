@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, Paperclip, History, Check, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/pickers";
 import { StatusPill } from "@/components/ui/pills";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
@@ -182,7 +183,7 @@ function CancelDialog({ a, mode, busy, onClose, onSubmit }: {
         <p className="text-sm text-ink-muted">{rangeLabel(a)} · {daysLabel(a.days)}</p>
         {mode === "rest" && (
           <Field label="Cancel from (this day and after)">
-            <input type="date" value={from} min={a.start} max={lastDay} onChange={(e) => setFrom(e.target.value)} className={inputCls} />
+            <DatePicker variant="field" ariaLabel="Cancel from" value={from} min={a.start} max={lastDay} onChange={setFrom} />
           </Field>
         )}
         <Field label="Note (optional)">

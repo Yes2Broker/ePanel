@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import { Download, FileUp, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
-import { ErrorBanner, Loading, selectCls, tableHeadCls } from "@/components/ui/page";
+import { ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
+import { Select } from "@/components/ui/pickers";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
@@ -150,12 +151,9 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
               {preview.unmatched.map((u) => (
                 <div key={u.code} className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 flex-1 break-words text-sm text-ink">{u.code}{u.name ? ` · ${u.name}` : ""} <span className="text-ink-faint">({u.rows} rows)</span></span>
-                  <select value={map[u.code] ?? ""} aria-label={`Employee for ${u.code}`} className={selectCls}
-                    onChange={(e) => setMap((m) => { const next = { ...m }; if (e.target.value) next[u.code] = e.target.value; else delete next[u.code]; return next; })}>
-                    <option value="">Choose…</option>
-                    <option value="-">Skip these rows</option>
-                    {(employees.data ?? []).map((e) => <option key={e.id} value={e.id}>{e.name} ({e.id})</option>)}
-                  </select>
+                  <Select value={map[u.code] ?? ""} ariaLabel={`Employee for ${u.code}`} placeholder="Choose…"
+                    onChange={(v) => setMap((m) => { const next = { ...m }; if (v) next[u.code] = v; else delete next[u.code]; return next; })}
+                    options={[{ value: "", label: "Choose…" }, { value: "-", label: "Skip these rows" }, ...(employees.data ?? []).map((e) => ({ value: e.id, label: `${e.name} (${e.id})` }))]} />
                 </div>
               ))}
               <SecondaryButton onClick={() => check(loaded, map)} disabled={!!busy}>{busy === "checking" ? "Checking…" : "Check again"}</SecondaryButton>

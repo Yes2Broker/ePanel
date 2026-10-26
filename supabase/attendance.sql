@@ -91,6 +91,20 @@ alter table attendance_code_map enable row level security;
 alter table attendance_uploads enable row level security;
 revoke all on attendance_days, attendance_changes, attendance_code_map, attendance_uploads from anon, authenticated;
 
+-- "Your attendance was updated – please check it": one row per person and
+-- month. An upload or HR edit that changes a day sets updated_at and clears
+-- checked_at; the person's "Mark as checked" sets checked_at.
+create table if not exists attendance_checks (
+  employee_id text not null references employees(id) on update cascade on delete cascade,
+  month date not null,
+  updated_at timestamptz not null default now(),
+  checked_at timestamptz,
+  primary key (employee_id, month)
+);
+alter table attendance_checks enable row level security;
+revoke all on attendance_checks from anon, authenticated;
+
+
 -- ===========================================================================
 -- Rules
 -- ===========================================================================
@@ -100,6 +114,14 @@ create or replace function private.att_free_lates() returns int language sql imm
 
 create or replace function private.month_start(d date) returns date language sql immutable as $$ select date_trunc('month', d)::date $$;
 create or replace function private.month_end(d date) returns date language sql immutable as $$ select (date_trunc('month', d) + interval '1 month - 1 day')::date $$;
+
+-- Mark a person's month "updated – please check" (see attendance_checks).
+create or replace function private.att_mark_updated(p_emp text, p_day date) returns void
+language sql volatile set search_path = public, private as $$
+  insert into attendance_checks (employee_id, month, updated_at, checked_at)
+  values (p_emp, private.month_start(p_day), now(), null)
+  on conflict (employee_id, month) do update set updated_at = now(), checked_at = null
+$$;
 
 -- "10:05", "9:5", "10:05:00", "--:--" → time or null. Anything else raises.
 create or replace function private.att_time(p text) returns time
@@ -423,6 +445,8 @@ begin
         values (r.employee_id, r.work_date, r.tin, r.tout, r.status_set, r.remark, p_kind, v_upload,
                 case when p_kind = 'history' then nullif(trim(r.sheet_late), '') end, case when p_kind = 'history' then nullif(trim(r.sheet_half), '') end);
         v_added := v_added + 1;
+        -- The old history was already checked in the sheet: no "please check" for it.
+        if p_kind <> 'history' then perform private.att_mark_updated(r.employee_id, r.work_date); end if;
       elsif old.in_time is not distinct from r.tin and old.out_time is not distinct from r.tout
             and old.status_set is not distinct from r.status_set and old.remark = r.remark then
         v_same := v_same + 1;
@@ -444,6 +468,7 @@ begin
           source = p_kind, upload_id = v_upload, updated_at = now()
         where employee_id = r.employee_id and work_date = r.work_date;
         v_updated := v_updated + 1;
+        if p_kind <> 'history' then perform private.att_mark_updated(r.employee_id, r.work_date); end if;
       end if;
     end loop;
 
@@ -529,6 +554,10 @@ begin
   values (p_emp, p_date, v_in, v_out, v_status, v_remark, 'manual', me.id, now())
   on conflict (employee_id, work_date) do update set in_time = excluded.in_time, out_time = excluded.out_time,
     status_set = excluded.status_set, remark = excluded.remark, edited_by = me.id, edited_at = now(), updated_at = now();
+  if old.employee_id is null or old.in_time is distinct from v_in or old.out_time is distinct from v_out
+     or old.status_set is distinct from v_status or old.remark is distinct from v_remark then
+    perform private.att_mark_updated(p_emp, p_date);
+  end if;
 
   select * into r from private.att_days(p_emp, private.month_start(p_date), private.month_end(p_date)) where day = p_date;
   return private.att_day_json(r);
@@ -604,6 +633,37 @@ begin
       and (e.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = e.id
              and a.work_date between private.month_start(p_month) and private.month_end(p_month)))
   ), '[]'::jsonb);
+end $$;
+
+-- The signed-in person's months that were updated and not checked yet.
+create or replace function public.att_my_updates(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('month', to_char(month, 'YYYY-MM'), 'updatedAt', updated_at) order by month desc)
+                   from attendance_checks where employee_id = me.id and checked_at is null), '[]'::jsonb);
+end $$;
+
+create or replace function public.att_mark_checked(p_token text, p_month date) returns void
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  update attendance_checks set checked_at = now()
+  where employee_id = me.id and month = private.month_start(p_month) and checked_at is null;
+end $$;
+
+-- HR/Admin: who has checked an updated month.
+create or replace function public.att_checks(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('employee', private.person_json(c.employee_id),
+                     'updatedAt', c.updated_at, 'checkedAt', c.checked_at) order by e.name)
+                   from attendance_checks c join employees e on e.id = c.employee_id
+                   where c.month = private.month_start(p_month)), '[]'::jsonb);
 end $$;
 
 -- Admin only: salary sheet for a month.

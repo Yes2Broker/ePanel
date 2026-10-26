@@ -5,6 +5,7 @@ import { Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { DatePicker, Select, TimeInput } from "@/components/ui/pickers";
 import { api, errorMessage } from "@/lib/api";
 import { ReportFormData, ReportPayload, SalesReportDetail, VisitActionType } from "@/types";
 import { addDays, cn } from "@/lib/utils";
@@ -29,6 +30,8 @@ function resize<T extends { locked?: boolean }>(list: T[], n: number, make: () =
   while (next.length < n) next.push(make());
   return [...next, ...locked];
 }
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function ReportForm({
   form, onSaved, isManager,
@@ -129,6 +132,7 @@ export function ReportForm({
       const a = actions[item.key] ?? emptyAction;
       if (!a.action) return fail(`Select an action for ${item.client}.`);
       if (a.action === "done" && !a.time) return fail(`Enter time for ${item.client}`);
+      if (a.action === "done" && !HHMM.test(a.time)) return fail(`Type the visit time for ${item.client} as HH:MM, e.g. 14:30.`);
       if (a.action === "done" && form.isToday && a.time > now) return fail(`Visit time for ${item.client} can't be in the future.`);
       if (a.action === "reschedule" && !a.date) return fail(`Select new date for ${item.client}`);
       if (a.action === "reschedule" && a.date <= date) return fail(`New date for ${item.client} must be from tomorrow.`);
@@ -137,6 +141,7 @@ export function ReportForm({
     for (const f of future) {
       if (!f.visitId) return fail("Select a visit for every \"future visit done\" row.");
       if (!f.time) return fail("Enter time for every future visit done.");
+      if (!f.frozen && !HHMM.test(f.time)) return fail("Type visit times as HH:MM, e.g. 14:30.");
       if (!f.frozen && form.isToday && f.time > now) return fail("Visit time can't be in the future.");
     }
     if (sole && walkIns.some((w) => !w.trim())) return fail("Enter a client name for every walk-in.");
@@ -219,8 +224,8 @@ export function ReportForm({
               <div key={s.key} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                 <input aria-label={`Scheduled visit ${i + 1} client name`} placeholder="Client Name" value={s.client} disabled={s.locked}
                   onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, client: e.target.value } : r)))} className={inputCls} />
-                <input aria-label={`Scheduled visit ${i + 1} date`} type="date" min={date} value={s.date} disabled={s.locked}
-                  onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, date: e.target.value } : r)))} className={cn(inputCls, "min-[400px]:w-[9.5rem]")} />
+                <DatePicker variant="field" ariaLabel={`Scheduled visit ${i + 1} date`} min={date} value={s.date} disabled={s.locked} className="min-[400px]:w-[10.5rem]"
+                  onChange={(d) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, date: d } : r)))} />
                 {s.locked && <p className="-mt-1 min-[400px]:col-span-2 flex items-center gap-1 text-xs text-ink-faint"><Lock className="h-3 w-3" /> Already acted on in a later report</p>}
               </div>
             ))}
@@ -246,17 +251,13 @@ export function ReportForm({
                     </p>
                   ) : (
                     <>
-                      <select aria-label={`Action for ${item.client}`} value={a.action} onChange={(e) => set({ action: e.target.value as VisitActionType })} className={inputCls}>
-                        <option value="">Select Action</option>
-                        <option value="done">Done</option>
-                        <option value="reschedule">Reschedule</option>
-                        <option value="cancel">Cancel</option>
-                      </select>
+                      <Select variant="field" ariaLabel={`Action for ${item.client}`} value={a.action} onChange={(v) => set({ action: v as VisitActionType })} placeholder="Select Action"
+                        options={[{ value: "done", label: "Done" }, { value: "reschedule", label: "Reschedule" }, { value: "cancel", label: "Cancel" }]} />
                       {a.action === "done" && (
-                        <input aria-label={`Visit time for ${item.client}`} type="time" max={maxTime} value={a.time} onChange={(e) => set({ time: e.target.value })} className={inputCls} />
+                        <TimeInput ariaLabel={`Visit time for ${item.client}`} max={maxTime} value={a.time} onChange={(t) => set({ time: t })} />
                       )}
                       {a.action === "reschedule" && (
-                        <input aria-label={`New date for ${item.client}`} type="date" min={addDays(date, 1)} value={a.date} onChange={(e) => set({ date: e.target.value })} className={inputCls} />
+                        <DatePicker variant="field" ariaLabel={`New date for ${item.client}`} min={addDays(date, 1)} value={a.date} onChange={(d) => set({ date: d })} placeholder="Pick the new date" />
                       )}
                       {a.action === "cancel" && (
                         <input aria-label={`Cancel reason for ${item.client}`} placeholder="Reason to cancel" value={a.reason} onChange={(e) => set({ reason: e.target.value })} className={inputCls} />
@@ -277,15 +278,11 @@ export function ReportForm({
                   placeholder="How many?" value={futureCount} onChange={(e) => onFutureCount(e.target.value)} className={inputCls} />
                 {future.map((f, i) => (
                   <div key={i} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
-                    <select aria-label={`Future visit ${i + 1}`} value={f.visitId} disabled={f.frozen}
-                      onChange={(e) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, visitId: e.target.value } : r)))} className={inputCls}>
-                      <option value="" disabled>Select Visit</option>
-                      {form.futureVisits.map((v) => (
-                        <option key={v.id} value={v.id} disabled={usedFuture.has(v.id) && v.id !== f.visitId}>{v.client} - {shortDate(v.date)}</option>
-                      ))}
-                    </select>
-                    <input aria-label={`Future visit ${i + 1} time`} type="time" max={maxTime} value={f.time} disabled={f.frozen}
-                      onChange={(e) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, time: e.target.value } : r)))} className={cn(inputCls, "min-[400px]:w-[8.5rem]")} />
+                    <Select variant="field" ariaLabel={`Future visit ${i + 1}`} value={f.visitId} disabled={f.frozen} placeholder="Select Visit"
+                      onChange={(v) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, visitId: v } : r)))}
+                      options={form.futureVisits.map((v) => ({ value: v.id, label: `${v.client} - ${shortDate(v.date)}`, disabled: usedFuture.has(v.id) && v.id !== f.visitId }))} />
+                    <TimeInput ariaLabel={`Future visit ${i + 1} time`} max={maxTime} value={f.time} disabled={f.frozen} className="min-[400px]:w-[8.5rem]"
+                      onChange={(t) => setFuture((rows) => rows.map((r, j) => (j === i ? { ...r, time: t } : r)))} />
                   </div>
                 ))}
               </>
@@ -298,7 +295,7 @@ export function ReportForm({
                 <div key={i} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                   <input aria-label={`Walk-in ${i + 1} client name`} placeholder="Client Name" value={w}
                     onChange={(e) => setWalkIns((rows) => rows.map((r, j) => (j === i ? e.target.value : r)))} className={inputCls} />
-                  <input aria-label={`Walk-in ${i + 1} date`} type="date" value={date} readOnly disabled className={cn(inputCls, "min-[400px]:w-[9.5rem]")} />
+                  <div aria-label={`Walk-in ${i + 1} date`} className={cn(inputCls, "flex items-center bg-surface text-ink-muted min-[400px]:w-[9.5rem]")}>{shortDate(date)}</div>
                 </div>
               ))}
             </Section>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/pickers";
 import { Toggle } from "@/components/ui/button";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
@@ -58,13 +59,11 @@ export default function AdminPermissionsPage() {
       <ErrorBanner message={employees.error} onRetry={employees.reload} />
 
       {/* Phones and tablets: pick the person from a list that keeps the name visible. */}
-      <label className="block lg:hidden">
+      <div className="block lg:hidden">
         <span className="mb-1.5 block text-xs font-medium text-ink-muted">Employee</span>
-        <select value={selectedId ?? ""} onChange={(e) => setSelectedId(e.target.value)} disabled={!active.length}
-          className="min-h-12 w-full rounded-xl border border-surface-border bg-white px-3.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-brand">
-          {active.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
-      </label>
+        <Select variant="field" ariaLabel="Employee" value={selectedId ?? ""} onChange={setSelectedId} disabled={!active.length}
+          options={active.map((e) => ({ value: e.id, label: e.name }))} />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="hidden p-2 lg:col-span-1 lg:block">

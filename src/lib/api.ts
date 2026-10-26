@@ -34,7 +34,7 @@ export function setSessionExpiredHandler(handler: (() => void) | null) {
 // page asking for the employee list, say) share one request.
 const READS = new Set([
   "list_employees", "get_employee_permissions", "att_month", "att_team_days", "att_salary_sheet", "att_day_changes",
-  "att_uploads", "att_dashboard", "list_projects", "get_employee_projects", "report_options", "report_form", "get_report",
+  "att_uploads", "att_dashboard", "att_my_updates", "att_checks", "list_projects", "get_employee_projects", "report_options", "report_form", "get_report",
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
   "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
   "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard",
@@ -104,6 +104,9 @@ export const api = {
     rpc<AttImportResult>("att_import", { p_kind: kind, p_rows: rows, p_map: map, p_file: fileName, p_dry: dry }),
   attUploads: () => rpc<{ id: string; kind: string; file: string; by: string | null; at: string; rows: number; added: number; updated: number; kept: number; from: string | null; to: string | null }[]>("att_uploads"),
   attDashboard: () => rpc<AttDashboard>("att_dashboard"),
+  attMyUpdates: () => rpc<{ month: string; updatedAt: string }[]>("att_my_updates"),
+  attMarkChecked: (month: string) => rpc<void>("att_mark_checked", { p_month: `${month}-01` }),
+  attChecks: (month: string) => rpc<{ employee: PersonRef; updatedAt: string; checkedAt: string | null }[]>("att_checks", { p_month: `${month}-01` }),
 
   // Sales daily reports (Normal + Sole Selling)
   listProjects: () => rpc<Project[]>("list_projects"),
