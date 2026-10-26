@@ -12,7 +12,6 @@ export function notificationTypesFor(user: Employee, permissions: Permissions | 
     canReport && !isAdmin && { type: "report_changed", label: "My report edited or deleted" },
     canReport && !isAdmin && { type: "report_reminder", label: "Daily report reminder" },
     canReport && { type: "visit_today", label: "Today's visits" },
-    !isAdmin && { type: "payslip", label: "Payslip ready" },
     isManager && { type: "leave_request", label: "New leave requests" },
     isManager && { type: "leave_cancelled", label: "Leave cancelled" },
     isManager && { type: "att_checked", label: "Everyone checked their attendance" },

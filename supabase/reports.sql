@@ -1215,32 +1215,6 @@ begin
   values (p_report_id, v_me.id, 'Report', 'Submitted', 'Deleted');
 end $$;
 
--- HR/Admin dashboard: top 3 for Calls, Visits done and Tokens in a month.
--- Live reports only (not deleted), active people only.
-create or replace function public.report_leaderboard(p_token text, p_month date) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-declare
-  v_from date := date_trunc('month', coalesce(p_month, private.today()))::date;
-  v_to date := (date_trunc('month', coalesce(p_month, private.today())) + interval '1 month - 1 day')::date;
-begin
-  perform private.require_manager(p_token);
-  return (
-    with t as (
-      select e.id, e.name, sum(r.calls) as calls, sum(r.done) as done, sum(r.tokens) as tokens
-      from sales_reports r join employees e on e.id = r.employee_id
-      where r.deleted_at is null and e.status = 'Active' and r.report_date between v_from and v_to
-      group by e.id, e.name
-    )
-    select jsonb_build_object('month', to_char(v_from, 'YYYY-MM'),
-      'calls', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'value', calls) order by calls desc, name)
-                         from (select * from t where calls > 0 order by calls desc, name limit 3) x), '[]'::jsonb),
-      'done', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'value', done) order by done desc, name)
-                        from (select * from t where done > 0 order by done desc, name limit 3) x), '[]'::jsonb),
-      'tokens', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'value', tokens) order by tokens desc, name)
-                          from (select * from t where tokens > 0 order by tokens desc, name limit 3) x), '[]'::jsonb))
-  );
-end $$;
-
 -- Keep stored counts in line with the rules above (e.g. walk-ins no longer in
 -- Site Visit Done). Only panel reports; imported numbers are left as imported.
 do $$
@@ -1269,8 +1243,7 @@ begin
       'report_options','report_form','save_sales_report','get_report','report_history',
       'my_sales_reports','list_sales_reports','team_report_summary',
       'get_report_email_recipients','set_report_email_recipients','report_email_payload','report_email_payload_admin',
-      'list_employee_aliases','import_reports','delete_sales_report','get_report_email_time','set_report_email_time',
-      'report_leaderboard'
+      'list_employee_aliases','import_reports','delete_sales_report','get_report_email_time','set_report_email_time'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);

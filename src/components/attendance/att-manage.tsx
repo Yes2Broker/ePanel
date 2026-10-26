@@ -1,6 +1,5 @@
 "use client";
 
-import { LockBadge, SalaryMonthActions } from "@/components/attendance/month-lock";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Download, Users } from "lucide-react";
@@ -74,7 +73,6 @@ export function AttendanceList({ manager, initialMonth, initialEmp }: { manager:
         )}
         <Select ariaLabel="Status" value={status} onChange={(v) => setStatus(v as StatusFilter)}
           options={[{ value: "", label: "All statuses" }, ...STATUS_FILTERS.map((f) => ({ value: f, label: f }))]} />
-        {manager && <LockBadge month={month} />}
         {one && (
           <div className="inline-flex rounded-full bg-white p-0.5 shadow-card" role="tablist">
             {(["list", "calendar"] as const).map((v) => (
@@ -290,7 +288,6 @@ export function SalarySheet() {
         <MonthPicker month={month} onChange={setMonth} />
         <SecondaryButton onClick={download} disabled={!rows.length}><Download className="h-4 w-4" /> Salary Sheet (Excel)</SecondaryButton>
       </div>
-      <SalaryMonthActions key={month} month={month} />
       <ErrorBanner message={error} onRetry={reload} />
       {partialNote && <p className="rounded-xl bg-status-warningBg px-3 py-2 text-sm text-status-warning">{partialNote}</p>}
       {loading && !data ? <Loading /> : !rows.length ? <EmptyState icon={Users} title="No one this month" /> : (

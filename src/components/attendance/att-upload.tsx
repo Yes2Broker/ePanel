@@ -1,6 +1,5 @@
 "use client";
 
-import { LockedMonthsNote } from "@/components/attendance/month-lock";
 import { useRef, useState } from "react";
 import { Download, FileUp, Trash2, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -144,7 +143,6 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
             <Download className="h-4 w-4" /> Download template
           </a>
         </div>
-        <LockedMonthsNote />
         <input ref={input} type="file" accept=".xls,.xlsx,.csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-ink-muted">
           <li><b className="font-medium">eTimeOffice</b>: the &quot;Month IN/OUT Report&quot; .xls exactly as downloaded.</li>

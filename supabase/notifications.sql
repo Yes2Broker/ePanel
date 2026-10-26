@@ -55,7 +55,7 @@ revoke all on notifications, push_subscriptions, notification_prefs from anon, a
 create or replace function private.notify_types() returns text[]
 language sql immutable as $$
   select array['leave_decision','att_updated','att_day','report_changed','report_reminder',
-               'leave_request','leave_cancelled','att_checked','email_failed','visit_today','payslip']
+               'leave_request','leave_cancelled','att_checked','email_failed','visit_today']
 $$;
 
 -- One notification for one person, unless they're inactive or turned the type off.

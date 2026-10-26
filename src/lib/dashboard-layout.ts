@@ -32,7 +32,6 @@ export const SECTION_LABELS: Record<DashboardKind, Record<string, string>> = {
     pendingLeave: "Pending leave requests",
     teamAttendance: "Today's attendance",
     recentReports: "Recent reports",
-    leaderboard: "Top performers",
     overview: "Employee overview",
   },
 };
@@ -48,7 +47,7 @@ export const PRESETS: Record<DashboardKind, Preset[]> = {
   ],
   manager: [
     { id: "today", name: "Today", note: "Attendance, leave requests and today's reports", icon: Sun, sections: ["attBanner", "teamAttendance", "pendingLeave", "reportsToday"] },
-    { id: "reports", name: "Team reports", note: "Report numbers and recent reports", icon: Users, sections: ["reportsToday", "reportsMonth", "recentReports", "leaderboard", "overview"] },
+    { id: "reports", name: "Team reports", note: "Report numbers and recent reports", icon: Users, sections: ["reportsToday", "reportsMonth", "recentReports", "overview"] },
     { id: "attleave", name: "Attendance & leave", note: "Today's attendance, who's on leave, requests", icon: CalendarRange, sections: ["attBanner", "teamAttendance", "onLeaveToday", "pendingLeave"] },
     { id: "everything", name: "Everything", note: "Every card you have access to", icon: LayoutGrid, sections: "all" },
   ],
