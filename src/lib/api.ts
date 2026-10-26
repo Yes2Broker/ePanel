@@ -102,7 +102,8 @@ export const api = {
   attDayChanges: (employeeId: string, date: string) => rpc<AttChange[]>("att_day_changes", { p_emp: employeeId, p_date: date }),
   attImport: (kind: string, rows: unknown[], map: Record<string, string>, fileName: string, dry: boolean) =>
     rpc<AttImportResult>("att_import", { p_kind: kind, p_rows: rows, p_map: map, p_file: fileName, p_dry: dry }),
-  attUploads: () => rpc<{ id: string; kind: string; file: string; by: string | null; at: string; rows: number; added: number; updated: number; kept: number; from: string | null; to: string | null }[]>("att_uploads"),
+  attUploads: () => rpc<{ id: string; kind: string; file: string; by: string | null; at: string; rows: number; added: number; updated: number; kept: number; from: string | null; to: string | null; deletedAt: string | null; deletedBy: string | null }[]>("att_uploads"),
+  attDeleteUpload: (id: string) => rpc<{ removed: number; restored: number; kept: number }>("att_delete_upload", { p_upload: id }),
   attDashboard: () => rpc<AttDashboard>("att_dashboard"),
   attMyUpdates: () => rpc<{ month: string; updatedAt: string }[]>("att_my_updates"),
   attMarkChecked: (month: string) => rpc<void>("att_mark_checked", { p_month: `${month}-01` }),

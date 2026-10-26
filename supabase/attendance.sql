@@ -91,6 +91,12 @@ alter table attendance_code_map enable row level security;
 alter table attendance_uploads enable row level security;
 revoke all on attendance_days, attendance_changes, attendance_code_map, attendance_uploads from anon, authenticated;
 
+-- Deleting an upload (HR/Admin) undoes it; the upload row is kept, marked.
+alter table attendance_uploads add column if not exists deleted_at timestamptz;
+alter table attendance_uploads add column if not exists deleted_by text references employees(id) on update cascade on delete set null;
+-- Which upload made a change, so deleting it can put the old values back.
+alter table attendance_changes add column if not exists upload_id uuid;
+
 -- "Your attendance was updated – please check it": one row per person and
 -- month. An upload or HR edit that changes a day sets updated_at and clears
 -- checked_at; the person's "Mark as checked" sets checked_at.
@@ -445,6 +451,8 @@ begin
         values (r.employee_id, r.work_date, r.tin, r.tout, r.status_set, r.remark, p_kind, v_upload,
                 case when p_kind = 'history' then nullif(trim(r.sheet_late), '') end, case when p_kind = 'history' then nullif(trim(r.sheet_half), '') end);
         v_added := v_added + 1;
+        insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+        values (r.employee_id, r.work_date, me.id, 'Day (upload)', null, 'added', v_upload);
         -- The old history was already checked in the sheet: no "please check" for it.
         if p_kind <> 'history' then perform private.att_mark_updated(r.employee_id, r.work_date); end if;
       elsif old.in_time is not distinct from r.tin and old.out_time is not distinct from r.tout
@@ -453,16 +461,20 @@ begin
         continue;
       else
         if old.in_time is distinct from r.tin then
-          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
-          values (r.employee_id, r.work_date, me.id, 'In Time (upload)', to_char(old.in_time, 'HH24:MI'), to_char(r.tin, 'HH24:MI'));
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+          values (r.employee_id, r.work_date, me.id, 'In Time (upload)', to_char(old.in_time, 'HH24:MI'), to_char(r.tin, 'HH24:MI'), v_upload);
         end if;
         if old.out_time is distinct from r.tout then
-          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
-          values (r.employee_id, r.work_date, me.id, 'Out Time (upload)', to_char(old.out_time, 'HH24:MI'), to_char(r.tout, 'HH24:MI'));
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+          values (r.employee_id, r.work_date, me.id, 'Out Time (upload)', to_char(old.out_time, 'HH24:MI'), to_char(r.tout, 'HH24:MI'), v_upload);
         end if;
         if old.status_set is distinct from r.status_set then
-          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value)
-          values (r.employee_id, r.work_date, me.id, 'Status (upload)', coalesce(old.status_set, 'auto'), coalesce(r.status_set, 'auto'));
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+          values (r.employee_id, r.work_date, me.id, 'Status (upload)', coalesce(old.status_set, 'auto'), coalesce(r.status_set, 'auto'), v_upload);
+        end if;
+        if old.remark is distinct from r.remark then
+          insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+          values (r.employee_id, r.work_date, me.id, 'Remark (upload)', nullif(old.remark, ''), nullif(r.remark, ''), v_upload);
         end if;
         update attendance_days set in_time = r.tin, out_time = r.tout, status_set = r.status_set, remark = r.remark,
           source = p_kind, upload_id = v_upload, updated_at = now()
@@ -490,8 +502,83 @@ begin
   perform private.require_manager(p_token);
   return coalesce((select jsonb_agg(jsonb_build_object('id', u.id, 'kind', u.kind, 'file', u.file_name, 'by', private.ename(u.uploaded_by),
                      'at', u.uploaded_at, 'rows', u.rows_in, 'added', u.added, 'updated', u.updated, 'kept', u.kept,
-                     'from', u.from_date, 'to', u.to_date) order by u.uploaded_at desc)
+                     'from', u.from_date, 'to', u.to_date,
+                     'deletedAt', u.deleted_at, 'deletedBy', private.ename(u.deleted_by)) order by u.uploaded_at desc)
                    from (select * from attendance_uploads order by uploaded_at desc limit 20) u), '[]'::jsonb);
+end $$;
+
+-- Delete an upload (HR/Admin; the history import: Admin only). Undoes it:
+--   * days it added (not edited by HR since) are removed;
+--   * days it changed go back to their values from before the upload;
+--   * days edited by HR, or changed by a later upload, since then are kept.
+-- Every change is logged ("Upload deleted"); the upload row stays, marked.
+create or replace function public.att_delete_upload(p_token text, p_upload uuid) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  u attendance_uploads;
+  d attendance_days;
+  c record;
+  v_added boolean;
+  v_removed int := 0; v_restored int := 0; v_kept int := 0;
+begin
+  select * into u from attendance_uploads where id = p_upload for update;
+  if not found or u.deleted_at is not null then
+    raise exception 'Upload not found.' using errcode = 'P0002';
+  end if;
+  if u.kind = 'history' and me.role <> 'Admin' then
+    raise exception 'Only an Admin can delete the history import.' using errcode = '42501';
+  end if;
+
+  for d in select * from attendance_days where upload_id = u.id order by employee_id, work_date for update loop
+    if d.edited_at is not null and d.edited_at > u.uploaded_at then
+      v_kept := v_kept + 1;
+      continue;
+    end if;
+    -- Changes this upload made to the day. Older uploads (before change rows
+    -- carried the upload id) are matched by who and when: the upload's changes
+    -- come right after its start, before the next upload.
+    v_added := exists (select 1 from attendance_changes x where x.employee_id = d.employee_id and x.work_date = d.work_date
+                         and x.field = 'Day (upload)' and x.upload_id = u.id)
+               or (d.created_at = u.uploaded_at);
+    if v_added then
+      delete from attendance_days where employee_id = d.employee_id and work_date = d.work_date;
+      insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+      values (d.employee_id, d.work_date, me.id, 'Upload deleted', 'added by ' || u.file_name, 'removed', u.id);
+      v_removed := v_removed + 1;
+    else
+      for c in
+        select x.field, x.old_value from attendance_changes x
+        where x.employee_id = d.employee_id and x.work_date = d.work_date and x.field like '% (upload)'
+          and (x.upload_id = u.id
+               or (x.upload_id is null and x.changed_by is not distinct from u.uploaded_by
+                   and x.changed_at >= u.uploaded_at and x.changed_at < u.uploaded_at + interval '10 minutes'
+                   and x.changed_at < coalesce((select min(n.uploaded_at) from attendance_uploads n where n.uploaded_at > u.uploaded_at), 'infinity')))
+      loop
+        if c.field = 'In Time (upload)' then
+          update attendance_days set in_time = c.old_value::time where employee_id = d.employee_id and work_date = d.work_date;
+        elsif c.field = 'Out Time (upload)' then
+          update attendance_days set out_time = c.old_value::time where employee_id = d.employee_id and work_date = d.work_date;
+        elsif c.field = 'Status (upload)' then
+          update attendance_days set status_set = nullif(c.old_value, 'auto') where employee_id = d.employee_id and work_date = d.work_date;
+        elsif c.field = 'Remark (upload)' then
+          update attendance_days set remark = coalesce(c.old_value, '') where employee_id = d.employee_id and work_date = d.work_date;
+        end if;
+        insert into attendance_changes (employee_id, work_date, changed_by, field, old_value, new_value, upload_id)
+        values (d.employee_id, d.work_date, me.id, 'Upload deleted', replace(c.field, ' (upload)', '') || ' from ' || u.file_name,
+                coalesce(c.old_value, '—') || ' (restored)', u.id);
+      end loop;
+      update attendance_days set upload_id = null, updated_at = now() where employee_id = d.employee_id and work_date = d.work_date;
+      v_restored := v_restored + 1;
+    end if;
+    -- The person's month changed again. If they had already checked it, ask
+    -- them to check again; an unchecked mark stays as it is.
+    update attendance_checks set updated_at = now(), checked_at = null
+    where employee_id = d.employee_id and month = private.month_start(d.work_date) and checked_at is not null;
+  end loop;
+
+  update attendance_uploads set deleted_at = now(), deleted_by = me.id where id = u.id;
+  return jsonb_build_object('removed', v_removed, 'restored', v_restored, 'kept', v_kept);
 end $$;
 
 -- ===========================================================================

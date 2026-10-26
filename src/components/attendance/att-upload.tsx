@@ -1,15 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, FileUp, TriangleAlert } from "lucide-react";
+import { Download, FileUp, Trash2, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { Select } from "@/components/ui/pickers";
+import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { attUpdatesChanged } from "@/lib/att-updates";
 import type { AttendanceKind, AttendanceRow } from "@/lib/attendance-parse";
 import { AttImportResult } from "@/types";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
@@ -40,6 +42,26 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
   const [error, setError] = useState("");
   const employees = useApi(() => api.listEmployees());
   const uploads = useApi(() => api.attUploads());
+  type Upload = NonNullable<typeof uploads.data>[number];
+  const [deleting, setDeleting] = useState<Upload | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const range = (u: Upload) => `${formatDate(u.from)} – ${formatDate(u.to)}`;
+  const doDelete = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      const r = await api.attDeleteUpload(deleting.id);
+      toast(`Upload deleted: ${r.removed} day${r.removed === 1 ? "" : "s"} removed, ${r.restored} restored${r.kept ? `, ${r.kept} kept (edited since)` : ""}.`);
+      setDeleting(null);
+      uploads.reload();
+      onImported?.();
+      attUpdatesChanged();
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
 
   const check = async (l: Loaded, m: Record<string, string>) => {
     setBusy("checking");
@@ -250,16 +272,37 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
         ) : (
           <Card className="divide-y divide-surface-border">
             {(uploads.data ?? []).map((u) => (
-              <div key={u.id} className="px-3.5 py-2.5 sm:px-4">
-                <p className="break-words text-sm text-ink">{u.file}</p>
-                <p className="text-xs text-ink-muted">
-                  {formatDateTime(u.at)} · {u.by ?? "—"} · {formatDate(u.from)} – {formatDate(u.to)} · {u.added} added · {u.updated} updated{u.kept ? ` · ${u.kept} kept – edited by HR` : ""}
-                </p>
+              <div key={u.id} className="flex items-center gap-2 px-3.5 py-2.5 sm:px-4">
+                <div className="min-w-0 flex-1">
+                  <p className={cn("break-words text-sm", u.deletedAt ? "text-ink-faint line-through" : "text-ink")}>{u.file}</p>
+                  <p className="text-xs text-ink-muted">
+                    {formatDateTime(u.at)} · {u.by ?? "—"} · {range(u)} · {u.added} added · {u.updated} updated{u.kept ? ` · ${u.kept} kept – edited by HR` : ""}
+                  </p>
+                  {u.deletedAt && <p className="text-xs text-status-danger">Deleted by {u.deletedBy ?? "—"} on {formatDateTime(u.deletedAt)}</p>}
+                </div>
+                {!u.deletedAt && (u.kind !== "history" || isAdmin) && (
+                  <button onClick={() => setDeleting(u)} title="Delete upload" aria-label={`Delete upload ${u.file}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-faint hover:bg-surface hover:text-status-danger sm:h-9 sm:w-9">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ))}
           </Card>
         )}
       </section>
+      <Modal open={!!deleting} onClose={() => setDeleting(null)} title="Delete this upload?" size="sm"
+        footer={<div className="grid grid-cols-2 gap-2">
+          <SecondaryButton className="justify-center" onClick={() => setDeleting(null)}>Cancel</SecondaryButton>
+          <PrimaryButton className="justify-center bg-status-danger hover:bg-status-danger/90" disabled={deletingBusy} onClick={doDelete}>{deletingBusy ? "Deleting…" : "Delete"}</PrimaryButton>
+        </div>}>
+        {deleting && (
+          <p className="text-sm text-ink-muted">
+            Delete upload <b className="break-words font-medium text-ink">{deleting.file}</b> ({range(deleting)})? Days added by this upload are removed
+            and days it changed go back to how they were. HR edits made after the upload are kept.
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

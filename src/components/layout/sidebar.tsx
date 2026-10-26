@@ -26,8 +26,8 @@ export function NavLink({ item, className, children, onClick, title }: {
  * the full sidebar unless "Compact sidebar" is on. Phones use the bottom bar.
  */
 /** Small red dot: "your attendance was updated, please check it". */
-export function UpdateDot() {
-  return <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-status-danger" aria-hidden />;
+export function UpdateDot({ className }: { className?: string }) {
+  return <span className={cn("absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-status-danger", className)} aria-hidden />;
 }
 
 export function Sidebar() {
@@ -71,7 +71,7 @@ export function Sidebar() {
             >
               <span className="relative shrink-0">
                 <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.25 : 1.75} />
-                {item.href === "/attendance" && attUpdated && <UpdateDot />}
+                {item.href === "/attendance" && attUpdated && <UpdateDot className={compact ? undefined : "lg:hidden"} />}
               </span>
               <span className={cn("flex-1 items-center justify-between gap-2", labels)}>
                 <span className="flex items-center gap-1.5 whitespace-nowrap">
@@ -79,6 +79,9 @@ export function Sidebar() {
                   {item.external && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-label="opens in a new tab" />}
                 </span>
                 {item.comingSoon && <ComingSoonBadge />}
+                {item.href === "/attendance" && attUpdated && (
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-status-dangerBg px-2 py-0.5 text-[11px] font-medium text-status-danger">Check</span>
+                )}
               </span>
               <span className={cn("sr-only", !compact && "lg:hidden")}>{item.label}</span>
               {item.href === "/attendance" && attUpdated && <span className="sr-only">(updated – please check)</span>}
