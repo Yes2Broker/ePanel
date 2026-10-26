@@ -59,7 +59,8 @@ function ReportsInner() {
       {tabs.length > 0 && <Tabs tabs={tabs} value={tab} onChange={setTab} />}
       {tab === "reports" && (!isManager && options.data && !canFile ? (
         <EmptyState icon={FileText} title="No daily reports assigned to you" text="Ask HR or Admin to give you access to the Normal or Sole Selling report." />
-      ) : <ReportsTable manager={isManager} />)}
+      ) : <ReportsTable key={`${q.get("emp")}${q.get("month")}`} manager={isManager} initialPerson={q.get("emp") ?? undefined}
+            initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />)}
       {tab === "summary" && isManager && <TeamSummary />}
       {tab === "projects" && isManager && <ProjectsPanel />}
       {tab === "email" && isAdmin && <EmailSettings />}

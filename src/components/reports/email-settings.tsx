@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Clock, Mail, Send } from "lucide-react";
+import { Bell, Clock, Mail, MapPin, Send } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton, Toggle } from "@/components/ui/button";
 import { ErrorBanner, Loading } from "@/components/ui/page";
@@ -50,6 +50,16 @@ export function EmailSettings() {
     }
   };
   const reminderAt = remindAt.data ?? "19:00";
+  const visits = useApi(() => api.getVisitReminder());
+  const saveVisits = async (on: boolean | null, t: string | null) => {
+    try {
+      const next = await api.setVisitReminder(on, t);
+      visits.setData(next);
+      toast(t ? `The visit reminder will go out at ${timeLabel(t)}.` : next.on ? "Visit reminders are on." : "Visit reminders are off.");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  };
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -114,6 +124,23 @@ export function EmailSettings() {
         {remindAt.data && time.data && remindAt.data >= time.data && (
           <p className="rounded-xl bg-status-warningBg px-3 py-2 text-sm text-status-warning">The reminder goes out after the email. Pick an earlier time.</p>
         )}
+      </Card>
+      <Card className="space-y-3 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Morning visit reminder</h3></div>
+            <p className="mt-1 text-sm text-ink-faint">
+              At {timeLabel(visits.data?.time ?? "10:00")}, everyone with site visits today gets a list of them (not on leave or weekly off).
+            </p>
+          </div>
+          <Toggle checked={visits.data?.on ?? true} disabled={!visits.data} onChange={(v) => saveVisits(v, null)} label="Morning visit reminder" />
+        </div>
+        <ErrorBanner message={visits.error} onRetry={visits.reload} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-ink-muted">Remind at</span>
+          <TimeSelect ariaLabel="Visit reminder at (India time)" value={visits.data?.time ?? "10:00"} disabled={!visits.data} onChange={(t) => saveVisits(null, t)} />
+          <span className="text-sm text-ink-faint">India time</span>
+        </div>
       </Card>
       <Card className="space-y-3 p-4 sm:p-5">
         <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-ink-muted" /><h3 className="text-sm font-semibold text-ink">Recipients</h3></div>

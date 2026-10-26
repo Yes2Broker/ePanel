@@ -93,15 +93,15 @@ type Period = "month" | "range";
  * The reports list. `manager` (HR/Admin): everyone, with person / report /
  * month-or-range filters; otherwise the signed-in person's own reports.
  */
-export function ReportsTable({ manager }: { manager: boolean }) {
+export function ReportsTable({ manager, initialPerson, initialMonth }: { manager: boolean; initialPerson?: string; initialMonth?: string }) {
   const { user } = useSession();
   const toast = useToast();
   const isAdmin = user?.role === "Admin";
   const [period, setPeriod] = useState<Period>("month");
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [month, setMonth] = useState(initialMonth || todayISO().slice(0, 7));
   const [from, setFrom] = useState(todayISO().slice(0, 8) + "01");
   const [to, setTo] = useState(todayISO());
-  const [person, setPerson] = useState("");
+  const [person, setPerson] = useState(manager ? initialPerson ?? "" : "");
   const [report, setReport] = useState(""); // "" | "normal" | "sole" | "sole:<projectId>"
   const [viewId, setViewId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);

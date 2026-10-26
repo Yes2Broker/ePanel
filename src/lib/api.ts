@@ -4,7 +4,7 @@ import {
   Project, ReportOption, ReportFormData, ReportPayload,
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
-  LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
+  LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList, AttMonthStatus, Payslip, Leaderboard,
 } from "@/types";
 
 /**
@@ -38,7 +38,8 @@ const READS = new Set([
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
   "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
   "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard", "notifications_list", "notification_prefs_get",
-  "get_report_reminders", "get_report_reminder_time",
+  "get_report_reminders", "get_report_reminder_time", "att_month_status", "my_payslips", "my_payslip", "get_visit_reminder",
+  "report_leaderboard",
 ]);
 const pending = new Map<string, Promise<unknown>>();
 
@@ -58,7 +59,7 @@ function rpc<T>(fn: string, args: Record<string, unknown> = {}, withToken = true
 // the pushes at once (the every-30-minute cron is only the backup).
 const NOTIFIES = new Set([
   "leave_apply", "leave_decide", "leave_cancel", "att_set_day", "att_import", "att_delete_upload", "att_mark_checked",
-  "save_sales_report", "delete_sales_report", "notify_test",
+  "save_sales_report", "delete_sales_report", "notify_test", "publish_payslips",
 ]);
 
 function sendPushesNow() {
@@ -124,6 +125,12 @@ export const api = {
   attDashboard: () => rpc<AttDashboard>("att_dashboard"),
   attMyUpdates: () => rpc<{ month: string; updatedAt: string }[]>("att_my_updates"),
   attMarkChecked: (month: string) => rpc<void>("att_mark_checked", { p_month: `${month}-01` }),
+  attMonthStatus: (month: string) => rpc<AttMonthStatus>("att_month_status", { p_month: `${month}-01` }),
+  attLockMonth: (month: string, lock: boolean) => rpc<AttMonthStatus>("att_lock_month", { p_month: `${month}-01`, p_lock: lock }),
+  publishPayslips: (month: string) => rpc<AttMonthStatus>("publish_payslips", { p_month: `${month}-01` }),
+  unpublishPayslips: (month: string) => rpc<AttMonthStatus>("unpublish_payslips", { p_month: `${month}-01` }),
+  myPayslips: () => rpc<{ month: string; final: number; netPayable: number; publishedAt: string }[]>("my_payslips"),
+  myPayslip: (month: string) => rpc<Payslip>("my_payslip", { p_month: `${month}-01` }),
   attChecks: (month: string) => rpc<{ employee: PersonRef; updatedAt: string; checkedAt: string | null }[]>("att_checks", { p_month: `${month}-01` }),
 
   // Sales daily reports (Normal + Sole Selling)
@@ -188,6 +195,9 @@ export const api = {
   pushUnsubscribe: (endpoint: string) => rpc<void>("push_unsubscribe", { p_endpoint: endpoint }),
   getReportReminders: () => rpc<boolean>("get_report_reminders"),
   setReportReminders: (on: boolean) => rpc<boolean>("set_report_reminders", { p_on: on }),
+  getVisitReminder: () => rpc<{ on: boolean; time: string }>("get_visit_reminder"),
+  setVisitReminder: (on: boolean | null, time: string | null) => rpc<{ on: boolean; time: string }>("set_visit_reminder", { p_on: on, p_time: time }),
+  reportLeaderboard: (month: string) => rpc<Leaderboard>("report_leaderboard", { p_month: `${month}-01` }),
   getReportReminderTime: () => rpc<string>("get_report_reminder_time"),
   setReportReminderTime: (time: string) => rpc<string>("set_report_reminder_time", { p_time: time }),
 

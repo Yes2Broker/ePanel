@@ -7,8 +7,9 @@ import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { useSession } from "@/context/session-context";
 import { AttendanceList, SalarySheet } from "@/components/attendance/att-manage";
 import { AttendanceUpload } from "@/components/attendance/att-upload";
+import { Payslips } from "@/components/attendance/payslips";
 
-type Tab = "list" | "upload" | "salary" | "mine";
+type Tab = "list" | "upload" | "salary" | "mine" | "payslips";
 
 function AttendanceInner() {
   const { isManager, user } = useSession();
@@ -17,20 +18,22 @@ function AttendanceInner() {
   const pathname = usePathname();
   const q = useSearchParams();
 
-  // Admin has no attendance of their own; HR also sees their own days.
+  // Admin has no attendance of their own; HR also sees their own days and payslips.
   const tabs: { value: Tab; label: string; short?: string }[] = isManager ? [
     { value: "list", label: "Attendance" },
     { value: "upload", label: "Upload" },
-    ...(isAdmin ? [{ value: "salary" as Tab, label: "Salary sheet", short: "Salary" }] : [{ value: "mine" as Tab, label: "My attendance", short: "Mine" }]),
-  ] : [];
+    ...(isAdmin ? [{ value: "salary" as Tab, label: "Salary sheet", short: "Salary" }]
+      : [{ value: "mine" as Tab, label: "My attendance", short: "Mine" }, { value: "payslips" as Tab, label: "Payslips" }]),
+  ] : [{ value: "mine", label: "My attendance" }, { value: "payslips", label: "Payslips" }];
   const requested = q.get("tab") as Tab | null;
-  const tab: Tab = !isManager ? "mine" : requested && tabs.some((t) => t.value === requested) ? requested : "list";
+  const tab: Tab = requested && tabs.some((t) => t.value === requested) ? requested : isManager ? "list" : "mine";
 
   const subtitle = {
     list: "One row per person per day. Tap a row to change it.",
     upload: "eTimeOffice report or the upload template. Preview first, then import.",
     salary: "Salary sheet",
     mine: "Late after 10:30 (first 2 a month free, then ½ day each). Under 8 hours = ½ day.",
+    payslips: "Your payslips, once Admin publishes the month.",
   }[tab];
 
   return (
@@ -41,6 +44,7 @@ function AttendanceInner() {
       {tab === "mine" && <><AttUpdateBanner /><AttendanceList key={`mine${q.get("month")}`} manager={false} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} /></>}
       {tab === "upload" && <AttendanceUpload />}
       {tab === "salary" && isAdmin && <SalarySheet />}
+      {tab === "payslips" && !isAdmin && <Payslips initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { DashboardGrid, Section } from "@/components/dashboard/dashboard-grid";
 import { CustomiseButton, CustomisePanel, DashboardEmpty, useDashboardLayout } from "@/components/dashboard/customise";
 import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { PerformanceTable } from "@/components/dashboard/performance-table";
+import { Leaderboard } from "@/components/dashboard/leaderboard";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { Card } from "@/components/ui/card";
@@ -42,6 +43,7 @@ export default function AdminDashboardPage() {
     on.leave && "onLeaveToday", on.leave && "pendingLeave",
     on.attendance && "teamAttendance",
     on.reports && "recentReports",
+    on.reports && "leaderboard",
     "overview",
   ].filter(Boolean) as string[];
   const dash = useDashboardLayout("manager", available);
@@ -99,6 +101,7 @@ export default function AdminDashboardPage() {
         )}
       </Card>
     ) }),
+    leaderboard: () => ({ block: <Leaderboard /> }),
     overview: () => employees.data && ({ block: <PerformanceTable employees={active} stats={data?.employeeStats} /> }),
   };
 

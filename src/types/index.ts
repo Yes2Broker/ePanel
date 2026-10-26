@@ -324,3 +324,21 @@ export interface LeaveDashboard {
 // ---------------------------------------------------------------------------
 export interface AppNotification { id: number; type: string; title: string; body: string; link: string | null; createdAt: string; read: boolean }
 export interface NotificationList { unread: number; items: AppNotification[] }
+
+// Month lock + payslips — see supabase/attendance.sql
+export interface AttMonthStatus {
+  month: string; locked: boolean; lockedBy: string | null; lockedAt: string | null;
+  published: boolean; publishedBy: string | null; publishedAt: string | null; lockedMonths: string[];
+}
+export interface Payslip {
+  employee: { id: string; name: string; department: string; designation: string };
+  month: string; daysInMonth: number; present: number; absent: number; weekoff: number; weekoffWorked: number; paidLeave: number;
+  lates: number; freeLates: number; lateDeduction: number; shortDays: number; shortDeduction: number; netPayable: number;
+  lastDay: string | null; monthly: number; perDay: number; final: number; publishedAt: string;
+}
+export interface Leaderboard {
+  month: string;
+  calls: { id: string; name: string; value: number }[];
+  done: { id: string; name: string; value: number }[];
+  tokens: { id: string; name: string; value: number }[];
+}

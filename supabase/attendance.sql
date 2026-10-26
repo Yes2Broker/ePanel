@@ -110,6 +110,40 @@ create table if not exists attendance_checks (
 alter table attendance_checks enable row level security;
 revoke all on attendance_checks from anon, authenticated;
 
+-- Locked months (Admin): no attendance change at all for that month until
+-- it's unlocked. Every lock / unlock is logged.
+create table if not exists attendance_locks (
+  month date primary key,
+  locked_by text references employees(id) on update cascade on delete set null,
+  locked_at timestamptz not null default now()
+);
+create table if not exists attendance_lock_log (
+  id bigint generated always as identity primary key,
+  month date not null,
+  action text not null,
+  actor text references employees(id) on update cascade on delete set null,
+  at timestamptz not null default now()
+);
+-- Payslips: a snapshot of the salary sheet saved when Admin publishes a
+-- month, so later edits don't change a published payslip.
+create table if not exists payslip_months (
+  month date primary key,
+  published_by text references employees(id) on update cascade on delete set null,
+  published_at timestamptz not null default now()
+);
+create table if not exists payslips (
+  employee_id text not null references employees(id) on update cascade on delete cascade,
+  month date not null,
+  data jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (employee_id, month)
+);
+alter table attendance_locks enable row level security;
+alter table attendance_lock_log enable row level security;
+alter table payslip_months enable row level security;
+alter table payslips enable row level security;
+revoke all on attendance_locks, attendance_lock_log, payslip_months, payslips from anon, authenticated;
+
 
 -- ===========================================================================
 -- Rules
@@ -141,6 +175,32 @@ begin
       format('Your %s attendance has been updated, please check it.', to_char(p_day, 'FMMonth YYYY')), private.att_link(p_emp, p_day));
   end if;
 end $$;
+
+create or replace function private.att_month_locked(p_day date) returns boolean
+language plpgsql stable set search_path = public, private as $$
+begin
+  return p_day is not null and exists (select 1 from attendance_locks where month = private.month_start(p_day));
+end $$;
+
+create or replace function private.att_assert_unlocked(p_day date) returns void
+language plpgsql stable set search_path = public, private as $$
+begin
+  if private.att_month_locked(p_day) then
+    raise exception '% is locked. Ask Admin to unlock it.', to_char(p_day, 'FMMonth YYYY') using errcode = '42501';
+  end if;
+end $$;
+
+-- Backstop: nothing can add, change or remove a day in a locked month.
+create or replace function private.att_days_lock_guard() returns trigger
+language plpgsql set search_path = public, private as $$
+begin
+  if tg_op in ('UPDATE','DELETE') then perform private.att_assert_unlocked(old.work_date); end if;
+  if tg_op in ('INSERT','UPDATE') then perform private.att_assert_unlocked(new.work_date); end if;
+  return coalesce(new, old);
+end $$;
+drop trigger if exists attendance_days_lock_guard on attendance_days;
+create trigger attendance_days_lock_guard before insert or update or delete on attendance_days
+  for each row execute function private.att_days_lock_guard();
 
 -- "10:05", "9:5", "10:05:00", "--:--" → time or null. Anything else raises.
 create or replace function private.att_time(p text) returns time
@@ -367,6 +427,8 @@ begin
     end;
   end loop;
   update att_in set err = 'Not a valid date.' where err is null and work_date is null;
+  update att_in set err = 'Locked month – skipped'
+  where err is null and employee_id is not null and private.att_month_locked(work_date);
   update att_in a set err = 'Same person and date twice in the file.'
   where err is null and employee_id is not null and exists (
     select 1 from att_in b where b.employee_id = a.employee_id and b.work_date = a.work_date and b.n < a.n and b.err is null);
@@ -544,6 +606,8 @@ begin
   if u.kind = 'history' and me.role <> 'Admin' then
     raise exception 'Only an Admin can delete the history import.' using errcode = '42501';
   end if;
+  perform private.att_assert_unlocked((select min(work_date) from attendance_days
+                                       where upload_id = u.id and private.att_month_locked(work_date)));
 
   for d in select * from attendance_days where upload_id = u.id order by employee_id, work_date for update loop
     if d.edited_at is not null and d.edited_at > u.uploaded_at then
@@ -630,6 +694,7 @@ begin
   if p_date is null or p_date > private.today() then
     raise exception 'Choose today or an earlier date.' using errcode = '22023';
   end if;
+  perform private.att_assert_unlocked(p_date);
   if v_status is not null and v_status not in ('Present','Absent','Weekoff','Paid Leave') then
     raise exception 'Choose Present, Absent, Weekoff or Paid Leave.' using errcode = '22023';
   end if;
@@ -826,4 +891,159 @@ begin
         'onLeave', count(*) filter (where d.status = 'Paid Leave'))
       from employees e, lateral private.att_days(e.id, private.month_start(v_last), v_last) d
       where e.status = 'Active' and e.role <> 'Admin' and d.day = v_last) end);
+end $$;
+
+-- ===========================================================================
+-- Lock a month (Admin)
+-- ===========================================================================
+-- Lock / publish state of one month (HR + Admin: badges on Attendance,
+-- Salary sheet and Upload).
+create or replace function public.att_month_status(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v_month date := private.month_start(p_month);
+begin
+  return jsonb_build_object(
+    'month', to_char(v_month, 'YYYY-MM'),
+    'locked', exists (select 1 from attendance_locks where month = v_month),
+    'lockedBy', (select private.ename(locked_by) from attendance_locks where month = v_month),
+    'lockedAt', (select locked_at from attendance_locks where month = v_month),
+    'published', exists (select 1 from payslip_months where month = v_month),
+    'publishedBy', (select private.ename(published_by) from payslip_months where month = v_month),
+    'publishedAt', (select published_at from payslip_months where month = v_month),
+    'lockedMonths', coalesce((select jsonb_agg(to_char(month, 'YYYY-MM') order by month desc) from attendance_locks), '[]'::jsonb));
+end $$;
+
+create or replace function private.att_set_lock(me employees, p_month date, p_lock boolean, p_why text) returns void
+language plpgsql volatile set search_path = public, private as $$
+declare
+  v_month date := private.month_start(p_month);
+begin
+  if p_lock then
+    insert into attendance_locks (month, locked_by) values (v_month, me.id) on conflict (month) do nothing;
+    if found then insert into attendance_lock_log (month, action, actor) values (v_month, coalesce(p_why, 'Locked'), me.id); end if;
+  else
+    delete from attendance_locks where month = v_month;
+    if found then insert into attendance_lock_log (month, action, actor) values (v_month, 'Unlocked', me.id); end if;
+  end if;
+end $$;
+
+create or replace function public.att_lock_month(p_token text, p_month date, p_lock boolean) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then
+    raise exception 'Only an Admin can lock or unlock a month.' using errcode = '42501';
+  end if;
+  if p_month is null then raise exception 'Choose a month.' using errcode = '22023'; end if;
+  perform private.att_set_lock(me, p_month, coalesce(p_lock, true), null);
+  return public.att_month_status(p_token, p_month);
+end $$;
+
+-- Who locked / unlocked a month and when (Admin).
+create or replace function public.att_lock_log(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can do this.' using errcode = '42501'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('action', action, 'by', private.ename(actor), 'at', at) order by at desc, id desc)
+                   from attendance_lock_log where month = private.month_start(p_month)), '[]'::jsonb);
+end $$;
+
+-- ===========================================================================
+-- Payslips
+-- ===========================================================================
+-- One person's payslip numbers for a month (the snapshot that gets saved).
+create or replace function private.payslip_data(e employees, p_month date) returns jsonb
+language plpgsql stable set search_path = public, private as $$
+declare
+  s jsonb := private.att_summary(e.id, p_month);
+  v_monthly numeric := coalesce(e.salary, 0);
+  v_days int := (s ->> 'daysInMonth')::int;
+begin
+  return jsonb_build_object(
+    'employee', jsonb_build_object('id', e.id, 'name', e.name, 'department', e.department, 'designation', coalesce(e.designation, '')),
+    'month', to_char(private.month_start(p_month), 'YYYY-MM'),
+    'daysInMonth', v_days,
+    'present', (s ->> 'present')::numeric, 'absent', (s ->> 'absent')::numeric,
+    'weekoff', (s ->> 'weekoff')::numeric, 'weekoffWorked', (s ->> 'weekoffWorked')::numeric,
+    'paidLeave', (s ->> 'paidLeave')::numeric,
+    'lates', (s ->> 'lates')::numeric, 'freeLates', private.att_free_lates(), 'lateDeduction', (s ->> 'lateDeduction')::numeric,
+    'shortDays', (s ->> 'shortDays')::numeric, 'shortDeduction', (s ->> 'shortDays')::numeric * 0.5,
+    'netPayable', (s ->> 'netPayable')::numeric,
+    'lastDay', s ->> 'lastDay',
+    'monthly', v_monthly,
+    'perDay', round(v_monthly / v_days, 2),
+    'final', round(v_monthly / v_days * (s ->> 'netPayable')::numeric));
+end $$;
+
+-- Admin: publish (or re-publish) a month's payslips. Also locks the month and
+-- tells each person their payslip is ready.
+create or replace function public.publish_payslips(p_token text, p_month date) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  v_month date := private.month_start(p_month);
+  e employees;
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can publish payslips.' using errcode = '42501'; end if;
+  if v_month is null or v_month > private.month_start(private.today()) then
+    raise exception 'Choose this month or an earlier one.' using errcode = '22023';
+  end if;
+  perform private.att_set_lock(me, v_month, true, 'Locked (payslips published)');
+  delete from payslips where month = v_month;
+  for e in select * from employees x
+           where x.role <> 'Admin' and (x.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = x.id
+                   and a.work_date between v_month and private.month_end(v_month)))
+             and exists (select 1 from attendance_days a where a.employee_id = x.id and a.work_date between v_month and private.month_end(v_month)) loop
+    insert into payslips (employee_id, month, data) values (e.id, v_month, private.payslip_data(e, v_month));
+    perform private.notify(e.id, 'payslip', 'Payslip ready', format('Your %s payslip is ready.', to_char(v_month, 'FMMonth YYYY')),
+      case when e.role = 'HR' then '/attendance?tab=payslips' else '/attendance?tab=payslips' end);
+  end loop;
+  insert into payslip_months (month, published_by, published_at) values (v_month, me.id, now())
+  on conflict (month) do update set published_by = me.id, published_at = now();
+  insert into attendance_lock_log (month, action, actor) values (v_month, 'Payslips published', me.id);
+  return public.att_month_status(p_token, v_month);
+end $$;
+
+-- Admin: hide a month's payslips again (the month stays locked).
+create or replace function public.unpublish_payslips(p_token text, p_month date) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  v_month date := private.month_start(p_month);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can unpublish payslips.' using errcode = '42501'; end if;
+  delete from payslip_months where month = v_month;
+  delete from payslips where month = v_month;
+  if found then insert into attendance_lock_log (month, action, actor) values (v_month, 'Payslips unpublished', me.id); end if;
+  return public.att_month_status(p_token, v_month);
+end $$;
+
+-- The signed-in person's own published payslips (never anyone else's).
+create or replace function public.my_payslips(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('month', to_char(p.month, 'YYYY-MM'), 'final', p.data -> 'final',
+                                     'netPayable', p.data -> 'netPayable', 'publishedAt', m.published_at) order by p.month desc)
+                   from payslips p join payslip_months m on m.month = p.month
+                   where p.employee_id = me.id), '[]'::jsonb);
+end $$;
+
+create or replace function public.my_payslip(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  v jsonb;
+begin
+  select p.data || jsonb_build_object('publishedAt', m.published_at) into v
+  from payslips p join payslip_months m on m.month = p.month
+  where p.employee_id = me.id and p.month = private.month_start(p_month);
+  if v is null then raise exception 'Payslip not found.' using errcode = 'P0002'; end if;
+  return v;
 end $$;

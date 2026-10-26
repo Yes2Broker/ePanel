@@ -55,7 +55,7 @@ revoke all on notifications, push_subscriptions, notification_prefs from anon, a
 create or replace function private.notify_types() returns text[]
 language sql immutable as $$
   select array['leave_decision','att_updated','att_day','report_changed','report_reminder',
-               'leave_request','leave_cancelled','att_checked','email_failed']
+               'leave_request','leave_cancelled','att_checked','email_failed','visit_today','payslip']
 $$;
 
 -- One notification for one person, unless they're inactive or turned the type off.
@@ -160,6 +160,40 @@ begin
         '/reports');
       n := n + 1;
     end if;
+  end loop;
+  return n;
+end $$;
+
+-- Morning visit reminder (cron, every 30 min): at its own time (10:00 AM IST
+-- unless Admin picks another), once a day, each active person with site
+-- visits due today (not on leave or weekly off) gets one notification.
+create or replace function private.make_visit_reminders() returns int
+language plpgsql volatile set search_path = public, private as $$
+declare
+  v_now timestamp := now() at time zone private.tz();
+  v_slot text := to_char(v_now, 'HH24') || ':' || case when extract(minute from v_now) < 30 then '00' else '30' end;
+  v_today date := private.today();
+  e employees;
+  v_names text[];
+  n int := 0;
+begin
+  if coalesce((select value #>> '{}' from app_settings where key = 'visit_reminders'), 'true') <> 'true' then return 0; end if;
+  if v_slot <> coalesce((select value #>> '{}' from app_settings where key = 'visit_reminder_time'), '10:00') then return 0; end if;
+  insert into app_settings (key, value) values ('visit_reminder_last_sent', to_jsonb(v_today::text))
+  on conflict (key) do update set value = excluded.value where app_settings.value is distinct from excluded.value;
+  get diagnostics n = row_count;
+  if n = 0 then return 0; end if; -- already done today
+  n := 0;
+  for e in select * from employees where status = 'Active' loop
+    if private.day_off(e, v_today) is not null then continue; end if;
+    select array_agg(client_name order by created_at, client_name) into v_names
+    from site_visits where employee_id = e.id and status = 'Pending' and coalesce(reschedule_date, visit_date) = v_today;
+    if v_names is null then continue; end if;
+    perform private.notify(e.id, 'visit_today', 'Today''s visits',
+      format('You have %s site visit%s today: %s%s.', cardinality(v_names), case when cardinality(v_names) = 1 then '' else 's' end,
+             array_to_string(v_names[1:5], ', '), case when cardinality(v_names) > 5 then ' +' || (cardinality(v_names) - 5) || ' more' else '' end),
+      '/reports');
+    n := n + 1;
   end loop;
   return n;
 end $$;
@@ -280,6 +314,7 @@ begin
   end if;
   if p_cron then
     perform private.make_report_reminders();
+    perform private.make_visit_reminders();
     delete from push_subscriptions where last_seen < now() - interval '90 days';
   end if;
   update notifications set push_batch = '00000000-0000-0000-0000-000000000000', pushed_at = now()
@@ -361,6 +396,36 @@ begin
   return p_time;
 end $$;
 
+-- Admin: morning visit reminder on/off + time (Daily Reports → Email).
+create or replace function public.get_visit_reminder(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can do this.' using errcode = '42501'; end if;
+  return jsonb_build_object(
+    'on', coalesce((select value #>> '{}' from app_settings where key = 'visit_reminders'), 'true') = 'true',
+    'time', coalesce((select value #>> '{}' from app_settings where key = 'visit_reminder_time'), '10:00'));
+end $$;
+
+create or replace function public.set_visit_reminder(p_token text, p_on boolean, p_time text) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  if me.role <> 'Admin' then raise exception 'Only an Admin can do this.' using errcode = '42501'; end if;
+  if p_time is not null and p_time !~ '^([01][0-9]|2[0-3]):(00|30)$' then
+    raise exception 'Choose a time on the hour or half hour.' using errcode = '22023';
+  end if;
+  if p_on is not null then
+    insert into app_settings (key, value) values ('visit_reminders', to_jsonb(p_on::text)) on conflict (key) do update set value = excluded.value;
+  end if;
+  if p_time is not null then
+    insert into app_settings (key, value) values ('visit_reminder_time', to_jsonb(p_time)) on conflict (key) do update set value = excluded.value;
+  end if;
+  return public.get_visit_reminder(p_token);
+end $$;
+
 -- ===========================================================================
 -- Grants
 -- ===========================================================================
@@ -375,7 +440,8 @@ begin
     where n.nspname = 'public' and p.proname in (
       'notifications_list','notifications_read','notification_prefs_get','notification_prefs_set','notify_test',
       'push_subscribe','push_unsubscribe','push_check','push_claim','push_done','report_email_failed',
-      'get_report_reminders','set_report_reminders','get_report_reminder_time','set_report_reminder_time'
+      'get_report_reminders','set_report_reminders','get_report_reminder_time','set_report_reminder_time',
+      'get_visit_reminder','set_visit_reminder'
     )
   loop
     execute format('revoke execute on function %s from public', f.sig);
