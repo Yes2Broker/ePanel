@@ -1,0 +1,508 @@
+[
+  {
+    "file": "employee/01-login.png",
+    "role": "employee",
+    "caption": "Open the panel. You will see the login page.",
+    "highlight": {
+      "x": 888,
+      "y": 388,
+      "width": 384,
+      "height": 44
+    }
+  },
+  {
+    "file": "employee/02-login-filled.png",
+    "role": "employee",
+    "caption": "Type your email (or employee code) and password, then tap Log in.",
+    "highlight": {
+      "x": 888,
+      "y": 530,
+      "width": 384,
+      "height": 44
+    }
+  },
+  {
+    "file": "employee/03-dashboard.png",
+    "role": "employee",
+    "caption": "After login you see your dashboard. The blue banner means HR updated your attendance – please check it.",
+    "highlight": {
+      "x": 312,
+      "y": 170,
+      "width": 1096,
+      "height": 66
+    }
+  },
+  {
+    "file": "employee/04-customise-dashboard.png",
+    "role": "employee",
+    "caption": "Tap Customise to choose what your dashboard shows. Pick a preset or turn cards on and off.",
+    "highlight": {
+      "x": 1076,
+      "y": 105,
+      "width": 344,
+      "height": 256
+    }
+  },
+  {
+    "file": "employee/05-daily-reports.png",
+    "role": "employee",
+    "caption": "Open Daily Reports. Here you see all your reports for the month.",
+    "highlight": {
+      "x": 1257,
+      "y": 97,
+      "width": 151,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/06-new-report-menu.png",
+    "role": "employee",
+    "caption": "Tap + New report and choose which report to fill: Normal or your Sole Selling project.",
+    "highlight": {
+      "x": 1120,
+      "y": 143,
+      "width": 288,
+      "height": 122
+    }
+  },
+  {
+    "file": "employee/07-report-form.png",
+    "role": "employee",
+    "caption": "Fill today's numbers: leads, calls, positive calls, visits scheduled and tokens.",
+    "highlight": {
+      "x": 593,
+      "y": 306,
+      "width": 261,
+      "height": 44
+    }
+  },
+  {
+    "file": "employee/08-report-visits.png",
+    "role": "employee",
+    "caption": "For each visit due today, choose what happened: Done (with time), Reschedule or Cancel.",
+    "highlight": {
+      "x": 593,
+      "y": 436,
+      "width": 534,
+      "height": 44
+    }
+  },
+  {
+    "file": "employee/09-report-submitted.png",
+    "role": "employee",
+    "caption": "Tap Submit Report. You see a summary of the report you sent.",
+    "highlight": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "employee/10-my-reports.png",
+    "role": "employee",
+    "caption": "Your reports table. Use the icons to View, Edit (for 24 hours) or see the History of a report.",
+    "highlight": {
+      "x": 1234,
+      "y": 255,
+      "width": 173,
+      "height": 45
+    }
+  },
+  {
+    "file": "employee/11-view-report.png",
+    "role": "employee",
+    "caption": "Tap the eye icon to view a report with today's and month-to-date totals.",
+    "highlight": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "employee/12-report-history.png",
+    "role": "employee",
+    "caption": "Tap the clock icon to see every change made to a report, by whom and when.",
+    "highlight": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "employee/13-attendance.png",
+    "role": "employee",
+    "caption": "Open Attendance to see your month. Check your days, then tap Mark as checked.",
+    "highlight": {
+      "x": 1207,
+      "y": 179,
+      "width": 184,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/14-leave.png",
+    "role": "employee",
+    "caption": "Open Leave to see your leave requests. Tap Apply for leave to ask for a day off.",
+    "highlight": {
+      "x": 312,
+      "y": 144,
+      "width": 155,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/15-apply-leave.png",
+    "role": "employee",
+    "caption": "Pick the dates, write the reason and tap Send request.",
+    "highlight": {
+      "x": 724,
+      "y": 660,
+      "width": 200,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/16-leave-pending.png",
+    "role": "employee",
+    "caption": "Your request shows as Pending until HR or Admin approves it.",
+    "highlight": {
+      "x": 312,
+      "y": 228,
+      "width": 1096,
+      "height": 152
+    }
+  },
+  {
+    "file": "employee/17-cancel-leave.png",
+    "role": "employee",
+    "caption": "Changed your plan? Tap Cancel on a request, then Cancel leave.",
+    "highlight": {
+      "x": 724,
+      "y": 530,
+      "width": 176,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/18-profile.png",
+    "role": "employee",
+    "caption": "Open Profile to see your details. Ask HR or Admin to change them.",
+    "highlight": {
+      "x": 333,
+      "y": 406,
+      "width": 82,
+      "height": 20
+    }
+  },
+  {
+    "file": "employee/19-change-password.png",
+    "role": "employee",
+    "caption": "To change your password, type the current one and the new one twice, then tap Update password.",
+    "highlight": {
+      "x": 909,
+      "y": 807,
+      "width": 150,
+      "height": 40
+    }
+  },
+  {
+    "file": "employee/20-install-app.png",
+    "role": "employee",
+    "caption": "Open Settings and tap Install app to add the panel to your computer or phone.",
+    "highlight": {
+      "x": 838,
+      "y": 223,
+      "width": 125,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/01-dashboard.png",
+    "role": "hr",
+    "caption": "HR dashboard: today's attendance, leave requests and reports at a glance.",
+    "highlight": {
+      "x": 590,
+      "y": 308,
+      "width": 262,
+      "height": 123
+    }
+  },
+  {
+    "file": "hr/02-employees.png",
+    "role": "hr",
+    "caption": "Open Employees to see everyone. Search or filter by department, role and status.",
+    "highlight": {
+      "x": 1258,
+      "y": 97,
+      "width": 150,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/03-add-employee.png",
+    "role": "hr",
+    "caption": "Tap Add Employee, fill the details and an initial password, then tap Add employee.",
+    "highlight": {
+      "x": 908,
+      "y": 766,
+      "width": 128,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/04-employee-details.png",
+    "role": "hr",
+    "caption": "Tap the eye icon to see an employee's details.",
+    "highlight": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "hr/05-reset-password.png",
+    "role": "hr",
+    "caption": "Forgot password? Tap the key icon, type a new password and tap Set new password.",
+    "highlight": {
+      "x": 769,
+      "y": 528,
+      "width": 155,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/06-permissions.png",
+    "role": "hr",
+    "caption": "Open Permissions, choose the person and turn modules on or off. Tick the Sole Selling projects they report for.",
+    "highlight": {
+      "x": 729,
+      "y": 495,
+      "width": 645,
+      "height": 94
+    }
+  },
+  {
+    "file": "hr/07-reports-summary.png",
+    "role": "hr",
+    "caption": "Daily Reports opens on Summary: today's and this month's totals for each person.",
+    "highlight": {
+      "x": 312,
+      "y": 168,
+      "width": 96,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/08-reports-table.png",
+    "role": "hr",
+    "caption": "On the Reports tab, filter by person, report and dates to find any report.",
+    "highlight": {
+      "x": 615,
+      "y": 232,
+      "width": 141,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/09-file-for-someone.png",
+    "role": "hr",
+    "caption": "Someone couldn't file? Tap File for someone, choose the person, report and date, then Continue.",
+    "highlight": {
+      "x": 831,
+      "y": 600,
+      "width": 93,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/10-projects.png",
+    "role": "hr",
+    "caption": "On Projects, add a Sole Selling project or rename / close one.",
+    "highlight": {
+      "x": 329,
+      "y": 247,
+      "width": 549,
+      "height": 44
+    }
+  },
+  {
+    "file": "hr/11-leave-requests.png",
+    "role": "hr",
+    "caption": "Open Leave to see pending requests, with warnings for busy days.",
+    "highlight": {
+      "x": 312,
+      "y": 702,
+      "width": 1096,
+      "height": 198
+    }
+  },
+  {
+    "file": "hr/12-leave-approved.png",
+    "role": "hr",
+    "caption": "Tap Approve (or Reject with a reason). The employee sees the result at once.",
+    "highlight": {
+      "x": 1083,
+      "y": 851,
+      "width": 192,
+      "height": 20
+    }
+  },
+  {
+    "file": "hr/13-attendance-list.png",
+    "role": "hr",
+    "caption": "Open Attendance. The top line shows how many people have checked their month.",
+    "highlight": {
+      "x": 313,
+      "y": 283,
+      "width": 1094,
+      "height": 48
+    }
+  },
+  {
+    "file": "hr/14-attendance-filters.png",
+    "role": "hr",
+    "caption": "Use the filters to see one person, one month or one status (for example Late).",
+    "highlight": {
+      "x": 685,
+      "y": 232,
+      "width": 82,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/15-edit-day.png",
+    "role": "hr",
+    "caption": "Tap a row to change that day: status, in / out time and a remark. Then Save.",
+    "highlight": {
+      "x": 724,
+      "y": 647,
+      "width": 176,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/16-upload.png",
+    "role": "hr",
+    "caption": "On the Upload tab, tap Choose file and pick the eTimeOffice report or the template.",
+    "highlight": {
+      "x": 329,
+      "y": 247,
+      "width": 130,
+      "height": 44
+    }
+  },
+  {
+    "file": "hr/17-upload-preview.png",
+    "role": "hr",
+    "caption": "Check the preview. Nothing is saved until you tap Import.",
+    "highlight": {
+      "x": 312,
+      "y": 799,
+      "width": 123,
+      "height": 40
+    }
+  },
+  {
+    "file": "hr/18-uploads-list.png",
+    "role": "hr",
+    "caption": "Recent uploads are listed below. Uploaded the wrong file? Tap the bin icon to undo it.",
+    "highlight": {
+      "x": 1355,
+      "y": 427,
+      "width": 36,
+      "height": 36
+    }
+  },
+  {
+    "file": "hr/19-download-template.png",
+    "role": "hr",
+    "caption": "Need the template? Tap Download template, fill one row per person per day and upload it.",
+    "highlight": {
+      "x": 467,
+      "y": 247,
+      "width": 187,
+      "height": 44
+    }
+  },
+  {
+    "file": "admin/01-dashboard-customise.png",
+    "role": "admin",
+    "caption": "Admin dashboard. Tap Customise to pick a preset (Today, Team reports…) or choose your own cards.",
+    "highlight": {
+      "x": 1076,
+      "y": 105,
+      "width": 344,
+      "height": 256
+    }
+  },
+  {
+    "file": "admin/02-salary-sheet.png",
+    "role": "admin",
+    "caption": "Open Attendance → Salary sheet to see everyone's payable days and final salary for the month.",
+    "highlight": {
+      "x": 313,
+      "y": 331,
+      "width": 1094,
+      "height": 336
+    }
+  },
+  {
+    "file": "admin/03-salary-details.png",
+    "role": "admin",
+    "caption": "Tap a person to see how their salary was worked out.",
+    "highlight": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "admin/04-salary-excel.png",
+    "role": "admin",
+    "caption": "Tap Salary Sheet (Excel) to download the month as an Excel file.",
+    "highlight": {
+      "x": 1218,
+      "y": 230,
+      "width": 190,
+      "height": 40
+    }
+  },
+  {
+    "file": "admin/05-email-settings.png",
+    "role": "admin",
+    "caption": "On Daily Reports → Email, choose when the daily report email goes out and who gets it.",
+    "highlight": {
+      "x": 333,
+      "y": 283,
+      "width": 116,
+      "height": 40
+    }
+  },
+  {
+    "file": "admin/06-delete-report.png",
+    "role": "admin",
+    "caption": "Only Admin can delete a report: tap the bin icon, then Delete to confirm.",
+    "highlight": {
+      "x": 724,
+      "y": 511,
+      "width": 176,
+      "height": 40
+    }
+  },
+  {
+    "file": "admin/07-hr-leave-request.png",
+    "role": "admin",
+    "caption": "HR's own leave requests come to Admin. Approve or reject them on the Leave page.",
+    "highlight": {
+      "x": 1280,
+      "y": 783,
+      "width": 111,
+      "height": 40
+    }
+  }
+]
