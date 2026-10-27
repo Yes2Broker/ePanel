@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { Period, dayLabel, monthLabel, prevMonth, thisMonth, todayPeriod } from "@/lib/assist/period";
 
 /**
  * Y2B Assist's read-only tools. Each one calls the panel's existing database
@@ -6,19 +7,25 @@ import { supabase } from "@/lib/supabase";
  * they may see (an employee's token can never read someone else's data).
  * Nothing here writes, edits or deletes.
  *
- * Groq's free plan counts tokens, so descriptions are one line, schemas are
- * minimal and results keep only what's needed to answer (max 15 rows).
+ * Dates are never chosen by the model: the server works out the period from
+ * the question (period.ts) and the tools use it. Results are compact (Groq's
+ * free plan counts tokens), say which period they cover, and give a one-line
+ * "say" when there's nothing to show.
  */
 export type Role = "Employee" | "HR" | "Admin";
-interface Ctx { token: string; today: string }
+interface Ctx { token: string; today: string; period: Period | null }
 interface Tool {
   name: string;
   description: string;
   parameters: { type: string; properties: Record<string, unknown>; required?: string[] };
   managers?: boolean;
 }
+interface ToolDef extends Tool { run: (ctx: Ctx, args: Record<string, string | undefined>, role: Role) => Promise<unknown> }
 
 const MAX_ROWS = 15;
+const none = { type: "object", properties: {} };
+const isManager = (role: Role) => role === "HR" || role === "Admin";
+const NOT_YOURS = { error: "That information isn't available to you." };
 
 async function call(fn: string, args: Record<string, unknown>) {
   const { data, error } = await supabase.rpc(fn, args);
@@ -26,153 +33,193 @@ async function call(fn: string, args: Record<string, unknown>) {
   return data;
 }
 
-const monthOf = (ctx: Ctx, m?: string) => (m && /^\d{4}-\d{2}$/.test(m) ? m : ctx.today.slice(0, 7));
-const dateOf = (ctx: Ctx, d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : ctx.today);
-const monthEnd = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
-const none = { type: "object", properties: {} };
-const monthArg = { type: "object", properties: { month: { type: "string" } } };
-
 type Row = Record<string, unknown>;
 /** Rows as a header + arrays (far fewer tokens than objects), max `n`, plus how many were left out. */
 const table = (cols: string[], rows: unknown[][], n = MAX_ROWS) => ({ cols, rows: rows.slice(0, n), ...(rows.length > n ? { more: rows.length - n } : {}) });
 const short = (s: unknown, n = 50) => (typeof s === "string" && s.length > n ? s.slice(0, n) + "…" : s);
 const md = (d: unknown) => String(d ?? "").slice(5); // "2026-10-26" → "10-26"
-
-const reports = (rows: Row[]) => {
-  const t: Record<string, number> = { reports: rows.length };
-  for (const [k, f] of [["leads", "leads"], ["calls", "calls"], ["positive", "positive"], ["visitsDone", "done"], ["tokens", "tokens"]]) {
-    t[k] = rows.reduce((s, r) => s + Number(r[f] ?? 0), 0);
-  }
-  const multi = new Set(rows.map((r) => r.title)).size > 1;
-  return {
-    totals: t,
-    list: table(["date", ...(multi ? ["report"] : []), "leads", "calls", "done", "tokens"],
-      rows.map((r) => [md(r.date), ...(multi ? [r.title] : []), r.leads, r.calls, r.done, r.tokens])),
-  };
+const n1 = (v: unknown) => Number(Number(v ?? 0).toFixed(1));
+const monthsIn = (p: Period) => {
+  const out = [p.from.slice(0, 7)];
+  while (out[out.length - 1] < p.to.slice(0, 7)) { const [y, m] = out[out.length - 1].split("-").map(Number); out.push(m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`); }
+  return out;
 };
-// Attendance: the summary, plus only the days worth mentioning.
-const attendance = (a: Row & { summary: Row; days: Row[]; employee: Row }) => {
-  const s = a.summary;
-  const notable = a.days.filter((d) => (d.late || d.shortDay || d.status === "Absent" || d.status === "Paid Leave") && (d.hasRow || d.status !== "Absent"))
-    .map((d) => [md(d.date), [d.status, d.late && "late", d.shortDay && "short"].filter(Boolean).join(" "), d.in ? `${d.in}-${d.out ?? "?"}` : ""]);
-  return {
-    name: a.employee?.name, month: String(a.month ?? "").slice(0, 7),
-    summary: { present: s.present, absent: s.absent, weekoff: s.weekoff, paidLeave: s.paidLeave, lates: s.lates, lateDeduction: s.lateDeduction,
-      shortDays: s.shortDays, netPayable: s.netPayable, upTo: s.lastDay },
-    days: table(["date", "status", "time"], notable),
-  };
-};
+const monthPeriodOf = (ctx: Ctx): Period => (ctx.period ? monthOnly(ctx.period.month) : thisMonth(ctx.today));
+const monthOnly = (ym: string) => { const [y, m] = ym.split("-").map(Number); const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); return { kind: "month" as const, from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, "0")}`, month: ym, label: monthLabel(ym) }; };
 
-/** HR/Admin: "Pavan" / "EMP003" → employee ID, or an error to give back. */
-async function personId(ctx: Ctx, person: string) {
+/** HR/Admin: "Pavan" / "EMP003" → employee, or an error to give back. */
+async function findPerson(ctx: Ctx, person: string) {
   const q = person.toLowerCase().trim();
   const all = (await call("list_employees", { p_token: ctx.token })) as Row[];
   const exact = all.find((e) => String(e.id).toLowerCase() === q);
-  if (exact) return { id: String(exact.id) };
+  if (exact) return { id: String(exact.id), name: String(exact.name), role: String(exact.role) };
   const hits = all.filter((e) => String(e.name).toLowerCase().includes(q));
-  if (hits.length === 1) return { id: String(hits[0].id) };
+  if (hits.length === 1) return { id: String(hits[0].id), name: String(hits[0].name), role: String(hits[0].role) };
   return { error: hits.length ? `Several match: ${hits.slice(0, 5).map((e) => e.name).join(", ")}` : `No one called ${person}` };
 }
-const NOT_YOURS = { error: "That information isn't available to you." };
-const isManager = (role: Role) => role === "HR" || role === "Admin";
 
-interface ToolDef extends Omit<Tool, "run"> { run: (ctx: Ctx, args: Record<string, string | undefined>, role: Role) => Promise<unknown> }
-const person = { type: "string", description: "name or ID; omit for me" };
+/** Reports in the period (own, or one person's for HR/Admin). */
+async function reportRows(ctx: Ctx, p: Period, employeeId: string | null) {
+  let rows: Row[] = [];
+  if (employeeId) rows = (await call("list_sales_reports", { p_token: ctx.token, p_from: p.from, p_to: p.to, p_type: null, p_project: null, p_employee_id: employeeId })) as Row[];
+  else for (const m of monthsIn(p)) rows.push(...((await call("my_sales_reports", { p_token: ctx.token, p_month: `${m}-01` })) as Row[]));
+  return rows.filter((r) => String(r.date) >= p.from && String(r.date) <= p.to);
+}
+
+const attSummary = (a: Row & { summary: Row; days: Row[] }) => {
+  const s = a.summary;
+  return { payableDays: n1(s.netPayable), daysInMonth: s.daysInMonth, present: n1(s.present), weeklyOff: n1(s.weekoff), absent: n1(s.absent), paidLeave: n1(s.paidLeave),
+    lates: s.lates, latesCounted: Number(s.lateDeduction ?? 0) * 2, lateDeduction: n1(s.lateDeduction), shortDays: s.shortDays, upTo: s.lastDay };
+};
 
 export const TOOLS: ToolDef[] = [
   {
-    name: "my_visits", description: "My pending site visits (today, upcoming, overdue).", parameters: none,
+    name: "my_visits", description: "My site visits (pending list, or visits done in a past period).", parameters: none,
     run: async (ctx) => {
-      const v = (await call("assist_my_visits", { p_token: ctx.token })) as Row[];
-      return table(["date", "client", "report", "overdue"], v.map((x) => [md(x.date), x.client, x.report, x.overdue ? 1 : 0]));
+      const p = ctx.period;
+      // A past period: pending visits are gone, so count what the reports recorded.
+      if (p && p.to < ctx.today) {
+        const rows = await reportRows(ctx, p, null);
+        const done = rows.reduce((s, r) => s + Number(r.done ?? 0), 0), sched = rows.reduce((s, r) => s + Number(r.scheduled ?? 0), 0);
+        if (!done && !sched) return { period: p.label, say: `**No site visits recorded in ${p.label}.**` };
+        return { period: p.label, visitsDone: done, visitsScheduled: sched, byDay: table(["date", "done", "scheduled"], rows.filter((r) => Number(r.done) || Number(r.scheduled)).map((r) => [md(r.date), r.done, r.scheduled]), 10) };
+      }
+      let v = (await call("assist_my_visits", { p_token: ctx.token })) as Row[];
+      if (p?.kind === "day") v = v.filter((x) => x.date === p.from);
+      else if (p) v = v.filter((x) => String(x.date) >= p.from && String(x.date) <= p.to);
+      const label = p ? p.label : "upcoming";
+      if (!v.length) return { period: label, say: `**No site visits ${p?.kind === "day" ? (p.from === ctx.today ? `today (${p.label.replace("today, ", "")})` : `on ${p.label}`) : `in ${label}`}.**` };
+      return { period: label, count: v.length, visits: table(["date", "client", "report", "overdue"], v.map((x) => [md(x.date), x.client, x.report, x.overdue ? 1 : 0])) };
     },
   },
   {
-    name: "reports", description: "Daily reports + totals for a month (YYYY-MM) or date.",
-    parameters: { type: "object", properties: { month: { type: "string" }, date: { type: "string" } } },
+    name: "reports", description: "Daily reports and totals for the period.", parameters: none,
     run: async (ctx, a, role) => {
-      const m = a.date ? a.date.slice(0, 7) : monthOf(ctx, a.month);
       if (a.person && !isManager(role)) return NOT_YOURS;
-      let rows: Row[];
+      const p = ctx.period ?? thisMonth(ctx.today);
+      let who: string | null = null, name = "";
+      if (a.person) { const f = await findPerson(ctx, a.person); if ("error" in f) return f; who = f.id; name = f.name; }
+      const rows = await reportRows(ctx, p, who);
+      if (!rows.length) return { period: p.label, say: `**No reports${name ? ` from ${name}` : ""} in ${p.label}.**` };
+      const sum = (f: string) => rows.reduce((s, r) => s + Number(r[f] ?? 0), 0);
+      const multi = new Set(rows.map((r) => r.title)).size > 1;
+      return { period: p.label, ...(name ? { name } : {}), reports: rows.length,
+        totals: { leads: sum("leads"), calls: sum("calls"), positive: sum("positive"), visitsDone: sum("done"), tokens: sum("tokens") },
+        list: table(["date", ...(multi ? ["report"] : []), "leads", "calls", "done", "tokens"], rows.map((r) => [md(r.date), ...(multi ? [r.title] : []), r.leads, r.calls, r.done, r.tokens]), 10) };
+    },
+  },
+  {
+    name: "attendance", description: "Attendance for the period: payable days, lates, short days, notable days.", parameters: none,
+    run: async (ctx, a, role) => {
+      if (a.person && !isManager(role)) return NOT_YOURS;
+      let emp: string | null = null, name = "";
       if (a.person) {
-        const p = await personId(ctx, a.person);
-        if (p.error) return p;
-        rows = (await call("list_sales_reports", { p_token: ctx.token, p_from: `${m}-01`, p_to: monthEnd(m), p_type: null, p_project: null, p_employee_id: p.id })) as Row[];
-      } else rows = (await call("my_sales_reports", { p_token: ctx.token, p_month: `${m}-01` })) as Row[];
-      if (a.date) rows = rows.filter((r) => r.date === a.date);
-      return { month: m, ...reports(rows) };
-    },
-  },
-  {
-    name: "attendance", description: "Attendance summary for a month (YYYY-MM).", parameters: monthArg,
-    run: async (ctx, a, role) => {
-      if (a.person && !isManager(role)) return NOT_YOURS;
-      const p = a.person ? await personId(ctx, a.person) : { id: null };
-      if ("error" in p && p.error) return p;
-      return attendance(await call("att_month", { p_token: ctx.token, p_emp: p.id ?? null, p_month: `${monthOf(ctx, a.month)}-01` }));
+        const f = await findPerson(ctx, a.person); if ("error" in f) return f;
+        if (f.role === "Admin") return { say: `**${f.name} is an Admin and has no attendance.**` };
+        emp = f.id; name = f.name;
+      } else if (role === "Admin") return { say: "**Admins have no attendance of their own.** Ask about a person, e.g. \"Pavan's attendance last month\"." };
+      const p = monthPeriodOf(ctx);
+      const load = (ym: string) => call("att_month", { p_token: ctx.token, p_emp: emp, p_month: `${ym}-01` }) as Promise<Row & { summary: Row; days: Row[] }>;
+      const att = await load(p.month);
+      if (!att.summary?.lastDay) {
+        // Not uploaded yet: say so, and give the latest month that is.
+        for (let ym = prevMonth(p.month), i = 0; i < 6; ym = prevMonth(ym), i++) {
+          const prev = await load(ym);
+          if (!prev.summary?.lastDay) continue;
+          const s = attSummary(prev);
+          return { period: p.label, say: `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted} counted).` };
+        }
+        return { period: p.label, say: `**No attendance uploaded for ${p.label}${name ? ` for ${name}` : ""} yet.**` };
+      }
+      const notable = att.days.filter((d) => (d.late || d.shortDay || d.status === "Absent" || d.status === "Paid Leave") && (d.hasRow || d.status !== "Absent"))
+        .map((d) => [md(d.date), [d.status, d.late && "late", d.shortDay && "short"].filter(Boolean).join(" "), d.in ? `${d.in}-${d.out ?? "?"}` : ""]);
+      const day = ctx.period?.kind === "day" ? att.days.find((d) => d.date === ctx.period!.from) : null;
+      return { period: p.label, ...(name ? { name } : {}), summary: attSummary(att),
+        ...(day ? { day: { date: ctx.period!.label, status: day.status, in: day.in, out: day.out, late: !!day.late, short: !!day.shortDay } } : {}),
+        ...(notable.length ? { notableDays: table(["date", "status", "time"], notable, 10) } : {}) };
     },
   },
   {
     name: "my_leave", description: "My leave requests and leave taken.", parameters: none,
     run: async (ctx) => {
       const o = await call("leave_overview", { p_token: ctx.token });
-      return { taken: o.stats, list: table(["from", "to", "days", "status", "reason"],
-        (o.applications as Row[]).map((x) => [md(x.start), md(x.end), x.days, x.status, short(x.reason, 40)]), 10) };
+      const apps = o.applications as Row[];
+      if (!apps.length) return { say: "**You have no leave requests.**" };
+      return { takenThisMonth: o.stats?.month, takenThisYear: o.stats?.year,
+        list: table(["from", "to", "days", "status", "reason"], apps.map((x) => [md(x.start), md(x.end), x.days, x.status, short(x.reason, 40)]), 8) };
     },
   },
   {
-    name: "today_report_status", description: "My reports to file today and whether each is filed.", parameters: none,
-    run: async (ctx) => ((await call("report_options", { p_token: ctx.token })) as Row[]).map((o) => ({ report: o.title, filed: !!o.todayReportId })),
+    name: "today_report_status", description: "My reports due today and whether each is filed.", parameters: none,
+    run: async (ctx) => {
+      const opts = (await call("report_options", { p_token: ctx.token })) as Row[];
+      if (!opts.length) return { say: "**You don't have a daily report to file.**" };
+      return { period: dayLabel(ctx.today, ctx.today), reports: opts.map((o) => ({ report: o.title, filed: !!o.todayReportId })) };
+    },
   },
   // ---- HR / Admin ----
   {
-    name: "team_summary", managers: true, description: "Team report numbers for a date (YYYY-MM-DD).",
-    parameters: { type: "object", properties: { date: { type: "string" } } },
-    run: async (ctx, a) => {
-      const groups = (await call("team_report_summary", { p_token: ctx.token, p_date: dateOf(ctx, a.date), p_type: null, p_project: null, p_employee_id: null })) as Row[];
+    name: "team_summary", managers: true, description: "Team report numbers for the period, per report and person.", parameters: none,
+    run: async (ctx) => {
+      const p = ctx.period ?? todayPeriod(ctx.today);
+      const date = p.kind === "day" ? p.from : (p.to > ctx.today ? ctx.today : p.to);
+      const groups = (await call("team_report_summary", { p_token: ctx.token, p_date: date, p_type: null, p_project: null, p_employee_id: null })) as Row[];
+      const useMonth = p.kind !== "day";
       const nums = (t: Row) => [t.leads, t.calls, t.done, t.tokens];
-      return { date: dateOf(ctx, a.date), cols: ["leads", "calls", "done", "tokens"], groups: groups.map((g) => ({
-        report: g.title, day: nums((g.totals as Row).today as Row), month: nums((g.totals as Row).mtd as Row),
-        people: table(["name", "filed", "leads", "calls", "done", "tokens"],
-          (g.rows as Row[]).map((r) => [r.employeeName, r.filedToday ? 1 : r.off ?? 0, ...nums(r.today as Row)])),
-      })) };
+      const out = groups.map((g) => {
+        const people = (g.rows as Row[]).map((r) => [r.employeeName, ...(useMonth ? [] : [r.filedToday ? 1 : r.off ?? 0]), ...nums((useMonth ? r.mtd : r.today) as Row)]);
+        const live = people.filter((r) => r.slice(useMonth ? 1 : 2).some((v) => Number(v)));
+        return { report: g.title, totals: nums(((g.totals as Row)[useMonth ? "mtd" : "today"]) as Row), people: live.length ? table(["name", ...(useMonth ? [] : ["filed"]), "leads", "calls", "done", "tokens"], live, 8) : undefined };
+      }).filter((g) => (g.totals as unknown[]).some((v) => Number(v)));
+      const label = useMonth ? `${p.label}${p.to > ctx.today ? " (so far)" : ""}` : p.label;
+      if (!out.length) return { period: label, say: `**No reports filed ${p.kind === "day" ? (p.from === ctx.today ? `yet today (${p.label.replace("today, ", "")})` : `on ${p.label}`) : `in ${label}`}.**` };
+      return { period: label, cols: ["leads", "calls", "done", "tokens"], groups: out };
     },
   },
   {
-    name: "not_filed_today", managers: true, description: "Who hasn't filed today's report; who is off.", parameters: none,
+    name: "not_filed_today", managers: true, description: "Who hasn't filed today's report; who is off today.", parameters: none,
     run: async (ctx) => {
       const r = (await call("assist_not_filed", { p_token: ctx.token })) as { notFiled: Row[]; off: Row[] };
-      return { count: r.notFiled.length, notFiled: r.notFiled.slice(0, MAX_ROWS).map((x) => `${x.name} (${(x.missing as string[]).join(", ")})`),
-        off: r.off.slice(0, 10).map((x) => `${x.name}: ${x.off}`) };
+      const label = dayLabel(ctx.today, ctx.today).replace("today, ", "");
+      if (!r.notFiled.length) return { period: `today, ${label}`, say: `**Everyone has filed today (${label}).**` };
+      return { period: `today, ${label}`, count: r.notFiled.length, notFiled: r.notFiled.slice(0, MAX_ROWS).map((x) => `${x.name} (${(x.missing as string[]).join(", ")})`),
+        ...(r.off.length ? { off: r.off.slice(0, 8).map((x) => `${x.name}: ${x.off}`) } : {}) };
     },
   },
   {
-    name: "attendance_checks", managers: true, description: "Who checked their attendance for a month (YYYY-MM).", parameters: monthArg,
-    run: async (ctx, a) => {
-      const rows = (await call("att_checks", { p_token: ctx.token, p_month: `${monthOf(ctx, a.month)}-01` })) as Row[];
+    name: "attendance_checks", managers: true, description: "How many checked their updated attendance for the period's month.", parameters: none,
+    run: async (ctx) => {
+      const p = monthPeriodOf(ctx);
+      const rows = (await call("att_checks", { p_token: ctx.token, p_month: `${p.month}-01` })) as Row[];
+      if (!rows.length) return { period: p.label, say: `**No attendance updates to check for ${p.label}.**` };
       const not = rows.filter((r) => !r.checkedAt).map((r) => (r.employee as Row)?.name);
-      return { month: monthOf(ctx, a.month), checked: rows.length - not.length, total: rows.length, notChecked: not.slice(0, 10), ...(not.length > 10 ? { more: not.length - 10 } : {}) };
+      return { period: p.label, checked: rows.length - not.length, total: rows.length, notChecked: not.slice(0, 10), ...(not.length > 10 ? { more: not.length - 10 } : {}) };
     },
   },
   {
     name: "pending_leave", managers: true, description: "Leave requests waiting for a decision.", parameters: none,
-    run: async (ctx) => table(["name", "from", "to", "days", "reason", "warning"],
-      ((await call("leave_queue", { p_token: ctx.token, p_status: "Pending" })) as Row[]).map((x) => [
+    run: async (ctx) => {
+      const q = (await call("leave_queue", { p_token: ctx.token, p_status: "Pending" })) as Row[];
+      if (!q.length) return { say: "**No pending requests.**" };
+      return { count: q.length, list: table(["name", "from", "to", "days", "reason", "warning"], q.map((x) => [
         (x.employee as Row)?.name, md(x.start), md(x.end), x.days, short(x.reason, 40), short((x.warnings as string[] | undefined)?.[0], 50) ?? "",
-      ]), 10),
+      ]), 8) };
+    },
   },
 ];
 
+const person = { type: "string", description: "name or ID; omit for me" };
+
 /** The tools this role may use. HR/Admin's reports + attendance take a person (name or ID). */
-export const toolsFor = (role: Role) => TOOLS.filter((t) => !t.managers || isManager(role)).map((t) =>
-  isManager(role) && (t.name === "reports" || t.name === "attendance")
-    ? { ...t, parameters: { ...t.parameters, properties: { ...(t.parameters.properties as object), person } } }
-    : t);
+export const toolsFor = (role: Role): Tool[] => TOOLS.filter((t) => !t.managers || isManager(role)).map((t) => ({
+  name: t.name, description: t.description,
+  parameters: isManager(role) && (t.name === "reports" || t.name === "attendance") ? { type: "object", properties: { person } } : t.parameters,
+}));
 
 /** Runs one tool for this person, or explains why not. Never throws. */
 export async function runTool(role: Role, ctx: Ctx, name: string, rawArgs: string) {
-  const tool = toolsFor(role).find((t) => t.name === name);
-  if (!tool) return { error: "That information isn't available to you." };
+  const tool = TOOLS.find((t) => t.name === name && (!t.managers || isManager(role)));
+  if (!tool) return NOT_YOURS;
   let args: Record<string, string | undefined> = {};
   try { args = rawArgs ? JSON.parse(rawArgs) : {}; } catch { return { error: "Bad tool arguments." }; }
   if (args.employee_id && !args.person) args.person = args.employee_id;
