@@ -9,9 +9,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_TOOL_CALLS = 10;
-// Groq models, best first. GROQ_MODEL (if set) is tried first; a model that
-// doesn't exist or was retired (404, or 400 naming the model) falls back to the next.
-const FALLBACK_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+// Groq models, best first; each has its own rate limit. GROQ_MODEL (if set) is
+// tried first. A model that's retired (404 / 400 naming it) or rate limited for
+// longer than MAX_WAIT_S falls back to the next.
+const FALLBACK_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
+const MAX_WAIT_S = 10;
+// Groq's free plan counts tokens: keep each request small.
+const HISTORY = 6;          // chat messages sent per request
+const TOOL_RESULT_CHARS = 1400;
 const BUSY = "Y2B Assist isn't available right now. Please try again in a minute.";
 
 interface ChatMsg { role: "system" | "user" | "assistant" | "tool"; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string }
@@ -28,8 +33,8 @@ export async function POST(req: NextRequest) {
   const token = body?.token ?? "";
   const history = (body?.messages ?? [])
     .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
-    .slice(-20)
-    .map((m) => ({ role: m.role as "user" | "assistant", content: scrubText(m.content.slice(0, 2000)) }));
+    .slice(-HISTORY)
+    .map((m) => ({ role: m.role as "user" | "assistant", content: scrubText(m.content.slice(0, m.role === "user" ? 1000 : 800)) }));
   if (!history.length || history[history.length - 1].role !== "user") {
     return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
   }
@@ -57,14 +62,20 @@ export async function POST(req: NextRequest) {
       const send = (e: Record<string, unknown>) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       send({ t: "meta", remaining: me.remaining });
       let toolCalls = 0;
+      const used = { requests: 0, input: 0, output: 0 };
       try {
         for (let round = 0; round < MAX_TOOL_CALLS + 2; round++) {
-          const res = await groq(base, key, models, {
-            messages, stream: true, temperature: 0.2,
+          const { body: res, model } = await groq(base, key, models, {
+            messages, stream: true, temperature: 0.2, stream_options: { include_usage: true },
             tools: tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
             tool_choice: toolCalls >= MAX_TOOL_CALLS ? "none" : "auto",
-          });
-          const { text, calls } = await readStream(res, (v) => send({ t: "text", v }));
+          }, () => send({ t: "status", v: "__retry" }));
+          const { text, calls, usage } = await readStream(res, (v) => send({ t: "text", v }));
+          used.requests++;
+          if (usage) {
+            used.input += usage.prompt_tokens ?? 0; used.output += usage.completion_tokens ?? 0;
+            console.log(`[assist] usage model=${model} in=${usage.prompt_tokens ?? "?"} out=${usage.completion_tokens ?? "?"} total=${usage.total_tokens ?? "?"}`);
+          }
           if (!calls.length) break;
           messages.push({ role: "assistant", content: text || null, tool_calls: calls });
           for (const c of calls) {
@@ -72,9 +83,10 @@ export async function POST(req: NextRequest) {
             const result = toolCalls > MAX_TOOL_CALLS
               ? { error: "Too many lookups for one question. Answer with what you have." }
               : (send({ t: "status", v: c.function.name }), await runTool(me.role, ctx, c.function.name, c.function.arguments));
-            messages.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(sanitize(result)).slice(0, 14000) });
+            messages.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(sanitize(result)).slice(0, TOOL_RESULT_CHARS) });
           }
         }
+        console.log(`[assist] question role=${me.role} requests=${used.requests} tools=${toolCalls} in=${used.input} out=${used.output}`);
         send({ t: "done" });
       } catch (err) {
         if (!(err instanceof GroqError)) console.error(`[assist] ${err instanceof Error ? err.message : "failed"}`);
@@ -99,40 +111,88 @@ function logGroqError(status: number, model: string, raw: string) {
 const retired = (status: number, e: { code?: string; message?: string }) =>
   status === 404 || (status === 400 && /model|decommission/i.test(`${e.code ?? ""} ${e.message ?? ""}`));
 
+/** Seconds from Groq's retry-after header ("7", "7.5"), or null. */
+const retryAfter = (res: Response) => {
+  const v = Number.parseFloat(res.headers.get("retry-after") ?? "");
+  return Number.isFinite(v) && v >= 0 ? v : null;
+};
+
+// Per-model request options: reasoning models think briefly and never show it.
+const modelOptions = (model: string) =>
+  model.startsWith("openai/gpt-oss") ? { reasoning_effort: "low", max_completion_tokens: 2048 }
+  : model.startsWith("qwen/") ? { reasoning_format: "hidden", max_completion_tokens: 1200 }
+  : { max_completion_tokens: 1200 };
+
 /**
  * One chat completion call. Tries the models in order; once one works, later
- * calls in the same answer start with it.
+ * calls in the same answer start with it. Rate limited (429): wait and retry
+ * once if Groq says 10 s or less, otherwise move on to the next model.
  */
-async function groq(base: string, key: string, models: string[], payload: Record<string, unknown>) {
+async function groq(base: string, key: string, models: string[], payload: Record<string, unknown>, onRetry: () => void) {
+  let waited = false;
   while (models.length) {
     const model = models[0];
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload, model,
-        // gpt-oss thinks before answering; keep that short so it can't use up the answer.
-        ...(model.startsWith("openai/gpt-oss") ? { reasoning_effort: "low", max_completion_tokens: 4096 } : { max_completion_tokens: 1200 }),
-      }),
+      body: JSON.stringify({ ...payload, model, ...modelOptions(model) }),
     }).catch((err) => { console.error(`[assist] Groq request failed model=${model}: ${err instanceof Error ? err.message : err}`); throw new GroqError("network"); });
-    if (res.ok && res.body) return res.body;
+    if (res.ok && res.body) return { body: res.body, model };
     const e = logGroqError(res.status, model, await res.text().catch(() => ""));
-    if (retired(res.status, e) && models.length > 1) { models.shift(); continue; }
+    if (res.status === 429) {
+      const wait = retryAfter(res);
+      if (!waited && wait != null && wait <= MAX_WAIT_S) {
+        waited = true;
+        onRetry();
+        await new Promise((r) => setTimeout(r, Math.ceil(wait * 1000)));
+        continue;
+      }
+      if (models.length > 1) { models.shift(); waited = false; continue; }
+      throw new GroqError("rate limited");
+    }
+    if (retired(res.status, e) && models.length > 1) { models.shift(); waited = false; continue; }
     throw new GroqError(`Groq ${res.status}`);
   }
   throw new GroqError("no model");
 }
 
+interface Usage { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+
 /**
  * Reads one streamed (SSE) chat completion: passes the answer text on as it
- * comes and collects tool calls. Reasoning ("reasoning" fields, from gpt-oss)
- * is never passed on.
+ * comes and collects tool calls and the token usage. Reasoning is never passed
+ * on: gpt-oss "reasoning" fields are ignored and any <think>…</think> text
+ * (Qwen) is dropped.
  */
 async function readStream(body: ReadableStream<Uint8Array>, onText: (v: string) => void) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-  let buf = "", text = "";
+  let buf = "", text = "", pending = "", thinking = false;
+  let usage: Usage | null = null;
   const calls: ToolCall[] = [];
+  // Passes text on, holding back anything inside <think>…</think>.
+  const emit = (piece: string) => {
+    pending += piece;
+    for (;;) {
+      if (thinking) {
+        const end = pending.indexOf("</think>");
+        if (end < 0) { pending = pending.slice(-8); return; }
+        pending = pending.slice(end + 8); thinking = false;
+      } else {
+        const start = pending.indexOf("<think>");
+        if (start < 0) {
+          const keep = pending.lastIndexOf("<") > pending.length - 8 ? pending.length - pending.lastIndexOf("<") : 0;
+          const out = pending.slice(0, pending.length - keep);
+          pending = pending.slice(pending.length - keep);
+          if (out) { text += out; onText(out); }
+          return;
+        }
+        const out = pending.slice(0, start);
+        if (out) { text += out; onText(out); }
+        pending = pending.slice(start + 7); thinking = true;
+      }
+    }
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -144,14 +204,17 @@ async function readStream(body: ReadableStream<Uint8Array>, onText: (v: string) 
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
       if (data === "[DONE]") continue;
-      let chunk: { error?: { code?: string; type?: string; message?: string }; choices?: { delta?: { content?: string; reasoning?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] } }[] };
+      let chunk: { error?: { code?: string; type?: string; message?: string }; usage?: Usage; x_groq?: { usage?: Usage };
+        choices?: { delta?: { content?: string; reasoning?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] } }[] };
       try { chunk = JSON.parse(data); } catch { continue; }
       if (chunk.error) {
         console.error(`[assist] Groq stream error code=${chunk.error.code ?? "-"} type=${chunk.error.type ?? "-"} message=${(chunk.error.message ?? "").slice(0, 300)}`);
         throw new GroqError("stream error");
       }
+      const u = chunk.usage ?? chunk.x_groq?.usage;
+      if (u) usage = u;
       const delta = chunk.choices?.[0]?.delta;
-      if (delta?.content) { text += delta.content; onText(delta.content); }
+      if (delta?.content) emit(delta.content);
       for (const tc of delta?.tool_calls ?? []) {
         const c = (calls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
         if (tc.id) c.id = tc.id;
@@ -160,5 +223,6 @@ async function readStream(body: ReadableStream<Uint8Array>, onText: (v: string) 
       }
     }
   }
-  return { text, calls: calls.filter(Boolean) };
+  if (pending && !thinking) { text += pending; onText(pending); }
+  return { text, calls: calls.filter(Boolean), usage };
 }

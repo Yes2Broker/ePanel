@@ -12,10 +12,10 @@ import { Markdown } from "@/components/assist/markdown";
 interface Msg { role: "user" | "assistant"; content: string; error?: boolean }
 
 const STATUS: Record<string, string> = {
-  my_visits: "Checking your visits…", my_reports: "Looking at your reports…", my_attendance: "Looking at your attendance…",
+  my_visits: "Checking your visits…", reports: "Looking at the reports…", attendance: "Looking at the attendance…",
   my_leave: "Looking at your leave…", today_report_status: "Checking today's report…", team_summary: "Adding up the team's reports…",
   not_filed_today: "Checking who has filed…", attendance_checks: "Checking attendance checks…", pending_leave: "Looking at leave requests…",
-  find_employee: "Finding the person…", person_reports: "Looking at their reports…", person_attendance: "Looking at their attendance…",
+  __retry: "Busy, retrying…",
 };
 
 /**
