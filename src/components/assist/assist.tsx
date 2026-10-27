@@ -86,6 +86,7 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
         body: JSON.stringify({ token: getSessionToken(), messages: next.filter((m) => !m.error).map(({ role, content }) => ({ role, content })) }),
       });
       if (!res.ok || !res.body) {
+        if (res.status === 429) setRemaining(0);
         const e = await res.json().catch(() => ({}));
         update(() => ({ role: "assistant", content: e.error || "Y2B Assist isn't available right now. Please try again in a minute.", error: true }));
         return;
@@ -121,7 +122,7 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
     try { await navigator.clipboard.writeText(msgs[i].content); setCopied(i); setTimeout(() => setCopied(null), 1500); } catch { /* clipboard blocked */ }
   };
   const closeOnPhone = () => { if (window.matchMedia("(max-width: 639px)").matches) onClose(); };
-  const newChat = () => { setMsgs([]); setRemaining(null); };
+  const newChat = () => setMsgs([]);
 
   // Auto-growing input, up to 5 lines.
   useEffect(() => {
@@ -154,8 +155,6 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div className="flex items-center gap-2.5 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Avatar />
           <h2 className="text-[15px] font-semibold text-ink">Y2B Assist</h2>
-          <span className="rounded-md bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">AI</span>
-          {remaining != null && remaining <= 5 && <span className="text-xs text-ink-faint">{remaining} question{remaining === 1 ? "" : "s"} left today</span>}
           <span className="flex-1" />
           <button onClick={newChat} disabled={busy} aria-label="New chat" title="New chat"
             className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface hover:text-ink disabled:opacity-40"><SquarePen className="h-[18px] w-[18px]" /></button>
@@ -228,12 +227,18 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {/* Input */}
         <form onSubmit={(e) => { e.preventDefault(); ask(input); }} className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+          {/* Questions left today (employees only; HR/Admin get no count). */}
+          {remaining != null && (
+            <p className={cn("mb-1.5 px-3 text-xs", remaining <= 3 ? "font-medium text-status-warning" : "text-ink-faint")}>
+              {remaining === 0 ? "You've used today's 30 questions. Back tomorrow." : `${remaining} question${remaining === 1 ? "" : "s"} left today`}
+            </p>
+          )}
           <div className="flex items-end gap-2 rounded-[1.75rem] border border-surface-border bg-white py-1.5 pl-4 pr-1.5 shadow-[0_4px_20px_rgba(15,23,42,0.08)] focus-within:border-brand/50">
-            <textarea ref={field} value={input} onChange={(e) => setInput(e.target.value)} rows={1} maxLength={1000} aria-label="Ask Y2B Assist"
+            <textarea ref={field} value={input} onChange={(e) => setInput(e.target.value)} rows={1} maxLength={1000} aria-label="Ask Y2B Assist" disabled={remaining === 0}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); } }}
-              placeholder="Ask anything…"
+              placeholder={remaining === 0 ? "Back tomorrow" : "Ask anything…"}
               className="max-h-[140px] flex-1 resize-none bg-transparent py-2 text-base leading-6 text-ink placeholder:text-ink-faint focus:outline-none sm:text-sm" />
-            <button type="submit" disabled={busy || !input.trim()} aria-label="Send"
+            <button type="submit" disabled={busy || !input.trim() || remaining === 0} aria-label="Send"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-white transition disabled:bg-surface-border disabled:text-ink-faint"><ArrowUp className="h-5 w-5" /></button>
           </div>
           <p className="mt-1.5 text-center text-[11px] text-ink-faint">AI can make mistakes. Check important numbers.</p>

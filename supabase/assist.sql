@@ -17,7 +17,7 @@ revoke all on assist_usage from anon, authenticated;
 create or replace function private.assist_daily_limit() returns int language sql immutable as $$ select 30 $$;
 
 -- Called once per question by /api/assist: checks the "Y2B Assist" permission
--- and the daily limit, and counts the question.
+-- and the daily limit (employees only; HR and Admin have none), and counts the question.
 create or replace function public.assist_use(p_token text) returns jsonb
 language plpgsql volatile security definer set search_path = public, private as $$
 declare
@@ -26,13 +26,13 @@ declare
 begin
   insert into assist_usage as u (employee_id, day, questions) values (me.id, private.today(), 1)
   on conflict (employee_id, day) do update set questions = u.questions + 1
-    where u.questions < private.assist_daily_limit()
+    where u.questions < private.assist_daily_limit() or me.role in ('HR', 'Admin')
   returning questions into n;
   if n is null then
     raise exception 'Daily limit reached.' using errcode = 'P0429';
   end if;
   return jsonb_build_object('id', me.id, 'name', me.name, 'role', me.role, 'today', private.today(),
-    'remaining', private.assist_daily_limit() - n);
+    'remaining', case when me.role in ('HR', 'Admin') then null else greatest(private.assist_daily_limit() - n, 0) end);
 end $$;
 
 -- The signed-in person's pending site visits from today on (plus overdue ones).

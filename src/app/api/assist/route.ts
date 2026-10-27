@@ -37,6 +37,8 @@ const TOPICS: [Area, RegExp][] = [
 ];
 // Pay questions are refused here, for everyone, without asking the AI.
 const SALARY = /\b(salary|salaries|salery|sallary|salry|pay|paid how much|payslips?|pay ?slips?|payroll|ctc|wages?|stipend|in-?hand|take-?home|tankh?wa?h?|tankha|pagar|vetan|kitna milta|kitni milti|kitna milega|kitna mila)\b|वेतन|तनख्वाह|सैलरी|पगार|પગાર|સેલેરી/i;
+// "Who are you?" — always the assistant, never a person or a manager (no AI call).
+const WHO_AM_I = /^(who|what) (are|r) (you|u)\b|^(who|what) is (this|y2b assist)\b|^(tum|aap|tu) kaun (ho|hai)|^kaun (ho|hai) (tum|aap|tu)|^are (you|u) (a |an )?(human|person|bot|robot|ai|manager|real)\b|^your name\b|^what'?s your name/;
 const NO_SALARY = "Salaries aren't available in Y2B Assist. Admin can see them in Attendance → Salary sheet.";
 const EXPIRED = "Your session expired. Please sign in again.";
 // Language of the question, so the model is told explicitly how to reply.
@@ -87,11 +89,13 @@ export async function POST(req: NextRequest) {
     if (code === "28000") return fixed([{ t: "text", v: EXPIRED }, { t: "done" }]);
     return NextResponse.json({ error: "Y2B Assist isn't turned on for you. Ask Admin." }, { status: 403 });
   }
-  const me = use.data as { id: string; name: string; role: Role; today: string; remaining: number };
+  const me = use.data as { id: string; name: string; role: Role; today: string; remaining: number | null };
+  if (me.role !== "Employee") me.remaining = null; // no daily limit for HR / Admin
   const question = history[history.length - 1].content;
   const plain = question.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
   const say = (v: string) => fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v }, { t: "done" }]);
   if (SALARY.test(question)) return say(NO_SALARY);
+  if (WHO_AM_I.test(plain)) return say("I'm Y2B Assist, the AI helper in ePanel.");
   // The person's Permissions page switches decide which tools exist for them.
   const self = await supabase.rpc("get_me", { p_token: token });
   if (self.error) return self.error.code === "28000" ? fixed([{ t: "text", v: EXPIRED }, { t: "done" }]) : NextResponse.json({ error: BUSY }, { status: 503 });
