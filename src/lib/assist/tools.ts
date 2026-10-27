@@ -18,7 +18,7 @@ const AREA: Record<string, Area> = {
   my_visits: "reports", reports: "reports", today_report_status: "reports", team_summary: "reports", not_filed_today: "reports",
   attendance: "attendance", attendance_checks: "attendance", my_leave: "leave", pending_leave: "leave",
 };
-interface Ctx { token: string; today: string; period: Period | null; me: { id: string; name: string }; files: boolean }
+interface Ctx { token: string; today: string; period: Period | null; me: { id: string; name: string }; files: boolean; hinglish?: boolean }
 interface Tool {
   name: string;
   description: string;
@@ -143,7 +143,10 @@ export const TOOLS: ToolDef[] = [
           const prev = await load(ym);
           if (!prev.summary?.lastDay) continue;
           const s = attSummary(prev);
-          return { period: p.label, say: `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted ?? 0} counted).` };
+          const lates = `${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted ?? 0} counted)`;
+          return { period: p.label, say: ctx.hinglish
+            ? `**${p.label} abhi upload nahi hua.** Last uploaded: ${monthLabel(ym)} – ${s.payableDays} payable days, ${lates}.`
+            : `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${lates}.` };
         }
         return { period: p.label, say: `**No attendance uploaded for ${p.label}${name ? ` for ${name}` : ""} yet.**` };
       }

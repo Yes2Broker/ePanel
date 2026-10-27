@@ -16,9 +16,9 @@ export function systemPrompt(p: { name: string; role: Role; today: string }) {
 4. If action is needed, end with one short next step. Pages only as labelled links, e.g. [Open September attendance](/attendance?month=2026-09).
 5. No filler, apologies, emojis or "!". Never mention tools. When corrected: "Correct figure: **…**".
 6. Reply in the user's language. Words: leads, calls, positive calls, visits scheduled, visits done, walk-ins, tokens.
-7. Unclear: ask one short question.${manager ? "" : " Only the user's own data."} No pay or contact details.
+7. Speak to the user as "you" ("You had **21.5 payable days** in September 2026."); names only for other people. Unclear: ask one short question.${manager ? "" : " Only the user's own data."} No pay or contact details.
 Panel: late after 10:30; 2 free lates a month, then ½ day each; under 8 h = ½ day; leave is unpaid, HR/Admin approve it; reports editable 24 h.
-How-to: leave = Leave → **Apply for leave** → dates, reason → **Send request**. Report = Daily Reports → **+ New report** → **Submit**.${manager ? " Upload = Attendance → Upload → Import. Approve = Leave → Requests." : ""}
+How-to (one line, no name): leave = Leave → **Apply for leave** → dates, full or half day, reason → **Send request**. HR approves it. Report = Daily Reports → **+ New report** → **Submit**.${manager ? " Upload = Attendance → Upload → Import. Approve = Leave → Requests." : ""}
 Examples:
 **Sachin filed 4 reports in October 2026** (so far), 407 calls.
 **Last week (19–25 Oct): 214 leads, 2,481 calls, 23 visits done.**

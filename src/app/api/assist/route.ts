@@ -40,11 +40,18 @@ const SALARY = /\b(salary|salaries|salery|sallary|salry|pay|paid how much|paysli
 const NO_SALARY = "Salaries aren't available in Y2B Assist. Admin can see them in Attendance → Salary sheet.";
 const EXPIRED = "Your session expired. Please sign in again.";
 // Language of the question, so the model is told explicitly how to reply.
-const HINGLISH = /\b(ka|ke|ki|ko|kitne|kitna|kitni|batao|bata|bataiye|dikhao|hai|hain|tha|thi|aaya|aayi|aya|maine|mera|meri|mere|kya|kab|kaun|kyun|nahi|nahin|mahine|mahina|aaj|kal|din|karo|kiya|kiye|bhare|bhara|mujhe|hua|hui|wala|wale)\b/i;
+// Hinglish: two or more of these words (one is enough for the unmistakable ones).
+const HINGLISH_WORDS = /\b(meri|mera|mere|mujhe|is|mahine|mahina|ki|ka|ke|ko|kya|kab|kitna|kitni|kitne|batao|bata|bataiye|dikhao|hai|hain|tha|thi|aaj|kal|abhi|aaya|aayi|aya|maine|kaun|kyun|nahi|nahin|din|karo|kiya|kiye|bhare|bhara|hua|hui|wala|wale|mein)\b/gi;
+const HINGLISH_STRONG = /\b(mujhe|mahine|mahina|kitna|kitni|kitne|batao|bataiye|dikhao|maine|nahi|nahin|bhare|kyun)\b/i;
+const isHinglish = (q: string) => HINGLISH_STRONG.test(q) || new Set((q.match(HINGLISH_WORDS) ?? []).map((w) => w.toLowerCase())).size >= 2;
 const GUJARATI = /\b(che|chhe|shu|kem|maru|mari|mara|ketla|ketli|ketlu|aaje|hatu|hati|nathi|batavo|tamaru|mane)\b/i;
 const replyLanguage = (q: string) =>
   /[\u0A80-\u0AFF]/.test(q) ? "Reply in Gujarati." : /[\u0900-\u097F]/.test(q) ? "Reply in Hindi."
-  : GUJARATI.test(q) ? "Reply in Gujarati (Roman script)." : HINGLISH.test(q) ? "Reply in Hinglish (Roman script), e.g. \"**Richa: September 2026 me 28 payable days.**\"" : null;
+  : GUJARATI.test(q) ? "Reply in Gujarati (Roman script)." : isHinglish(q) ? "Reply in Hinglish (Roman script), e.g. \"**Richa: September 2026 me 28 payable days.**\"" : null;
+// How-to answers are fixed single lines (no AI call).
+const HOW_TO = /\b(how (do|can|should|would|to)|kaise|kese|kaisa)\b/i;
+const HOWTO_LEAVE = "Leave → **Apply for leave** → dates, full or half day, reason → **Send request**. HR approves it.";
+const HOWTO_REPORT = "Daily Reports → **+ New report** → fill in the numbers → **Submit**. You can edit it for 24 hours.";
 const fixed = (lines: Record<string, unknown>[]) =>
   new Response(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 const BUSY = "Y2B Assist isn't available right now. Please try again in a minute.";
@@ -100,11 +107,13 @@ export async function POST(req: NextRequest) {
   // HR/Admin who don't file reports themselves, asking about their own.
   if (me.role !== "Employee" && !filesReports(perms) && topics.includes("reports") && OWN_WORDS.test(question) && !OTHERS.test(question)
       && (await supabase.rpc("assist_mentions_other", { p_token: token, p_text: question })).data !== true) return say(NO_OWN_REPORTS);
+  if (HOW_TO.test(question) && /\b(apply|leave|chutti|chhutti)\b/i.test(question) && areas.leave) return say(HOWTO_LEAVE);
+  if (HOW_TO.test(question) && /\b(file|fill|submit|bhar|bharu|bharun)\b/i.test(question) && /\breports?\b/i.test(question) && areas.reports && filesReports(perms)) return say(HOWTO_REPORT);
   const language = replyLanguage(question);
   const tools = toolsFor(me.role, perms);
   // The period is worked out here, from the whole chat, never by the model.
   const period = resolvePeriod(chat.filter((m) => m.role === "user").map((m) => m.content), me.today);
-  const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name }, files: filesReports(perms) };
+  const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name }, files: filesReports(perms), hinglish: isHinglish(question) && !/[\u0900-\u097F\u0A80-\u0AFF]/.test(question) };
   const messages: ChatMsg[] = [
     { role: "system", content: systemPrompt({ name: me.name, role: me.role, today: me.today }) },
     ...(period || language ? [{ role: "system" as const, content: [period && `Period asked: ${period.label}.`, language].filter(Boolean).join(" ") }] : []),
@@ -121,7 +130,8 @@ export async function POST(req: NextRequest) {
       send({ t: "meta", remaining: me.remaining });
       let toolCalls = 0, final = "";
       const used = { requests: 0, input: 0, output: 0, waitedMs: 0 };
-      const guard = createGuard((v) => send({ t: "text", v }), fullList ? 250 : 85);
+      // Employees are always asking about themselves: answers speak to them ("You had …"), never "Raees Shaikh had …".
+      const guard = createGuard((v) => send({ t: "text", v }), fullList ? 250 : 85, me.role === "Employee" ? me.name : undefined);
       const toolsJson = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
       try {
         for (let round = 0; round < MAX_TOOL_CALLS + 2; round++) {

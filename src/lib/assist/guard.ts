@@ -20,6 +20,8 @@ const BANNED: RegExp[] = [
   /[^.!?\n]*\b(tool|tools|function call)\b[^.!?\n]*[.!?]?\s*/gi,
 ];
 const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu;
+// Zero-width and other invisible characters (they split names like "Ra\u200Bees").
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
 const isTableLine = (l: string) => l.trim().startsWith("|");
 const isSeparator = (l: string) => /^\s*\|?\s*:?-{2,}/.test(l);
 const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
@@ -54,7 +56,7 @@ function stripPaths(line: string) {
 }
 
 export function cleanLine(line: string) {
-  let s = stripPaths(line.replace(EMOJI, ""));
+  let s = stripPaths(line.replace(INVISIBLE, "").replace(EMOJI, ""));
   for (const re of BANNED) s = s.replace(re, "");
   for (const [re, to] of WORDS) s = s.replace(re, to);
   // A removed opening ("According to the data, …") leaves the rest as the sentence.
@@ -65,14 +67,42 @@ export function cleanLine(line: string) {
   return s;
 }
 
-export function createGuard(emit: (s: string) => void, maxWords: number) {
-  let buf = "", table: string[] = [], count = 0, out = "", stopped = false, first = true, blank = false;
-  const put = (line: string, countIt = true) => {
+/** "Raees Shaikh had …" → "You had …" when the person is asking about themselves. */
+function toYou(line: string, name: string) {
+  const full = name.replace(INVISIBLE, "").trim(), names = [full, full.split(/\s+/)[0]].filter((n) => n.length >= 2).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!names.length) return line;
+  const who = `(?:${names.join("|")})`;
+  let s = line
+    .replace(new RegExp(`^(\\s*(?:[-•]\\s+)?(?:\\*\\*)?)${who}\\s*[:,]\\s*`, "i"), "$1")
+    .replace(new RegExp(`\\b${who}(?:'s|’s|')(?=\\s)`, "gi"), "your")
+    .replace(new RegExp(`\\b${who}\\s+(has|is|was)\\b`, "gi"), (_m, v: string) => `you ${({ has: "have", is: "are", was: "were" } as Record<string, string>)[v.toLowerCase()]}`)
+    .replace(new RegExp(`\\b${who}\\b`, "gi"), "you");
+  s = s.replace(/^(\s*(?:[-•]\s+)?(?:\*\*)?)([a-z])/, (_m, pre: string, c: string) => pre + c.toUpperCase());
+  return s;
+}
+
+const FILLER = new Set(["then", "click", "tap", "press", "finally", "and", "the", "now", "just", "your", "you", "that", "this", "after", "once", "done"]);
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length >= 3 && !FILLER.has(w));
+/** A closing line that only repeats what was already said (e.g. the last step again). */
+const repeats = (line: string, before: string) => {
+  const w = norm(line), seen = new Set(norm(before));
+  return w.length > 0 && w.filter((x) => seen.has(x)).length / w.length >= 0.8;
+};
+
+export function createGuard(emit: (s: string) => void, maxWords: number, selfName?: string) {
+  let buf = "", table: string[] = [], count = 0, out = "", stopped = false, first = true, blank = false, started = false;
+  // The latest text line is held back one step, so a closing repeat can be dropped.
+  let held: string | null = null;
+  const send = (piece: string) => { out += piece; emit(piece); };
+  const release = () => { if (held !== null) { send(held); held = null; } };
+  const put = (line: string, countIt = true, hold = false) => {
     if (stopped) return;
     if (countIt && !first && count + words(line) > maxWords) { stopped = true; return; }
     if (countIt) count += words(line);
-    const piece = (out ? "\n" : "") + line;
-    out += piece; emit(piece); first = false; blank = false;
+    const piece = (started ? "\n" : "") + line;
+    started = true; first = false; blank = false;
+    release();
+    if (hold) held = piece; else send(piece);
   };
   const flushTable = () => {
     if (!table.length) return;
@@ -90,11 +120,11 @@ export function createGuard(emit: (s: string) => void, maxWords: number) {
     if (stopped) return;
     if (isTableLine(raw)) { table.push(raw); return; }
     flushTable();
-    const s = cleanLine(raw);
-    if (!s) { if (!first && !blank && out) { blank = true; } return; }
-    if (blank && out) { out += "\n"; emit("\n"); blank = false; }
-    if (first && !s.includes("**")) { const m = s.match(/^(\s*[-•]\s+)?(.*)$/)!; put(`**${m[2].trim()}**`); return; }
-    put(s);
+    const s = cleanLine(selfName ? toYou(raw.replace(INVISIBLE, ""), selfName) : raw);
+    if (!s) { if (!first && !blank && started) { blank = true; } return; }
+    if (blank && started) { release(); send("\n"); blank = false; }
+    if (first && !s.includes("**")) { const m = s.match(/^(\s*[-•]\s+)?(.*)$/)!; put(`**${m[2].trim()}**`, true, true); return; }
+    put(s, true, true);
   };
   return {
     push(text: string) {
@@ -106,7 +136,9 @@ export function createGuard(emit: (s: string) => void, maxWords: number) {
       if (buf) line(buf);
       buf = "";
       flushTable();
-      if (!out) put("**I couldn't find that.** Ask about attendance, reports, visits or leave.");
+      if (held !== null && out && !/\d/.test(held) && repeats(held, out)) held = null;
+      release();
+      if (!started) put("**I couldn't find that.** Ask about attendance, reports, visits or leave.");
       return out;
     },
   };
