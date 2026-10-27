@@ -52,7 +52,7 @@ export function navFor(user: Employee, permissions: Permissions | null): NavItem
 
 /**
  * Phone bottom bar: up to four direct items plus "More" (a sheet with the rest,
- * Install app and Log out). Everyone gets Dashboard, Reports, Attendance and
+ * Profile, Settings, Install app and Log out live in the avatar menu). Everyone gets Dashboard, Reports, Attendance and
  * Leave when they have them; HR and Admin find Employees at the top of More.
  */
 export function bottomNavFor(user: Employee, permissions: Permissions | null): { bar: NavItem[]; more: NavItem[] } {
@@ -61,7 +61,7 @@ export function bottomNavFor(user: Employee, permissions: Permissions | null): {
   const bar = present([i.dashboard, live(i.reports), live(i.attendance), live(i.leave)]);
   if (bar.length < 3) bar.push(i.profile);
   const inBar = new Set(bar.map((b) => b.href));
-  const more = present([i.employees, i.reports, i.leave, i.attendance, i.builderData, i.analytics, i.permissions, i.profile, i.settings])
+  const more = present([i.employees, i.reports, i.leave, i.attendance, i.builderData, i.analytics, i.permissions])
     .filter((m) => !inBar.has(m.href));
   return { bar, more };
 }

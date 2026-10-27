@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { ExternalLink, LayoutGrid, Download, LogOut, ChevronRight } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ExternalLink, LayoutGrid, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavItem, bottomNavFor, isActivePath } from "@/lib/nav";
 import { useSession } from "@/context/session-context";
-import { usePwa } from "@/context/pwa-context";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
 import { UpdateDot } from "@/components/layout/sidebar";
 import { useAttUpdates } from "@/lib/att-updates";
@@ -87,9 +86,7 @@ function BarButton({ item, active, onClick, dot }: { item: NavItem; active: bool
 /** Phone navigation (below 768px), fixed to the bottom like a native app. */
 export function BottomNav() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, permissions, logout } = useSession();
-  const { canInstall, install } = usePwa();
+  const { user, permissions } = useSession();
   const [moreOpen, setMoreOpen] = useState(false);
   const keyboard = useKeyboardOpen();
 
@@ -105,7 +102,7 @@ export function BottomNav() {
 
   if (!user) return null;
   const { bar, more } = bottomNavFor(user, permissions);
-  const moreActive = !!more?.some((i) => isActivePath(i, pathname));
+  const moreActive = more.some((i) => isActivePath(i, pathname));
 
   return (
     <>
@@ -118,7 +115,7 @@ export function BottomNav() {
       >
         <div className="mx-auto flex h-16 max-w-lg items-stretch">
           {bar.map((item) => <BarButton key={item.href} item={item} active={isActivePath(item, pathname)} dot={item.href === "/attendance" && attUpdated} />)}
-          {more && (
+          {more.length > 0 && (
             <button
               onClick={() => setMoreOpen(true)}
               aria-haspopup="dialog"
@@ -132,7 +129,7 @@ export function BottomNav() {
         </div>
       </nav>
 
-      {more && (
+      {more.length > 0 && (
         <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" size="sm" bodyClassName="p-2">
           <ul className="space-y-0.5">
             {more.map((item) => {
@@ -155,21 +152,6 @@ export function BottomNav() {
                 </li>
               );
             })}
-            {canInstall && (
-              <li>
-                <button onClick={() => { setMoreOpen(false); install(); }} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] text-ink hover:bg-surface">
-                  <Download className="h-5 w-5 shrink-0" strokeWidth={1.75} /> <span className="flex-1">Install app</span>
-                </button>
-              </li>
-            )}
-            <li className="mt-1 border-t border-surface-border pt-1">
-              <button
-                onClick={async () => { setMoreOpen(false); await logout(); router.replace("/login"); }}
-                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] text-status-danger hover:bg-status-dangerBg"
-              >
-                <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} /> <span className="flex-1">Log out</span>
-              </button>
-            </li>
           </ul>
         </Modal>
       )}
