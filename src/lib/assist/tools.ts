@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Area, OWN_ONLY, Perms, areasOf, noAccess } from "@/lib/assist/access";
+import { Area, NO_OWN_REPORTS, OWN_ONLY, Perms, areasOf, filesReports, noAccess } from "@/lib/assist/access";
 import { Period, dayLabel, monthLabel, prevMonth, thisMonth, todayPeriod } from "@/lib/assist/period";
 
 /**
@@ -18,7 +18,7 @@ const AREA: Record<string, Area> = {
   my_visits: "reports", reports: "reports", today_report_status: "reports", team_summary: "reports", not_filed_today: "reports",
   attendance: "attendance", attendance_checks: "attendance", my_leave: "leave", pending_leave: "leave",
 };
-interface Ctx { token: string; today: string; period: Period | null; me: { id: string; name: string } }
+interface Ctx { token: string; today: string; period: Period | null; me: { id: string; name: string }; files: boolean }
 interface Tool {
   name: string;
   description: string;
@@ -110,6 +110,7 @@ export const TOOLS: ToolDef[] = [
     name: "reports", description: "Daily reports and totals for the period.", parameters: none,
     run: async (ctx, a, role) => {
       if (a.person && !isManager(role)) { if (!isMe(ctx, a.person)) return NOT_YOURS; a.person = undefined; }
+      if (!a.person && !ctx.files) return { final: NO_OWN_REPORTS };
       const p = ctx.period ?? thisMonth(ctx.today);
       let who: string | null = null, name = "";
       if (a.person) { const f = await findPerson(ctx, a.person); if ("error" in f) return f; who = f.id; name = f.name; }
@@ -226,7 +227,10 @@ export const TOOLS: ToolDef[] = [
 const person = { type: "string", description: "name or ID; omit for me" };
 
 /** The tools this role may use. HR/Admin's reports + attendance take a person (name or ID). */
-export const toolsFor = (role: Role, perms: Perms): Tool[] => TOOLS.filter((t) => (!t.managers || isManager(role)) && areasOf(perms)[AREA[t.name]]).map((t) => ({
+// Only about the person's own filed reports (managing the team's doesn't count).
+const OWN_REPORT_TOOLS = new Set(["my_visits", "today_report_status"]);
+export const toolsFor = (role: Role, perms: Perms): Tool[] => TOOLS.filter((t) =>
+  (!t.managers || isManager(role)) && areasOf(role, perms)[AREA[t.name]] && (!OWN_REPORT_TOOLS.has(t.name) || filesReports(perms))).map((t) => ({
   name: t.name, description: t.description,
   parameters: isManager(role) && (t.name === "reports" || t.name === "attendance") ? { type: "object", properties: { person } } : t.parameters,
 }));
@@ -236,7 +240,8 @@ export async function runTool(role: Role, perms: Perms, ctx: Ctx, name: string, 
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool || (tool.managers && !isManager(role))) return NOT_YOURS;
   // Checked again here: a tool the person's permissions don't allow never runs.
-  if (!areasOf(perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], perms) };
+  if (!areasOf(role, perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], role, perms) };
+  if (OWN_REPORT_TOOLS.has(tool.name) && !filesReports(perms)) return { final: NO_OWN_REPORTS };
   let args: Record<string, string | undefined> = {};
   try { args = rawArgs ? JSON.parse(rawArgs) : {}; } catch { return { error: "Bad tool arguments." }; }
   if (args.employee_id && !args.person) args.person = args.employee_id;

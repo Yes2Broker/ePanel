@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ASSIST_ENABLED } from "@/lib/features";
 import { Role, runTool, toolsFor } from "@/lib/assist/tools";
-import { Area, OWN_ONLY, Perms, areasOf, askLine, noAccess } from "@/lib/assist/access";
+import { Area, NO_OWN_REPORTS, OWN_ONLY, Perms, areasOf, askLine, filesReports, noAccess } from "@/lib/assist/access";
 import { sanitize, scrubText } from "@/lib/assist/sanitize";
 import { systemPrompt } from "@/lib/assist/prompt";
 import { resolvePeriod } from "@/lib/assist/period";
@@ -28,6 +28,7 @@ const GREETING = /^(hi+|hello+|hey+|hiya|namaste|namaskar|kem cho|good (morning|
 const CASUAL = /^(yo+|sup|wassup|ok+|okay|k+|hmm+|lol|shit|damn|wtf|fuck( (you|off|this))?|bc|mc|thanks?|thank you|thx|ty|cool|nice|fine|acha+|accha+|theek hai|ok thanks?)$/;
 // Employees: questions about other people are refused here (plus a name check in the database).
 const OTHERS = /\b(who|whom|whose|kaun|kisne|kis ne|kiska|kiski|kiske|team|everyone|everybody|others|other people|colleagues?|sabka|sabki|sabke|sab log|sabhi|all employees|staff)\b/i;
+const OWN_WORDS = /\b(my|mine|i|i've|maine|mera|meri|mere|apne|apni|apna)\b/i;
 // What a question is about, to answer "you don't have that" without the AI.
 const TOPICS: [Area, RegExp][] = [
   ["reports", /\b(reports?|visits?|site|leads?|calls?|tokens?|walk-?ins?|filed|file|bhare|bhara|bhari|summary)\b/i],
@@ -88,18 +89,22 @@ export async function POST(req: NextRequest) {
   const self = await supabase.rpc("get_me", { p_token: token });
   if (self.error) return self.error.code === "28000" ? fixed([{ t: "text", v: EXPIRED }, { t: "done" }]) : NextResponse.json({ error: BUSY }, { status: 503 });
   const perms = ((self.data as { permissions?: Perms }).permissions ?? {}) as Perms;
-  if (GREETING.test(plain) || CASUAL.test(plain)) return say(GREETING.test(plain) ? `Hi ${me.name.split(" ")[0]}. ${askLine(perms)}` : askLine(perms));
+  if (GREETING.test(plain) || CASUAL.test(plain)) return say(GREETING.test(plain) ? `Hi ${me.name.split(" ")[0]}. ${askLine(me.role, perms)}` : askLine(me.role, perms));
   if (me.role === "Employee") {
     const named = OTHERS.test(question) || ((await supabase.rpc("assist_mentions_other", { p_token: token, p_text: question })).data === true);
     if (named) return say(OWN_ONLY);
   }
-  const areas = areasOf(perms), topics = TOPICS.filter(([, re]) => re.test(question)).map(([a]) => a);
-  if (topics.length && !topics.some((a) => areas[a])) return say(noAccess(topics[0], perms));
+  // "You don't have …" only for people whose menu really lacks that page (HR/Admin always have them).
+  const areas = areasOf(me.role, perms), topics = TOPICS.filter(([, re]) => re.test(question)).map(([a]) => a);
+  if (topics.length && !topics.some((a) => areas[a])) return say(noAccess(topics[0], me.role, perms));
+  // HR/Admin who don't file reports themselves, asking about their own.
+  if (me.role !== "Employee" && !filesReports(perms) && topics.includes("reports") && OWN_WORDS.test(question) && !OTHERS.test(question)
+      && (await supabase.rpc("assist_mentions_other", { p_token: token, p_text: question })).data !== true) return say(NO_OWN_REPORTS);
   const language = replyLanguage(question);
   const tools = toolsFor(me.role, perms);
   // The period is worked out here, from the whole chat, never by the model.
   const period = resolvePeriod(chat.filter((m) => m.role === "user").map((m) => m.content), me.today);
-  const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name } };
+  const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name }, files: filesReports(perms) };
   const messages: ChatMsg[] = [
     { role: "system", content: systemPrompt({ name: me.name, role: me.role, today: me.today }) },
     ...(period || language ? [{ role: "system" as const, content: [period && `Period asked: ${period.label}.`, language].filter(Boolean).join(" ") }] : []),

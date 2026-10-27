@@ -26,6 +26,22 @@ export function isFeatureEnabled(key: FeatureKey) {
   return FEATURES[key].enabled;
 }
 
+/**
+ * Whether this person has the Attendance, Daily Reports and Leave pages: HR and
+ * Admin always (they manage them), employees by their Permissions switches;
+ * a switched-off feature is off for everyone. The sidebar (nav.ts) and Y2B
+ * Assist both use this, so they can't drift apart.
+ */
+export function pageAccess(role: string, permissions: Partial<Record<string, boolean>> | null) {
+  const can = (key: string) => !!permissions?.[key];
+  const isManager = role === "Admin" || role === "HR";
+  return {
+    attendance: isManager || can("attendance"),
+    reports: isManager || can("normalReport") || can("soleSelling"),
+    leave: isManager || can("leave"),
+  };
+}
+
 /** URL prefixes owned by each feature, including any /admin variants. */
 export const FEATURE_ROUTES: Record<FeatureKey, string[]> = {
   attendance: ["/attendance", "/admin/attendance"],

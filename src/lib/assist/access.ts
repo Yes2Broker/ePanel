@@ -1,3 +1,5 @@
+import { isFeatureEnabled, pageAccess } from "@/lib/features";
+
 /**
  * What each person may use in Y2B Assist, from their Permissions page switches:
  * Daily Reports (normal or sole selling, incl. site visits), Attendance, Leave.
@@ -6,28 +8,37 @@
 /** The person's Permissions page switches (from get_me). */
 export type Perms = Partial<Record<"attendance" | "normalReport" | "soleSelling" | "leave" | "builderData", boolean>>;
 export type Area = "reports" | "attendance" | "leave";
-/** Which areas this person has: Daily Reports (+ visits), Attendance, Leave. */
-export const areasOf = (p: Perms) => ({ reports: !!(p.normalReport || p.soleSelling), attendance: !!p.attendance, leave: !!p.leave });
+/**
+ * Which pages this person has: the panel's own menu rule (HR/Admin always,
+ * employees by their switches) and the feature switches.
+ */
+export const areasOf = (role: string, p: Perms) => {
+  const pages = pageAccess(role, p);
+  return { reports: pages.reports && isFeatureEnabled("reports"), attendance: pages.attendance && isFeatureEnabled("attendance"), leave: pages.leave && isFeatureEnabled("leave") };
+};
+/** Files daily reports themselves (Normal / Sole Selling switches) — separate from managing the team's. */
+export const filesReports = (p: Perms) => !!(p.normalReport || p.soleSelling);
+export const NO_OWN_REPORTS = "You don't file daily reports.";
 const AREA_WORDS: Record<Area, string> = { reports: "your reports and visits", attendance: "your attendance", leave: "leave" };
 /** What they can ask instead, e.g. "You can ask about your attendance or leave." */
-export function canAsk(p: Perms) {
-  const a = areasOf(p), list = (Object.keys(a) as Area[]).filter((k) => a[k]).map((k) => AREA_WORDS[k]);
+export function canAsk(role: string, p: Perms) {
+  const a = areasOf(role, p), list = (Object.keys(a) as Area[]).filter((k) => a[k]).map((k) => AREA_WORDS[k]);
   if (!list.length) return "";
   return `You can ask about ${list.length > 1 ? `${list.slice(0, -1).join(", ")} or ${list[list.length - 1]}` : list[0]}.`;
 }
 /** The one line for a missing area. */
-export function noAccess(area: Area, p: Perms) {
+export function noAccess(area: Area, role: string, p: Perms) {
   const line = area === "reports" ? "You don't have Daily Reports or site visits in your panel. Ask HR if you need them."
     : area === "leave" ? "Leave isn't turned on for you. Ask HR or Admin." : "Attendance isn't turned on for you.";
-  const alt = canAsk(p);
+  const alt = canAsk(role, p);
   return alt ? `${line}\n${alt}` : line;
 }
 export const OWN_ONLY = "You can only see your own data in Y2B Assist.";
 
 const ASK_WORDS: Record<Area, string> = { reports: "reports, visits", attendance: "attendance", leave: "leave" };
 /** "What do you need: attendance or leave?" — only what they have. */
-export function askLine(p: Perms) {
-  const a = areasOf(p), list = (Object.keys(a) as Area[]).filter((k) => a[k]).map((k) => ASK_WORDS[k]);
+export function askLine(role: string, p: Perms) {
+  const a = areasOf(role, p), list = (Object.keys(a) as Area[]).filter((k) => a[k]).map((k) => ASK_WORDS[k]);
   if (!list.length) return "Nothing is turned on for you in Y2B Assist yet. Ask HR or Admin.";
   return `What do you need: ${list.length > 1 ? `${list.slice(0, -1).join(", ")} or ${list[list.length - 1]}` : list[0]}?`;
 }

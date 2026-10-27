@@ -44,7 +44,7 @@ export function Assist() {
 function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, permissions } = useSession();
   const manager = user?.role === "HR" || user?.role === "Admin";
-  const can = areasOf(permissions ?? {});
+  const can = areasOf(user?.role ?? "", permissions ?? {});
   const storeKey = `y2b-assist-${user?.id}`;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");

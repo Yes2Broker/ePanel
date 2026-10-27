@@ -37,7 +37,12 @@ const linkLabel = (path: string) => {
   const page = path.slice(1).split(/[/?]/)[0];
   return page ? `Open ${page}` : "Open the panel";
 };
-const WORDS: [RegExp, string][] = [[/\btokens? earned\b/gi, "tokens"], [/\btasks? completed\b/gi, "visits done"], [/\bsite visits? completed\b/gi, "visits done"], [/\bpositive leads\b/gi, "positive calls"]];
+const WORDS: [RegExp, string][] = [
+  // "(as per summary)", ", according to the data," — filler about where facts came from.
+  [/\s*\((?:as per|according to|based on|per|from) (?:the )?[^)]{0,30}\)/gi, ""],
+  [/,?\s*\b(?:as per|according to|based on) (?:the |your )?(?:summary|data|records?|reports?|results?|system|panel)\b,?/gi, ""],
+  // Time ranges with a plain hyphen: 10:21-11:09.
+  [/(\d{1,2}:\d{2})\s*[–—]\s*(\d{1,2}:\d{2})/g, "$1-$2"],[/\btokens? earned\b/gi, "tokens"], [/\btasks? completed\b/gi, "visits done"], [/\bsite visits? completed\b/gi, "visits done"], [/\bpositive leads\b/gi, "positive calls"]];
 
 function stripPaths(line: string) {
   const links: string[] = [];
@@ -52,6 +57,9 @@ export function cleanLine(line: string) {
   let s = stripPaths(line.replace(EMOJI, ""));
   for (const re of BANNED) s = s.replace(re, "");
   for (const [re, to] of WORDS) s = s.replace(re, to);
+  // A removed opening ("According to the data, …") leaves the rest as the sentence.
+  if (!/^\s/.test(line)) s = s.trimStart();
+  if (/^[A-Z*]/.test(line.trimStart())) s = s.replace(/^([*\s-]*)([a-z])/, (_m, pre: string, c: string) => pre + c.toUpperCase());
   s = s.replace(/!+/g, ".").replace(/\.\s*\.(?!\.)/g, ".").replace(/\s+([.,])/g, "$1").replace(/\s{2,}/g, " ").trimEnd();
   if (/^[\s.,:;–—-]*$/.test(s)) return "";
   return s;

@@ -3,7 +3,7 @@ import {
   Users, ShieldCheck, Building2, BarChart3, CalendarOff, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
-import { FEATURES, FeatureKey, featureForPath, isFeatureEnabled } from "@/lib/features";
+import { FEATURES, FeatureKey, featureForPath, isFeatureEnabled, pageAccess } from "@/lib/features";
 
 export interface NavItem {
   href: string;
@@ -21,6 +21,7 @@ const ANALYTICS_URL = "https://analytics.yes2broker.in/";
 function itemsFor(user: Employee, permissions: Permissions | null) {
   const can = (key: keyof Permissions) => !!permissions?.[key];
   const isManager = user.role === "Admin" || user.role === "HR";
+  const pages = pageAccess(user.role, permissions);
 
   // A switched-off feature is shown to everyone, marked "Coming soon". Once it's
   // switched on, the usual role/permission rule decides whether it appears.
@@ -30,9 +31,9 @@ function itemsFor(user: Employee, permissions: Permissions | null) {
   return {
     dashboard: { href: isManager ? "/admin" : "/dashboard", label: "Dashboard", icon: LayoutDashboard } as NavItem,
     employees: isManager && ({ href: "/admin/employees", label: "Employees", icon: Users } as NavItem),
-    attendance: feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, isManager || can("attendance")),
-    reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, isManager || can("normalReport") || can("soleSelling")),
-    leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, isManager || can("leave")),
+    attendance: feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, pages.attendance),
+    reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, pages.reports),
+    leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, pages.leave),
     builderData: can("builderData") &&({ href: BUILDER_DATA_URL, label: "Builder Data", icon: Building2, external: true } as NavItem),
     analytics: user.role === "Admin" && can("analytics") && ({ href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true } as NavItem),
     permissions: isManager && ({ href: "/admin/permissions", label: "Permissions", icon: ShieldCheck } as NavItem),
