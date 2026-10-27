@@ -211,7 +211,7 @@ function compact(result: unknown, max: number) {
     return out;
   };
   while (json.length > max) {
-    const t = tables(result).filter((x) => x.rows.length > 1).sort((a, b) => JSON.stringify(b.rows).length - JSON.stringify(a.rows).length)[0];
+    const t = tables(result).filter((x) => x.rows.length > 1 && !(x as { keep?: number }).keep).sort((a, b) => JSON.stringify(b.rows).length - JSON.stringify(a.rows).length)[0];
     if (!t) return json.slice(0, max);
     const keep = Math.max(1, Math.floor(t.rows.length / 2));
     t.more = (t.more ?? 0) + t.rows.length - keep;

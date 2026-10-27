@@ -144,9 +144,9 @@ export const TOOLS: ToolDef[] = [
           if (!prev.summary?.lastDay) continue;
           const s = attSummary(prev);
           const lates = `${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted ?? 0} counted)`;
-          return { period: p.label, say: ctx.hinglish
-            ? `**${p.label} abhi upload nahi hua.** Last uploaded: ${monthLabel(ym)} – ${s.payableDays} payable days, ${lates}.`
-            : `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${lates}.` };
+          // Built here, not by the model: the whole answer, in the question's language.
+          const last = `Last uploaded: ${monthLabel(ym)} – ${s.payableDays} payable days, ${lates}.`;
+          return { final: ctx.hinglish ? `**${p.label} abhi upload nahi hua.** ${last}` : `**${p.label} isn't uploaded yet.** ${last}` };
         }
         return { period: p.label, say: `**No attendance uploaded for ${p.label}${name ? ` for ${name}` : ""} yet.**` };
       }
@@ -155,7 +155,7 @@ export const TOOLS: ToolDef[] = [
       const day = ctx.period?.kind === "day" ? att.days.find((d) => d.date === ctx.period!.from) : null;
       return { period: p.label, ...(name ? { name } : {}), summary: attSummary(att),
         ...(day ? { day: { date: ctx.period!.label, status: day.status, in: day.in, out: day.out, late: !!day.late, short: !!day.shortDay } } : {}),
-        ...(notable.length ? { notableDays: table(["date", "status", "time"], notable, 10) } : {}) };
+        ...(notable.length ? { notableDays: { ...table(["date", "status", "time"], notable, 31), keep: 1 } } : {}) };
     },
   },
   {

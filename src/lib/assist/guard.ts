@@ -16,6 +16,7 @@ const BANNED: RegExp[] = [
   /\bsorry\b[^.!?\n]*[.!?]?\s*/gi,
   /\b(my )?apolog(y|ies|ise|ize|ised|ized)\b[^.!?\n]*[.!?]?\s*/gi,
   /\bas an ai\b[^.!?\n]*[.!?]?\s*/gi,
+  /[^.!?\n]*\b(details?|days?) (are )?not (listed|shown|available)\b[^.!?\n]*[.!?]?\s*/gi,
   /\b(feel free|happy to help|glad to help)\b[^.!?\n]*[.!?]?\s*/gi,
   /[^.!?\n]*\b(tool|tools|function call)\b[^.!?\n]*[.!?]?\s*/gi,
 ];
