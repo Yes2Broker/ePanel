@@ -16,6 +16,7 @@ const MAX_TOOL_CALLS = 10;
 // longer than MAX_WAIT_S falls back to the next.
 const FALLBACK_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
 const MAX_WAIT_S = 10;
+const MAX_WAIT_TOTAL_MS = 12_000; // never wait longer than this on 429s for one question
 // Groq's free plan counts tokens: keep each request small.
 const HISTORY = 6;          // chat messages sent per request
 const TOOL_RESULT_CHARS = 1400;
@@ -25,6 +26,18 @@ const INPUT_BUDGET = 1150;  // estimated input tokens per request (≈ 3.5 chara
 const GREETING = /^(hi+|hello+|hey+|hiya|namaste|namaskar|kem cho|good (morning|afternoon|evening))( there| y2b| assist)?$/;
 const CASUAL = /^(yo+|sup|wassup|ok+|okay|k+|hmm+|lol|shit|damn|wtf|fuck( (you|off|this))?|bc|mc|thanks?|thank you|thx|ty|cool|nice|fine|acha+|accha+|theek hai|ok thanks?)$/;
 const ASK = "What do you need: attendance, reports, visits or leave?";
+// Pay questions are refused here, for everyone, without asking the AI.
+const SALARY = /\b(salary|salaries|salery|sallary|salry|pay|paid how much|payslips?|pay ?slips?|payroll|ctc|wages?|stipend|in-?hand|take-?home|tankh?wa?h?|tankha|pagar|vetan|kitna milta|kitni milti|kitna milega|kitna mila)\b|वेतन|तनख्वाह|सैलरी|पगार|પગાર|સેલેરી/i;
+const NO_SALARY = "Salaries aren't available in Y2B Assist. Admin can see them in Attendance → Salary sheet.";
+const EXPIRED = "Your session expired. Please sign in again.";
+// Language of the question, so the model is told explicitly how to reply.
+const HINGLISH = /\b(ka|ke|ki|ko|kitne|kitna|kitni|batao|bata|bataiye|dikhao|hai|hain|tha|thi|aaya|aayi|aya|maine|mera|meri|mere|kya|kab|kaun|kyun|nahi|nahin|mahine|mahina|aaj|kal|din|karo|kiya|kiye|bhare|bhara|mujhe|hua|hui|wala|wale)\b/i;
+const GUJARATI = /\b(che|chhe|shu|kem|maru|mari|mara|ketla|ketli|ketlu|aaje|hatu|hati|nathi|batavo|tamaru|mane)\b/i;
+const replyLanguage = (q: string) =>
+  /[\u0A80-\u0AFF]/.test(q) ? "Reply in Gujarati." : /[\u0900-\u097F]/.test(q) ? "Reply in Hindi."
+  : GUJARATI.test(q) ? "Reply in Gujarati (Roman script)." : HINGLISH.test(q) ? "Reply in Hinglish (Roman script), e.g. \"**Richa: September 2026 me 28 payable days.**\"" : null;
+const fixed = (lines: Record<string, unknown>[]) =>
+  new Response(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
 const BUSY = "Y2B Assist isn't available right now. Please try again in a minute.";
 
 interface ChatMsg { role: "system" | "user" | "assistant" | "tool"; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string }
@@ -55,24 +68,25 @@ export async function POST(req: NextRequest) {
   if (use.error) {
     const code = use.error.code;
     if (code === "P0429") return NextResponse.json({ error: "You've used today's 30 questions. Y2B Assist will be back tomorrow." }, { status: 429 });
-    if (code === "28000") return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
+    if (code === "28000") return fixed([{ t: "text", v: EXPIRED }, { t: "done" }]);
     return NextResponse.json({ error: "Y2B Assist isn't turned on for you. Ask Admin." }, { status: 403 });
   }
   const me = use.data as { name: string; role: Role; today: string; remaining: number };
   const question = history[history.length - 1].content;
   const plain = question.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
+  if (SALARY.test(question)) return fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v: NO_SALARY }, { t: "done" }]);
   if (GREETING.test(plain) || CASUAL.test(plain)) {
     const reply = GREETING.test(plain) ? `Hi ${me.name.split(" ")[0]}. ${ASK}` : ASK;
-    const lines = [{ t: "meta", remaining: me.remaining }, { t: "text", v: reply }, { t: "done" }];
-    return new Response(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" } });
+    return fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v: reply }, { t: "done" }]);
   }
+  const language = replyLanguage(question);
   const tools = toolsFor(me.role);
   // The period is worked out here, from the whole chat, never by the model.
   const period = resolvePeriod(chat.filter((m) => m.role === "user").map((m) => m.content), me.today);
   const ctx = { token, today: me.today, period };
   const messages: ChatMsg[] = [
     { role: "system", content: systemPrompt({ name: me.name, role: me.role, today: me.today }) },
-    ...(period ? [{ role: "system" as const, content: `Period asked: ${period.label}.` }] : []),
+    ...(period || language ? [{ role: "system" as const, content: [period && `Period asked: ${period.label}.`, language].filter(Boolean).join(" ") }] : []),
     ...history,
   ];
   const fullList = /\b(full|all|complete|entire|whole|poori|pura|sab|saare|sabhi|list)\b/i.test(question);
@@ -85,7 +99,7 @@ export async function POST(req: NextRequest) {
       const send = (e: Record<string, unknown>) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       send({ t: "meta", remaining: me.remaining });
       let toolCalls = 0;
-      const used = { requests: 0, input: 0, output: 0 };
+      const used = { requests: 0, input: 0, output: 0, waitedMs: 0 };
       const guard = createGuard((v) => send({ t: "text", v }), fullList ? 250 : 85);
       const toolsJson = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
       try {
@@ -94,7 +108,7 @@ export async function POST(req: NextRequest) {
           const { body: res, model } = await groq(base, key, models, {
             messages, stream: true, temperature: 0.2, stream_options: { include_usage: true },
             tools: toolsJson, tool_choice: toolCalls >= MAX_TOOL_CALLS ? "none" : "auto",
-          }, () => send({ t: "status", v: "__retry" }), estimate > 1000 ? "low" : "medium");
+          }, () => send({ t: "status", v: "__retry" }), estimate > 1000 ? "low" : "medium", used);
           const { text, calls, usage } = await readStream(res, (v) => guard.push(v));
           used.requests++;
           if (usage) {
@@ -108,7 +122,7 @@ export async function POST(req: NextRequest) {
             const result = toolCalls > MAX_TOOL_CALLS
               ? { error: "Too many lookups for one question. Answer with what you have." }
               : (send({ t: "status", v: c.function.name }), await runTool(me.role, ctx, c.function.name, c.function.arguments));
-            messages.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(sanitize(result)).slice(0, TOOL_RESULT_CHARS) });
+            messages.push({ role: "tool", tool_call_id: c.id, content: compact(sanitize(result), TOOL_RESULT_CHARS) });
           }
         }
         guard.end();
@@ -148,6 +162,31 @@ const retryAfter = (res: Response) => {
  * tool results and earlier answers, then drops the oldest chat messages, then
  * shortens the latest tool result. Returns the estimate.
  */
+/**
+ * A tool result as JSON within `max` characters, kept valid: the longest
+ * tables lose rows first (with a "more" count), and only then is the text cut.
+ */
+function compact(result: unknown, max: number) {
+  let json = JSON.stringify(result);
+  const tables = (v: unknown, out: { rows: unknown[]; more?: number }[] = []) => {
+    if (v && typeof v === "object") {
+      const o = v as { rows?: unknown[]; more?: number };
+      if (Array.isArray(o.rows)) out.push(o as { rows: unknown[]; more?: number });
+      for (const x of Object.values(v)) tables(x, out);
+    }
+    return out;
+  };
+  while (json.length > max) {
+    const t = tables(result).filter((x) => x.rows.length > 1).sort((a, b) => JSON.stringify(b.rows).length - JSON.stringify(a.rows).length)[0];
+    if (!t) return json.slice(0, max);
+    const keep = Math.max(1, Math.floor(t.rows.length / 2));
+    t.more = (t.more ?? 0) + t.rows.length - keep;
+    t.rows = t.rows.slice(0, keep);
+    json = JSON.stringify(result);
+  }
+  return json;
+}
+
 function fitBudget(messages: ChatMsg[], toolsJson: string) {
   const est = () => Math.ceil((JSON.stringify(messages).length + toolsJson.length) / 3.5);
   const cut = (m: ChatMsg, n: number) => { if (m.content && m.content.length > n) m.content = m.content.slice(0, n) + "…"; };
@@ -161,7 +200,12 @@ function fitBudget(messages: ChatMsg[], toolsJson: string) {
     messages.splice(i, 1);
   }
   const last = toolIdx.length ? messages.filter((m) => m.role === "tool").pop() : undefined;
-  while (last?.content && est() > INPUT_BUDGET && last.content.length > 400) cut(last, Math.floor(last.content.length * 0.8));
+  while (last?.content && est() > INPUT_BUDGET && last.content.length > 400) {
+    let parsed: unknown = null;
+    try { parsed = JSON.parse(last.content); } catch { /* already cut */ }
+    const target = Math.floor(last.content.length * 0.8);
+    if (parsed) last.content = compact(parsed, target); else cut(last, target);
+  }
   return est();
 }
 
@@ -177,7 +221,7 @@ const modelOptions = (model: string, effort: "low" | "medium") =>
  * calls in the same answer start with it. Rate limited (429): wait and retry
  * once if Groq says 10 s or less, otherwise move on to the next model.
  */
-async function groq(base: string, key: string, models: string[], payload: Record<string, unknown>, onRetry: () => void, effort: "low" | "medium") {
+async function groq(base: string, key: string, models: string[], payload: Record<string, unknown>, onRetry: () => void, effort: "low" | "medium", used: { waitedMs: number }) {
   let waited = false;
   while (models.length) {
     const model = models[0];
@@ -190,10 +234,12 @@ async function groq(base: string, key: string, models: string[], payload: Record
     const e = logGroqError(res.status, model, await res.text().catch(() => ""));
     if (res.status === 429) {
       const wait = retryAfter(res);
-      if (!waited && wait != null && wait <= MAX_WAIT_S) {
+      const ms = wait == null ? 0 : Math.ceil(wait * 1000);
+      if (!waited && wait != null && wait <= MAX_WAIT_S && used.waitedMs + ms <= MAX_WAIT_TOTAL_MS) {
         waited = true;
+        used.waitedMs += ms;
         onRetry();
-        await new Promise((r) => setTimeout(r, Math.ceil(wait * 1000)));
+        await new Promise((r) => setTimeout(r, ms));
         continue;
       }
       if (models.length > 1) { models.shift(); waited = false; continue; }

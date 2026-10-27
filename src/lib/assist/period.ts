@@ -32,6 +32,12 @@ export function dayLabel(date: string, today: string) {
   return `${wd}, ${base}`;
 }
 
+/** "19–25 Oct", "28 Sep – 4 Oct" */
+const span = (from: string, to: string, today: string) => {
+  const a = dayLabel(from, today).replace(/^[^,]+, /, ""), b = dayLabel(to, today).replace(/^[^,]+, /, "");
+  const [ad, ...am] = a.split(" ");
+  return am.join(" ") === b.split(" ").slice(1).join(" ") ? `${ad}–${b}` : `${a} – ${b}`;
+};
 const monthPeriod = (y: number, m: number): Period => ({ kind: "month", from: iso(y, m, 1), to: iso(y, m, lastDay(y, m)), month: iso(y, m, 1).slice(0, 7), label: monthLabel(iso(y, m, 1).slice(0, 7)) });
 const dayPeriod = (date: string, today: string): Period => ({ kind: "day", from: date, to: date, month: date.slice(0, 7), label: dayLabel(date, today) });
 
@@ -68,9 +74,9 @@ export function resolveOne(text: string, today: string): Period | null {
   const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
   if (/\b(last|previous|pichle|pichhle|pichla)\s+(week|hafte|hafta)\b/.test(s)) {
     const from = addDays(monday, -7), to = addDays(monday, -1);
-    return { kind: "range", from, to, month: from.slice(0, 7), label: `last week (${dayLabel(from, today).replace(/^\w+, /, "")} – ${dayLabel(to, today).replace(/^\w+, /, "")})` };
+    return { kind: "range", from, to, month: from.slice(0, 7), label: `last week (${span(from, to, today)})` };
   }
-  if (/\b(this|current|is)\s+(week|hafte|hafta)\b/.test(s)) return { kind: "range", from: monday, to: today, month: monday.slice(0, 7), label: "this week" };
+  if (/\b(this|current|is)\s+(week|hafte|hafta)\b/.test(s)) return { kind: "range", from: monday, to: today, month: monday.slice(0, 7), label: `this week (${span(monday, today, today)})` };
   if (/\b(last|previous|pichle|pichhle|pichla)\s+(month|mahine|mahina)\b/.test(s)) return monthPeriod(t.m === 0 ? t.y - 1 : t.y, (t.m + 11) % 12);
   if (/\b(this|current|is)\s+(month|mahine|mahina|maheene)\b/.test(s)) return monthPeriod(t.y, t.m);
   // A month name on its own ("Sep", "september 2025"). "may" only when it clearly means the month.

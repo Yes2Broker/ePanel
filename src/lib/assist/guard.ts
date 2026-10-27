@@ -25,9 +25,33 @@ const isSeparator = (l: string) => /^\s*\|?\s*:?-{2,}/.test(l);
 const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 const words = (l: string) => l.replace(/[*|`#>_-]/g, " ").split(/\s+/).filter(Boolean).length;
 
+// Bare panel paths ("/attendance?month=2026-09", "via /reports") are never shown as text;
+// labelled markdown links stay.
+const LINK = /\[([^\]\n]+)\]\((\/[^)\s]*)\)/g;
+const BARE_PATH = /(?:\b(?:via|at|on|in|from|under|go to|open|see|visit|check)\s+)?(?<![\w)\]/])\/[a-z][\w-]*(?:\/[\w-]+)*(?:\?[\w=&%-]*)?(?:\s+(?:for|to see) (?:more |the )?(?:details|info|breakdown))?/gi;
+const OPEN_ONLY = /^\s*(?:[-•]\s*)?(?:\*\*)?next step:?(?:\*\*)?\s*(?:(?:open|go to|see|check|visit|view)\b[^.\n]*?)?\s*[.]?\s*$/i;
+const linkLabel = (path: string) => {
+  const m = path.match(/month=(\d{4})-(\d{2})/);
+  const names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  if (path.startsWith("/attendance")) return m ? `Open ${names[Number(m[2]) - 1]} ${m[1]} attendance` : "Open attendance";
+  const page = path.slice(1).split(/[/?]/)[0];
+  return page ? `Open ${page}` : "Open the panel";
+};
+const WORDS: [RegExp, string][] = [[/\btokens? earned\b/gi, "tokens"], [/\btasks? completed\b/gi, "visits done"], [/\bsite visits? completed\b/gi, "visits done"], [/\bpositive leads\b/gi, "positive calls"]];
+
+function stripPaths(line: string) {
+  const links: string[] = [];
+  let s = line.replace(LINK, (_m, label: string, path: string) => { links.push(`[${label.trim().startsWith("/") ? linkLabel(path) : label}](${path})`); return `\u0000${links.length - 1}\u0000`; });
+  s = s.replace(BARE_PATH, "").replace(/\(\s*\)/g, "").replace(/^(\s*)([.,;:]\s*)+/, "$1");
+  // "Next step: open the attendance page." with the link gone (or only a link) → just the link, or nothing.
+  if (/next step/i.test(s) && OPEN_ONLY.test(s.replace(/\u0000\d+\u0000/g, ""))) s = links.map((_l, i) => `\u0000${i}\u0000`).join(" ");
+  return s.replace(/\u0000(\d+)\u0000/g, (_m, i) => links[Number(i)]);
+}
+
 export function cleanLine(line: string) {
-  let s = line.replace(EMOJI, "");
+  let s = stripPaths(line.replace(EMOJI, ""));
   for (const re of BANNED) s = s.replace(re, "");
+  for (const [re, to] of WORDS) s = s.replace(re, to);
   s = s.replace(/!+/g, ".").replace(/\.\s*\.(?!\.)/g, ".").replace(/\s+([.,])/g, "$1").replace(/\s{2,}/g, " ").trimEnd();
   if (/^[\s.,:;–—-]*$/.test(s)) return "";
   return s;

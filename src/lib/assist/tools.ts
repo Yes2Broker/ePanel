@@ -68,8 +68,11 @@ async function reportRows(ctx: Ctx, p: Period, employeeId: string | null) {
 
 const attSummary = (a: Row & { summary: Row; days: Row[] }) => {
   const s = a.summary;
-  return { payableDays: n1(s.netPayable), daysInMonth: s.daysInMonth, present: n1(s.present), weeklyOff: n1(s.weekoff), absent: n1(s.absent), paidLeave: n1(s.paidLeave),
-    lates: s.lates, latesCounted: Number(s.lateDeduction ?? 0) * 2, lateDeduction: n1(s.lateDeduction), shortDays: s.shortDays, upTo: s.lastDay };
+  const out: Record<string, unknown> = { payableDays: n1(s.netPayable), daysInMonth: s.daysInMonth, present: n1(s.present), weeklyOff: n1(s.weekoff), absent: n1(s.absent), paidLeave: n1(s.paidLeave),
+    lates: s.lates, latesCounted: Number(s.lateDeduction ?? 0) * 2, lateDeduction: n1(s.lateDeduction), shortDays: s.shortDays, upTo: md(s.lastDay) };
+  // Zeros are left out (fewer tokens); payable days and lates always stay.
+  for (const k of ["absent", "paidLeave", "latesCounted", "lateDeduction", "shortDays"]) if (!Number(out[k])) delete out[k];
+  return out as { payableDays: number; lates: number; latesCounted?: number; [k: string]: unknown };
 };
 
 export const TOOLS: ToolDef[] = [
@@ -82,7 +85,7 @@ export const TOOLS: ToolDef[] = [
         const rows = await reportRows(ctx, p, null);
         const done = rows.reduce((s, r) => s + Number(r.done ?? 0), 0), sched = rows.reduce((s, r) => s + Number(r.scheduled ?? 0), 0);
         if (!done && !sched) return { period: p.label, say: `**No site visits recorded in ${p.label}.**` };
-        return { period: p.label, visitsDone: done, visitsScheduled: sched, byDay: table(["date", "done", "scheduled"], rows.filter((r) => Number(r.done) || Number(r.scheduled)).map((r) => [md(r.date), r.done, r.scheduled]), 10) };
+        return { period: p.label, visitsDone: done, visitsScheduled: sched, byDay: table(["date", "visits done", "visits scheduled"], rows.filter((r) => Number(r.done) || Number(r.scheduled)).map((r) => [md(r.date), r.done, r.scheduled]), 10) };
       }
       let v = (await call("assist_my_visits", { p_token: ctx.token })) as Row[];
       if (p?.kind === "day") v = v.filter((x) => x.date === p.from);
@@ -103,9 +106,10 @@ export const TOOLS: ToolDef[] = [
       if (!rows.length) return { period: p.label, say: `**No reports${name ? ` from ${name}` : ""} in ${p.label}.**` };
       const sum = (f: string) => rows.reduce((s, r) => s + Number(r[f] ?? 0), 0);
       const multi = new Set(rows.map((r) => r.title)).size > 1;
-      return { period: p.label, ...(name ? { name } : {}), reports: rows.length,
-        totals: { leads: sum("leads"), calls: sum("calls"), positive: sum("positive"), visitsDone: sum("done"), tokens: sum("tokens") },
-        list: table(["date", ...(multi ? ["report"] : []), "leads", "calls", "done", "tokens"], rows.map((r) => [md(r.date), ...(multi ? [r.title] : []), r.leads, r.calls, r.done, r.tokens]), 10) };
+      const walkIns = sum("walkIn");
+      return { period: `${p.label}${p.to >= ctx.today && p.from <= ctx.today && p.kind !== "day" ? " (so far)" : ""}`, who: name || "you", reports: rows.length,
+        totals: { leads: sum("leads"), calls: sum("calls"), positiveCalls: sum("positive"), visitsScheduled: sum("scheduled"), visitsDone: sum("done"), ...(walkIns ? { walkIns } : {}), tokens: sum("tokens") },
+        list: table(["date", ...(multi ? ["report"] : []), "leads", "calls", "visits done", "tokens"], rows.map((r) => [md(r.date), ...(multi ? [r.title] : []), r.leads, r.calls, r.done, r.tokens]), 10) };
     },
   },
   {
@@ -127,7 +131,7 @@ export const TOOLS: ToolDef[] = [
           const prev = await load(ym);
           if (!prev.summary?.lastDay) continue;
           const s = attSummary(prev);
-          return { period: p.label, say: `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted} counted).` };
+          return { period: p.label, say: `**${p.label} isn't uploaded yet** (HR uploads at month end).\nLast uploaded: **${monthLabel(ym)}: ${s.payableDays} payable days**, ${s.lates} late${s.lates === 1 ? "" : "s"} (${s.latesCounted ?? 0} counted).` };
         }
         return { period: p.label, say: `**No attendance uploaded for ${p.label}${name ? ` for ${name}` : ""} yet.**` };
       }
@@ -169,11 +173,11 @@ export const TOOLS: ToolDef[] = [
       const out = groups.map((g) => {
         const people = (g.rows as Row[]).map((r) => [r.employeeName, ...(useMonth ? [] : [r.filedToday ? 1 : r.off ?? 0]), ...nums((useMonth ? r.mtd : r.today) as Row)]);
         const live = people.filter((r) => r.slice(useMonth ? 1 : 2).some((v) => Number(v)));
-        return { report: g.title, totals: nums(((g.totals as Row)[useMonth ? "mtd" : "today"]) as Row), people: live.length ? table(["name", ...(useMonth ? [] : ["filed"]), "leads", "calls", "done", "tokens"], live, 8) : undefined };
+        return { report: g.title, totals: nums(((g.totals as Row)[useMonth ? "mtd" : "today"]) as Row), people: live.length ? table(["name", ...(useMonth ? [] : ["filed"]), "leads", "calls", "visits done", "tokens"], live, 8) : undefined };
       }).filter((g) => (g.totals as unknown[]).some((v) => Number(v)));
       const label = useMonth ? `${p.label}${p.to > ctx.today ? " (so far)" : ""}` : p.label;
       if (!out.length) return { period: label, say: `**No reports filed ${p.kind === "day" ? (p.from === ctx.today ? `yet today (${p.label.replace("today, ", "")})` : `on ${p.label}`) : `in ${label}`}.**` };
-      return { period: label, cols: ["leads", "calls", "done", "tokens"], groups: out };
+      return { period: label, cols: ["leads", "calls", "visits done", "tokens"], groups: out };
     },
   },
   {
