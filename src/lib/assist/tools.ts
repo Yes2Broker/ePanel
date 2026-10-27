@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { Area, OWN_ONLY, Perms, areasOf, noAccess } from "@/lib/assist/access";
 import { Period, dayLabel, monthLabel, prevMonth, thisMonth, todayPeriod } from "@/lib/assist/period";
 
 /**
@@ -13,7 +14,11 @@ import { Period, dayLabel, monthLabel, prevMonth, thisMonth, todayPeriod } from 
  * "say" when there's nothing to show.
  */
 export type Role = "Employee" | "HR" | "Admin";
-interface Ctx { token: string; today: string; period: Period | null }
+const AREA: Record<string, Area> = {
+  my_visits: "reports", reports: "reports", today_report_status: "reports", team_summary: "reports", not_filed_today: "reports",
+  attendance: "attendance", attendance_checks: "attendance", my_leave: "leave", pending_leave: "leave",
+};
+interface Ctx { token: string; today: string; period: Period | null; me: { id: string; name: string } }
 interface Tool {
   name: string;
   description: string;
@@ -25,7 +30,13 @@ interface ToolDef extends Tool { run: (ctx: Ctx, args: Record<string, string | u
 const MAX_ROWS = 15;
 const none = { type: "object", properties: {} };
 const isManager = (role: Role) => role === "HR" || role === "Admin";
-const NOT_YOURS = { error: "That information isn't available to you." };
+// "final": the route gives this line as the whole answer, without the model.
+const NOT_YOURS = { final: OWN_ONLY };
+/** "Sachin", "Sachin Prajapati" or "EMP002" naming the person themselves. */
+const isMe = (ctx: Ctx, person: string) => {
+  const q = person.toLowerCase().trim(), n = ctx.me.name.toLowerCase();
+  return q === ctx.me.id.toLowerCase() || q === n || q === n.split(" ")[0] || q === "me" || q === "myself";
+};
 
 async function call(fn: string, args: Record<string, unknown>) {
   const { data, error } = await supabase.rpc(fn, args);
@@ -98,7 +109,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "reports", description: "Daily reports and totals for the period.", parameters: none,
     run: async (ctx, a, role) => {
-      if (a.person && !isManager(role)) return NOT_YOURS;
+      if (a.person && !isManager(role)) { if (!isMe(ctx, a.person)) return NOT_YOURS; a.person = undefined; }
       const p = ctx.period ?? thisMonth(ctx.today);
       let who: string | null = null, name = "";
       if (a.person) { const f = await findPerson(ctx, a.person); if ("error" in f) return f; who = f.id; name = f.name; }
@@ -115,7 +126,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "attendance", description: "Attendance for the period: payable days, lates, short days, notable days.", parameters: none,
     run: async (ctx, a, role) => {
-      if (a.person && !isManager(role)) return NOT_YOURS;
+      if (a.person && !isManager(role)) { if (!isMe(ctx, a.person)) return NOT_YOURS; a.person = undefined; }
       let emp: string | null = null, name = "";
       if (a.person) {
         const f = await findPerson(ctx, a.person); if ("error" in f) return f;
@@ -215,15 +226,17 @@ export const TOOLS: ToolDef[] = [
 const person = { type: "string", description: "name or ID; omit for me" };
 
 /** The tools this role may use. HR/Admin's reports + attendance take a person (name or ID). */
-export const toolsFor = (role: Role): Tool[] => TOOLS.filter((t) => !t.managers || isManager(role)).map((t) => ({
+export const toolsFor = (role: Role, perms: Perms): Tool[] => TOOLS.filter((t) => (!t.managers || isManager(role)) && areasOf(perms)[AREA[t.name]]).map((t) => ({
   name: t.name, description: t.description,
   parameters: isManager(role) && (t.name === "reports" || t.name === "attendance") ? { type: "object", properties: { person } } : t.parameters,
 }));
 
 /** Runs one tool for this person, or explains why not. Never throws. */
-export async function runTool(role: Role, ctx: Ctx, name: string, rawArgs: string) {
-  const tool = TOOLS.find((t) => t.name === name && (!t.managers || isManager(role)));
-  if (!tool) return NOT_YOURS;
+export async function runTool(role: Role, perms: Perms, ctx: Ctx, name: string, rawArgs: string) {
+  const tool = TOOLS.find((t) => t.name === name);
+  if (!tool || (tool.managers && !isManager(role))) return NOT_YOURS;
+  // Checked again here: a tool the person's permissions don't allow never runs.
+  if (!areasOf(perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], perms) };
   let args: Record<string, string | undefined> = {};
   try { args = rawArgs ? JSON.parse(rawArgs) : {}; } catch { return { error: "Bad tool arguments." }; }
   if (args.employee_id && !args.person) args.person = args.employee_id;

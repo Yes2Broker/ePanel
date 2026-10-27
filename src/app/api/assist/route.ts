@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ASSIST_ENABLED } from "@/lib/features";
 import { Role, runTool, toolsFor } from "@/lib/assist/tools";
+import { Area, OWN_ONLY, Perms, areasOf, askLine, noAccess } from "@/lib/assist/access";
 import { sanitize, scrubText } from "@/lib/assist/sanitize";
 import { systemPrompt } from "@/lib/assist/prompt";
 import { resolvePeriod } from "@/lib/assist/period";
@@ -25,7 +26,14 @@ const INPUT_BUDGET = 1150;  // estimated input tokens per request (≈ 3.5 chara
 // Hellos and one-word / rude messages get a fixed calm line (no AI call).
 const GREETING = /^(hi+|hello+|hey+|hiya|namaste|namaskar|kem cho|good (morning|afternoon|evening))( there| y2b| assist)?$/;
 const CASUAL = /^(yo+|sup|wassup|ok+|okay|k+|hmm+|lol|shit|damn|wtf|fuck( (you|off|this))?|bc|mc|thanks?|thank you|thx|ty|cool|nice|fine|acha+|accha+|theek hai|ok thanks?)$/;
-const ASK = "What do you need: attendance, reports, visits or leave?";
+// Employees: questions about other people are refused here (plus a name check in the database).
+const OTHERS = /\b(who|whom|whose|kaun|kisne|kis ne|kiska|kiski|kiske|team|everyone|everybody|others|other people|colleagues?|sabka|sabki|sabke|sab log|sabhi|all employees|staff)\b/i;
+// What a question is about, to answer "you don't have that" without the AI.
+const TOPICS: [Area, RegExp][] = [
+  ["reports", /\b(reports?|visits?|site|leads?|calls?|tokens?|walk-?ins?|filed|file|bhare|bhara|bhari|summary)\b/i],
+  ["attendance", /\b(attendance|lates?|payable|present|absent|punch(es)?|hazri|haziri|short days?|in time|out time)\b/i],
+  ["leave", /\b(leaves?|chutti|chhutti|holidays?|comp-?off|time off)\b/i],
+];
 // Pay questions are refused here, for everyone, without asking the AI.
 const SALARY = /\b(salary|salaries|salery|sallary|salry|pay|paid how much|payslips?|pay ?slips?|payroll|ctc|wages?|stipend|in-?hand|take-?home|tankh?wa?h?|tankha|pagar|vetan|kitna milta|kitni milti|kitna milega|kitna mila)\b|वेतन|तनख्वाह|सैलरी|पगार|પગાર|સેલેરી/i;
 const NO_SALARY = "Salaries aren't available in Y2B Assist. Admin can see them in Attendance → Salary sheet.";
@@ -71,19 +79,27 @@ export async function POST(req: NextRequest) {
     if (code === "28000") return fixed([{ t: "text", v: EXPIRED }, { t: "done" }]);
     return NextResponse.json({ error: "Y2B Assist isn't turned on for you. Ask Admin." }, { status: 403 });
   }
-  const me = use.data as { name: string; role: Role; today: string; remaining: number };
+  const me = use.data as { id: string; name: string; role: Role; today: string; remaining: number };
   const question = history[history.length - 1].content;
   const plain = question.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
-  if (SALARY.test(question)) return fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v: NO_SALARY }, { t: "done" }]);
-  if (GREETING.test(plain) || CASUAL.test(plain)) {
-    const reply = GREETING.test(plain) ? `Hi ${me.name.split(" ")[0]}. ${ASK}` : ASK;
-    return fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v: reply }, { t: "done" }]);
+  const say = (v: string) => fixed([{ t: "meta", remaining: me.remaining }, { t: "text", v }, { t: "done" }]);
+  if (SALARY.test(question)) return say(NO_SALARY);
+  // The person's Permissions page switches decide which tools exist for them.
+  const self = await supabase.rpc("get_me", { p_token: token });
+  if (self.error) return self.error.code === "28000" ? fixed([{ t: "text", v: EXPIRED }, { t: "done" }]) : NextResponse.json({ error: BUSY }, { status: 503 });
+  const perms = ((self.data as { permissions?: Perms }).permissions ?? {}) as Perms;
+  if (GREETING.test(plain) || CASUAL.test(plain)) return say(GREETING.test(plain) ? `Hi ${me.name.split(" ")[0]}. ${askLine(perms)}` : askLine(perms));
+  if (me.role === "Employee") {
+    const named = OTHERS.test(question) || ((await supabase.rpc("assist_mentions_other", { p_token: token, p_text: question })).data === true);
+    if (named) return say(OWN_ONLY);
   }
+  const areas = areasOf(perms), topics = TOPICS.filter(([, re]) => re.test(question)).map(([a]) => a);
+  if (topics.length && !topics.some((a) => areas[a])) return say(noAccess(topics[0], perms));
   const language = replyLanguage(question);
-  const tools = toolsFor(me.role);
+  const tools = toolsFor(me.role, perms);
   // The period is worked out here, from the whole chat, never by the model.
   const period = resolvePeriod(chat.filter((m) => m.role === "user").map((m) => m.content), me.today);
-  const ctx = { token, today: me.today, period };
+  const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name } };
   const messages: ChatMsg[] = [
     { role: "system", content: systemPrompt({ name: me.name, role: me.role, today: me.today }) },
     ...(period || language ? [{ role: "system" as const, content: [period && `Period asked: ${period.label}.`, language].filter(Boolean).join(" ") }] : []),
@@ -98,7 +114,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const send = (e: Record<string, unknown>) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       send({ t: "meta", remaining: me.remaining });
-      let toolCalls = 0;
+      let toolCalls = 0, final = "";
       const used = { requests: 0, input: 0, output: 0, waitedMs: 0 };
       const guard = createGuard((v) => send({ t: "text", v }), fullList ? 250 : 85);
       const toolsJson = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
@@ -121,11 +137,14 @@ export async function POST(req: NextRequest) {
             toolCalls++;
             const result = toolCalls > MAX_TOOL_CALLS
               ? { error: "Too many lookups for one question. Answer with what you have." }
-              : (send({ t: "status", v: c.function.name }), await runTool(me.role, ctx, c.function.name, c.function.arguments));
+              : (send({ t: "status", v: c.function.name }), await runTool(me.role, perms, ctx, c.function.name, c.function.arguments));
+            // Not theirs / not allowed: that one line is the whole answer, never the model's.
+            if ("final" in (result as object)) { final = (result as { final: string }).final; break; }
             messages.push({ role: "tool", tool_call_id: c.id, content: compact(sanitize(result), TOOL_RESULT_CHARS) });
           }
+          if (final) break;
         }
-        guard.end();
+        if (final) send({ t: "text", v: final }); else guard.end();
         console.log(`[assist] question role=${me.role} requests=${used.requests} tools=${toolCalls} in=${used.input} out=${used.output}`);
         send({ t: "done" });
       } catch (err) {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, SendHorizontal, Sparkles } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/context/session-context";
+import { areasOf } from "@/lib/assist/access";
 import { getSessionToken } from "@/lib/api";
 import { ASSIST_ENABLED } from "@/lib/features";
 import { cn } from "@/lib/utils";
@@ -41,8 +42,9 @@ export function Assist() {
 }
 
 function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { user } = useSession();
+  const { user, permissions } = useSession();
   const manager = user?.role === "HR" || user?.role === "Admin";
+  const can = areasOf(permissions ?? {});
   const storeKey = `y2b-assist-${user?.id}`;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -62,9 +64,12 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
   }, [msgs, storeKey, status]);
   useEffect(() => { if (open) setTimeout(() => field.current?.focus(), 50); }, [open]);
 
-  const suggestions = manager
-    ? ["Who hasn't filed today's report?", "Team summary today", "Pending leave requests", "Who hasn't checked attendance?"]
-    : ["My visits today", "How many reports this month?", "My attendance this month", "How do I apply for leave?"];
+  // Built from the same permissions the server uses: only what this person has.
+  const suggestions = (manager
+    ? [can.reports && "Who hasn't filed today's report?", can.reports && "Team summary today", can.leave && "Pending leave requests", can.attendance && "Who hasn't checked attendance?",
+       !can.reports && can.attendance && "My attendance this month", !can.reports && can.leave && "How do I apply for leave?"]
+    : [can.reports && "My visits today", can.reports && "How many reports this month?", can.attendance && "My attendance this month", can.leave && "How do I apply for leave?"]
+  ).filter((s): s is string => !!s).slice(0, 4);
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim();

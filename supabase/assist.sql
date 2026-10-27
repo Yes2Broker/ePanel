@@ -82,6 +82,24 @@ begin
                      from employees e where e.status = 'Active' and e.role <> 'Admin' and private.day_off(e, v_today) is not null), '[]'::jsonb));
 end $$;
 
+-- Does this question name someone other than the signed-in person? (Their
+-- first or full name, as a whole word.) Lets /api/assist refuse an employee's
+-- question about a colleague without asking the AI. Returns only yes/no.
+create or replace function public.assist_mentions_other(p_token text, p_text text) returns boolean
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+  t text := ' ' || lower(regexp_replace(coalesce(p_text, ''), '[^[:alnum:]]+', ' ', 'g')) || ' ';
+begin
+  return exists (
+    select 1 from employees e
+    where e.id <> me.id and e.status = 'Active'
+      and lower(split_part(e.name, ' ', 1)) <> lower(split_part(me.name, ' ', 1))
+      and length(split_part(e.name, ' ', 1)) >= 3
+      and (position(' ' || lower(split_part(e.name, ' ', 1)) || ' ' in t) > 0
+           or position(' ' || lower(regexp_replace(e.name, '[^[:alnum:]]+', ' ', 'g')) || ' ' in t) > 0));
+end $$;
+
 revoke execute on all functions in schema private from public, anon, authenticated;
 do $$
 declare
@@ -90,7 +108,7 @@ begin
   for f in
     select p.oid::regprocedure as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('assist_use', 'assist_my_visits', 'assist_not_filed')
+    where n.nspname = 'public' and p.proname in ('assist_use', 'assist_my_visits', 'assist_not_filed', 'assist_mentions_other')
   loop
     execute format('revoke execute on function %s from public', f.sig);
     execute format('grant execute on function %s to anon, authenticated', f.sig);
