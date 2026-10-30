@@ -70,8 +70,8 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
     setTplBusy(true);
     try {
       const [{ buildAttendanceTemplate }, employees] = await Promise.all([import("@/lib/attendance-template"), api.listEmployees()]);
-      const t = buildAttendanceTemplate(employees, tplMonth);
-      const url = URL.createObjectURL(new Blob([t.data as Uint8Array<ArrayBuffer>], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const t = await buildAttendanceTemplate(employees, tplMonth);
+      const url = URL.createObjectURL(new Blob([t.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
       a.href = url; a.download = t.name;
       a.click();
