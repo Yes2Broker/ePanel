@@ -325,3 +325,26 @@ export interface LeaveDashboard {
 // ---------------------------------------------------------------------------
 export interface AppNotification { id: number; type: string; title: string; body: string; link: string | null; createdAt: string; read: boolean }
 export interface NotificationList { unread: number; items: AppNotification[] }
+
+// ---------------------------------------------------------------------------
+// Paid leaves given by HR/Admin (Attendance → Paid Leaves) — see supabase/attendance.sql
+// ---------------------------------------------------------------------------
+export type PaidLeaveScope = "all" | "departments" | "employees";
+export interface PaidLeaveInput {
+  from: string;
+  to: string;
+  reason: string;
+  halfDay: boolean;
+  scope: PaidLeaveScope;
+  departments: string[];
+  employees: string[];
+}
+export interface PaidLeave extends Omit<PaidLeaveInput, "employees"> {
+  id: string;
+  employees: PersonRef[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+export interface PaidLeaveDay { employeeId: string; date: string; reason: string; halfDay: boolean }

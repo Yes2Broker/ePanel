@@ -89,7 +89,28 @@ alter table attendance_days enable row level security;
 alter table attendance_changes enable row level security;
 alter table attendance_code_map enable row level security;
 alter table attendance_uploads enable row level security;
-revoke all on attendance_days, attendance_changes, attendance_code_map, attendance_uploads from anon, authenticated;
+
+-- Paid leaves HR/Admin give (Attendance → Paid Leaves): a date or range, for
+-- everyone, some departments or some people, full or half day. They count as
+-- paid leave in attendance and salary (see private.paid_leave_on).
+create table if not exists paid_leaves (
+  id uuid primary key default gen_random_uuid(),
+  from_date date not null,
+  to_date date not null,
+  reason text not null check (length(trim(reason)) > 0),
+  half_day boolean not null default false,
+  scope text not null check (scope in ('all','departments','employees')),
+  departments text[] not null default '{}',
+  employee_ids text[] not null default '{}',
+  created_by text references employees(id) on update cascade on delete set null,
+  created_at timestamptz not null default now(),
+  updated_by text references employees(id) on update cascade on delete set null,
+  updated_at timestamptz,
+  check (to_date >= from_date)
+);
+create index if not exists paid_leaves_dates_idx on paid_leaves (from_date, to_date);
+alter table paid_leaves enable row level security;
+revoke all on attendance_days, attendance_changes, attendance_code_map, attendance_uploads, paid_leaves from anon, authenticated;
 
 -- Deleting an upload (HR/Admin) undoes it; the upload row is kept, marked.
 alter table attendance_uploads add column if not exists deleted_at timestamptz;
@@ -161,6 +182,26 @@ end $$;
 -- Days covered: from the 1st (or joining date) up to the last day that has
 -- any uploaded row for this person in the range (never after today).
 -- A working day inside that span with no row at all shows as Absent ("No record").
+-- The paid leave that applies to one person on one day, if any (latest entry wins):
+-- for everyone / their department / them; never on their weekly off; only from
+-- their joining date; "everyone" and departments mean whoever was working there
+-- that day (active, or left later and has attendance on/after it).
+create or replace function private.paid_leave_on(p_emp text, p_day date)
+returns table (reason text, half_day boolean)
+language sql stable set search_path = public, private as $$
+  select pl.reason, pl.half_day
+  from paid_leaves pl join employees e on e.id = p_emp
+  where p_day between pl.from_date and pl.to_date
+    and e.role <> 'Admin'
+    and (e.joining_date is null or e.joining_date <= p_day)
+    and private.is_working_day(p_day, e.week_off)
+    and (pl.scope = 'employees' and e.id = any(pl.employee_ids)
+         or pl.scope in ('all','departments') and (pl.scope = 'all' or e.department = any(pl.departments))
+            and (e.status = 'Active' or exists (select 1 from attendance_days a where a.employee_id = e.id and a.work_date >= p_day)))
+  order by pl.created_at desc
+  limit 1
+$$;
+
 do $$
 begin
   if to_regtype('private.att_day') is null then
@@ -186,9 +227,10 @@ language sql stable set search_path = public, private as $$
   ),
   base as (
     select g::date as d, a.in_time as tin, a.out_time as tout, a.status_set, a.remark, a.source as src,
-           a.edited_by, a.work_date is not null as row_exists
+           a.edited_by, a.work_date is not null as row_exists, pl.reason as pl_reason, coalesce(pl.half_day, false) as pl_half
     from span cross join generate_series(span.f, span.t, interval '1 day') g
     left join attendance_days a on a.employee_id = p_emp and a.work_date = g::date
+    left join lateral private.paid_leave_on(p_emp, g::date) pl on true
   ),
   calc as (
     select b.*,
@@ -200,6 +242,8 @@ language sql stable set search_path = public, private as $$
     select c.*,
       case
         when c.status_set is not null then c.status_set
+        -- A full-day paid leave from the Paid Leaves tab (HR's own edit wins).
+        when c.pl_reason is not null and not c.pl_half then 'Paid Leave'
         when c.tin is not null and c.tout is not null then 'Present'
         when not private.is_working_day(c.d, c.week_off) then 'Weekoff'
         else 'Absent'
@@ -208,14 +252,17 @@ language sql stable set search_path = public, private as $$
   ),
   fl as (
     select s.*,
-      (s.st = 'Present' and s.mins is not null and s.mins < private.att_full_day_minutes()) as is_short,
+      -- A half-day paid leave covers the other half: no Short Day that day.
+      (s.st = 'Present' and s.mins is not null and s.mins < private.att_full_day_minutes() and not s.pl_half) as is_short,
       (s.st = 'Present' and s.tin is not null and s.tout is not null and s.tin > private.att_late_after()) as in_late
     from st s
   ),
   fl2 as (select f.*, f.in_late and not f.is_short as is_late from fl f)
   select f.d, f.tin, f.tout, f.mins, f.st,
     coalesce(nullif(f.remark, ''),
-      case when f.st = 'Absent' and not f.row_exists then 'No record'
+      case when f.pl_reason is not null and f.st in ('Paid Leave','Absent','Present')
+             then case when f.pl_half then 'Half-day paid leave: ' else 'Paid leave: ' end || f.pl_reason
+           when f.st = 'Absent' and not f.row_exists then 'No record'
            when f.st = 'Present' and not private.is_working_day(f.d, f.week_off) then 'Worked on weekly off'
       end),
     f.in_late, f.is_short,
@@ -242,20 +289,22 @@ language sql stable set search_path = public, private as $$
       count(*) filter (where late and not short_day) as lates_counted,
       count(*) filter (where late_half) as late_halves,
       count(*) filter (where short_day) as short_days,
-      max(day) as last_day
+      max(day) as last_day,
+      -- Half-day paid leave on a day not worked: half a day paid.
+      count(*) filter (where status = 'Absent' and exists (select 1 from private.paid_leave_on(p_emp, day) pl where pl.half_day)) as half_paid
     from d
   ),
-  w as (select c.*, least(wow_raw, absent) as wow from c)
+  w as (select c.*, least(wow_raw, absent - half_paid) as wow from c)
   select jsonb_build_object(
     'daysInMonth', extract(day from private.month_end(p_month))::int,
     'days', days, 'present', present,
     -- Absent shown (script.js "unpaid leave") = Absent − weekly-off working.
-    'absent', absent - wow, 'absentDays', absent, 'weekoffWorked', wow,
-    'weekoff', weekoff, 'paidLeave', paid_leave,
+    'absent', absent - wow - half_paid * 0.5, 'absentDays', absent, 'weekoffWorked', wow,
+    'weekoff', weekoff, 'paidLeave', paid_leave + half_paid * 0.5,
     'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
     'lateDeduction', greatest(lates_counted - private.att_free_lates(), 0) * 0.5,
     'shortDays', short_days,
-    'netPayable', (present + weekoff + paid_leave + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
+    'netPayable', (present + weekoff + paid_leave + half_paid * 0.5 + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
     'lastDay', last_day)
   from w
 $$;
@@ -826,4 +875,107 @@ begin
         'onLeave', count(*) filter (where d.status = 'Paid Leave'))
       from employees e, lateral private.att_days(e.id, private.month_start(v_last), v_last) d
       where e.status = 'Active' and e.role <> 'Admin' and d.day = v_last) end);
+end $$;
+
+-- ===========================================================================
+-- Paid Leaves tab (HR/Admin add, edit, delete; employees see their own)
+-- ===========================================================================
+create or replace function private.paid_leave_json(pl paid_leaves, me employees) returns jsonb
+language sql stable set search_path = public, private as $$
+  select jsonb_build_object('id', pl.id, 'from', pl.from_date, 'to', pl.to_date, 'reason', pl.reason, 'halfDay', pl.half_day,
+    'scope', pl.scope, 'departments', to_jsonb(pl.departments),
+    -- Only HR/Admin see who else an entry is for.
+    'employees', case when me.role in ('HR','Admin') then coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'name', e.name) order by e.name)
+                                                                     from employees e where e.id = any(pl.employee_ids)), '[]'::jsonb) else '[]'::jsonb end,
+    'createdBy', (select name from employees where id = pl.created_by), 'createdAt', pl.created_at,
+    'updatedBy', (select name from employees where id = pl.updated_by), 'updatedAt', pl.updated_at)
+$$;
+
+-- Entries touching a month (p_month null = all). Employees: only those that apply to them.
+create or replace function public.paid_leave_list(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  return coalesce((
+    select jsonb_agg(private.paid_leave_json(pl, me) order by pl.from_date desc, pl.created_at desc)
+    from paid_leaves pl
+    where (p_month is null or (pl.from_date <= private.month_end(p_month) and pl.to_date >= private.month_start(p_month)))
+      and (me.role in ('HR','Admin') or exists (
+        select 1 from generate_series(pl.from_date, pl.to_date, interval '1 day') g
+        where exists (select 1 from private.paid_leave_on(me.id, g::date))))
+  ), '[]'::jsonb);
+end $$;
+
+-- Add (p_id null) or change an entry. p_data: from, to, reason, halfDay, scope, departments[], employees[].
+create or replace function public.paid_leave_save(p_token text, p_id uuid, p_data jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v_from date := nullif(p_data ->> 'from', '')::date;
+  v_to date := coalesce(nullif(p_data ->> 'to', '')::date, nullif(p_data ->> 'from', '')::date);
+  v_reason text := trim(coalesce(p_data ->> 'reason', ''));
+  v_scope text := coalesce(p_data ->> 'scope', 'all');
+  v_depts text[] := coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(p_data -> 'departments', '[]'::jsonb)) x), '{}');
+  v_emps text[] := coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(p_data -> 'employees', '[]'::jsonb)) x), '{}');
+  r paid_leaves;
+begin
+  if v_from is null then raise exception 'Choose a date.' using errcode = '22023'; end if;
+  if v_to < v_from then raise exception 'The end date is before the start date.' using errcode = '22023'; end if;
+  if v_to - v_from > 62 then raise exception 'Choose at most 2 months at a time.' using errcode = '22023'; end if;
+  if v_reason = '' then raise exception 'Write the reason.' using errcode = '22023'; end if;
+  if v_scope not in ('all','departments','employees') then raise exception 'Choose who it is for.' using errcode = '22023'; end if;
+  if v_scope = 'departments' and cardinality(v_depts) = 0 then raise exception 'Choose at least one department.' using errcode = '22023'; end if;
+  if v_scope = 'employees' and cardinality(v_emps) = 0 then raise exception 'Choose at least one employee.' using errcode = '22023'; end if;
+  if v_scope = 'employees' and exists (select 1 from unnest(v_emps) x where not exists (select 1 from employees e where e.id = x)) then
+    raise exception 'Employee not found.' using errcode = 'P0002';
+  end if;
+  if v_scope <> 'departments' then v_depts := '{}'; end if;
+  if v_scope <> 'employees' then v_emps := '{}'; end if;
+  if p_id is null then
+    insert into paid_leaves (from_date, to_date, reason, half_day, scope, departments, employee_ids, created_by)
+    values (v_from, v_to, v_reason, coalesce((p_data ->> 'halfDay')::boolean, false), v_scope, v_depts, v_emps, me.id)
+    returning * into r;
+  else
+    update paid_leaves set from_date = v_from, to_date = v_to, reason = v_reason, half_day = coalesce((p_data ->> 'halfDay')::boolean, false),
+      scope = v_scope, departments = v_depts, employee_ids = v_emps, updated_by = me.id, updated_at = now()
+    where id = p_id returning * into r;
+    if not found then raise exception 'Paid leave not found.' using errcode = 'P0002'; end if;
+  end if;
+  return private.paid_leave_json(r, me);
+end $$;
+
+create or replace function public.paid_leave_delete(p_token text, p_id uuid) returns void
+language plpgsql volatile security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  delete from paid_leaves where id = p_id;
+  if not found then raise exception 'Paid leave not found.' using errcode = 'P0002'; end if;
+end $$;
+
+-- Every person-day a paid leave applies to in a month (HR/Admin), for the upload template.
+create or replace function public.paid_leave_days(p_token text, p_month date) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('employeeId', e.id, 'date', g::date, 'reason', pl.reason, 'halfDay', pl.half_day) order by e.id, g)
+    from employees e
+    cross join generate_series(private.month_start(p_month), private.month_end(p_month), interval '1 day') g
+    cross join lateral private.paid_leave_on(e.id, g::date) pl
+    where exists (select 1 from paid_leaves x where x.from_date <= private.month_end(p_month) and x.to_date >= private.month_start(p_month))
+  ), '[]'::jsonb);
+end $$;
+
+-- The signed-in person's paid leave days from today on (next 120 days).
+create or replace function public.my_paid_leaves(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public, private as $$
+declare
+  me employees := private.session_employee(p_token);
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('date', g::date, 'reason', pl.reason, 'halfDay', pl.half_day) order by g)
+    from generate_series(private.today(), private.today() + 120, interval '1 day') g
+    cross join lateral private.paid_leave_on(me.id, g::date) pl
+  ), '[]'::jsonb);
 end $$;

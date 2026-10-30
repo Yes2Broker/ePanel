@@ -7,8 +7,9 @@ import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { useSession } from "@/context/session-context";
 import { AttendanceList, SalarySheet } from "@/components/attendance/att-manage";
 import { AttendanceUpload } from "@/components/attendance/att-upload";
+import { MyPaidLeaves, PaidLeaves } from "@/components/attendance/paid-leaves";
 
-type Tab = "list" | "upload" | "salary" | "mine";
+type Tab = "list" | "upload" | "paid" | "salary" | "mine";
 
 function AttendanceInner() {
   const { isManager, user } = useSession();
@@ -21,6 +22,7 @@ function AttendanceInner() {
   const tabs: { value: Tab; label: string; short?: string }[] = isManager ? [
     { value: "list", label: "Attendance" },
     { value: "upload", label: "Upload" },
+    { value: "paid", label: "Paid Leaves", short: "Paid" },
     ...(isAdmin ? [{ value: "salary" as Tab, label: "Salary sheet", short: "Salary" }] : [{ value: "mine" as Tab, label: "My attendance", short: "Mine" }]),
   ] : [];
   const requested = q.get("tab") as Tab | null;
@@ -29,6 +31,7 @@ function AttendanceInner() {
   const subtitle = {
     list: "One row per person per day. Tap a row to change it.",
     upload: "eTimeOffice report or the upload template. Preview first, then import.",
+    paid: "Days off that count as paid leave: festivals, birthdays and so on.",
     salary: "Salary sheet",
     mine: "Late after 10:30 (first 2 a month free, then ½ day each). Under 8 hours = ½ day.",
   }[tab];
@@ -38,8 +41,9 @@ function AttendanceInner() {
       <PageHeader title="Attendance" subtitle={subtitle} />
       {tabs.length > 0 && <Tabs tabs={tabs} value={tab} onChange={(t) => router.replace(`${pathname}?tab=${t}`)} />}
       {tab === "list" && <AttendanceList key={`${q.get("emp")}${q.get("month")}`} manager initialEmp={q.get("emp") ?? ""} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} />}
-      {tab === "mine" && <><AttUpdateBanner /><AttendanceList key={`mine${q.get("month")}`} manager={false} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} /></>}
+      {tab === "mine" && <><AttUpdateBanner /><MyPaidLeaves /><AttendanceList key={`mine${q.get("month")}`} manager={false} initialMonth={/^\d{4}-\d{2}$/.test(q.get("month") ?? "") ? q.get("month")! : undefined} /></>}
       {tab === "upload" && <AttendanceUpload />}
+      {tab === "paid" && <PaidLeaves />}
       {tab === "salary" && isAdmin && <SalarySheet />}
     </div>
   );

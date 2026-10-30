@@ -5,6 +5,7 @@ import {
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
+  PaidLeave, PaidLeaveInput, PaidLeaveDay,
 } from "@/types";
 
 /**
@@ -38,7 +39,7 @@ const READS = new Set([
   "report_history", "my_sales_reports", "list_sales_reports", "team_report_summary", "get_report_email_recipients",
   "list_employee_aliases", "leave_overview", "leave_preview", "leave_timeline", "leave_attachment",
   "leave_queue", "leave_dashboard", "employee_dashboard", "admin_dashboard", "notifications_list", "notification_prefs_get",
-  "get_report_reminders", "get_report_reminder_time", "get_visit_reminder",
+  "get_report_reminders", "get_report_reminder_time", "get_visit_reminder", "paid_leave_list", "paid_leave_days", "my_paid_leaves",
 ]);
 const pending = new Map<string, Promise<unknown>>();
 
@@ -119,6 +120,11 @@ export const api = {
   attDayChanges: (employeeId: string, date: string) => rpc<AttChange[]>("att_day_changes", { p_emp: employeeId, p_date: date }),
   attImport: (kind: string, rows: unknown[], map: Record<string, string>, fileName: string, dry: boolean) =>
     rpc<AttImportResult>("att_import", { p_kind: kind, p_rows: rows, p_map: map, p_file: fileName, p_dry: dry }),
+  paidLeaves: (month: string | null) => rpc<PaidLeave[]>("paid_leave_list", { p_month: month ? `${month}-01` : null }),
+  savePaidLeave: (id: string | null, data: PaidLeaveInput) => rpc<PaidLeave>("paid_leave_save", { p_id: id, p_data: data }),
+  deletePaidLeave: (id: string) => rpc<void>("paid_leave_delete", { p_id: id }),
+  paidLeaveDays: (month: string) => rpc<PaidLeaveDay[]>("paid_leave_days", { p_month: `${month}-01` }),
+  myPaidLeaves: () => rpc<{ date: string; reason: string; halfDay: boolean }[]>("my_paid_leaves"),
   attUploads: () => rpc<{ id: string; kind: string; file: string; by: string | null; at: string; rows: number; added: number; updated: number; kept: number; from: string | null; to: string | null; deletedAt: string | null; deletedBy: string | null }[]>("att_uploads"),
   attDeleteUpload: (id: string) => rpc<{ removed: number; restored: number; kept: number }>("att_delete_upload", { p_upload: id }),
   attDashboard: () => rpc<AttDashboard>("att_dashboard"),

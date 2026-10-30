@@ -74,11 +74,17 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
     a.click();
     URL.revokeObjectURL(url);
   };
+  // Paid leaves (Paid Leaves tab) for the month, pre-filled in the template.
+  const paidMap = async (month: string) => {
+    const out: Record<string, Record<string, { reason: string; halfDay: boolean }>> = {};
+    for (const d of await api.paidLeaveDays(month)) (out[d.employeeId] ??= {})[d.date] = { reason: d.reason, halfDay: d.halfDay };
+    return out;
+  };
   const downloadTemplate = async () => {
     setTplBusy(true);
     try {
-      const [{ buildAttendanceTemplate }, employees] = await Promise.all([import("@/lib/attendance-template"), api.listEmployees()]);
-      saveFile(await buildAttendanceTemplate(employees, tplMonth));
+      const [{ buildAttendanceTemplate }, employees, paid] = await Promise.all([import("@/lib/attendance-template"), api.listEmployees(), paidMap(tplMonth)]);
+      saveFile(await buildAttendanceTemplate(employees, tplMonth, undefined, paid));
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {
@@ -94,12 +100,12 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
     if (!file) return;
     setTplBusy(true);
     try {
-      const [{ readETimeOfficeReport }, { prepareFill }, { buildAttendanceTemplate }, employees] = await Promise.all([
-        import("@/lib/attendance-parse"), import("@/lib/etimeoffice-fill"), import("@/lib/attendance-template"), api.listEmployees()]);
+      const [{ readETimeOfficeReport }, { prepareFill }, { buildAttendanceTemplate }, employees, paid] = await Promise.all([
+        import("@/lib/attendance-parse"), import("@/lib/etimeoffice-fill"), import("@/lib/attendance-template"), api.listEmployees(), paidMap(tplMonth)]);
       const report = await readETimeOfficeReport(file);
       const resolve = async (code: string) => (await api.attImport("etimeoffice", [{ code, date: `${tplMonth}-01`, in: "", out: "" }], {}, file.name, true)).people[0]?.employee.id ?? null;
       const { fill, summary } = await prepareFill(report, employees, tplMonth, resolve);
-      setEto({ summary, file: await buildAttendanceTemplate(employees, tplMonth, fill) });
+      setEto({ summary, file: await buildAttendanceTemplate(employees, tplMonth, fill, paid) });
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {

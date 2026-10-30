@@ -43,6 +43,7 @@ export default function EmployeeDashboardPage() {
   const { data, loading, error, reload } = useApi(() => (anyFeatureOn ? api.employeeDashboard() : Promise.resolve(null)));
   const leave = useApi(() => (on.leave ? api.leaveDashboard() : Promise.resolve(null)));
   const att = useApi(() => (on.attendance ? api.attDashboard() : Promise.resolve(null)));
+  const paid = useApi(() => (on.leave ? api.myPaidLeaves() : Promise.resolve(null)));
   const mine = att.data?.mine;
   const canReport = !!(permissions?.normalReport || permissions?.soleSelling);
 
@@ -75,7 +76,11 @@ export default function EmployeeDashboardPage() {
         href={canReport ? "/reports" : undefined}
       />
     ) }),
-    nextLeave: () => leave.data && ({ tile: (
+    nextLeave: () => leave.data && ({ tile: paid.data?.[0] && (!leave.data.nextLeave || paid.data[0].date < leave.data.nextLeave.start) ? (
+      // A paid leave from HR (Attendance → Paid Leaves) comes first.
+      <SummaryCard icon={CalendarOff} label="Next leave" value={formatDate(paid.data[0].date, { weekday: true })}
+        note={`Paid leave: ${paid.data[0].reason}${paid.data[0].halfDay ? " (half day)" : ""}`} href="/attendance" />
+    ) : (
       <SummaryCard
         icon={CalendarOff} label="Next leave"
         value={leave.data.nextLeave ? formatDate(leave.data.nextLeave.start, { weekday: true }) : "None"}
