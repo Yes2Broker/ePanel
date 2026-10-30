@@ -290,21 +290,22 @@ language sql stable set search_path = public, private as $$
       count(*) filter (where late_half) as late_halves,
       count(*) filter (where short_day) as short_days,
       max(day) as last_day,
-      -- Half-day paid leave on a day not worked: half a day paid.
-      count(*) filter (where status = 'Absent' and exists (select 1 from private.paid_leave_on(p_emp, day) pl where pl.half_day)) as half_paid
+      -- Half-day paid leave (Paid Leaves tab): that day is ½ paid leave plus ½ worked (Present) or ½ absent.
+      count(*) filter (where status = 'Present' and exists (select 1 from private.paid_leave_on(p_emp, day) pl where pl.half_day)) as half_present,
+      count(*) filter (where status = 'Absent' and exists (select 1 from private.paid_leave_on(p_emp, day) pl where pl.half_day)) as half_absent
     from d
   ),
-  w as (select c.*, least(wow_raw, absent - half_paid) as wow from c)
+  w as (select c.*, least(wow_raw, absent - half_absent) as wow from c)
   select jsonb_build_object(
     'daysInMonth', extract(day from private.month_end(p_month))::int,
-    'days', days, 'present', present,
+    'days', days, 'present', present - half_present * 0.5,
     -- Absent shown (script.js "unpaid leave") = Absent − weekly-off working.
-    'absent', absent - wow - half_paid * 0.5, 'absentDays', absent, 'weekoffWorked', wow,
-    'weekoff', weekoff, 'paidLeave', paid_leave + half_paid * 0.5,
+    'absent', absent - wow - half_absent * 0.5, 'absentDays', absent, 'weekoffWorked', wow,
+    'weekoff', weekoff, 'paidLeave', paid_leave + (half_present + half_absent) * 0.5,
     'lates', lates, 'latesCounted', lates_counted, 'lateHalves', late_halves,
     'lateDeduction', greatest(lates_counted - private.att_free_lates(), 0) * 0.5,
     'shortDays', short_days,
-    'netPayable', (present + weekoff + paid_leave + half_paid * 0.5 + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
+    'netPayable', (present + weekoff + paid_leave + half_absent * 0.5 + wow) - (greatest(lates_counted - private.att_free_lates(), 0) * 0.5 + short_days * 0.5),
     'lastDay', last_day)
   from w
 $$;
@@ -431,9 +432,11 @@ begin
 
   -- Per person preview, from the file's own rows (+ weekly offs).
   with ok as (
-    select a.*, e.week_off,
+    select a.*, e.week_off, coalesce(pl.half_day, false) as pl_half,
       case
         when a.status_set is not null then a.status_set
+        -- Same paid-leave rule as att_days (Paid Leaves tab).
+        when pl.reason is not null and not pl.half_day then 'Paid Leave'
         when a.tin is not null and a.tout is not null then 'Present'
         when not private.is_working_day(a.work_date, e.week_off) then 'Weekoff'
         else 'Absent'
@@ -442,6 +445,7 @@ begin
       d.edited_by is not null or (d.source = 'history' and p_kind <> 'history') or (p_kind = 'history' and d.work_date is not null) as keep
     from att_in a join employees e on e.id = a.employee_id
     left join attendance_days d on d.employee_id = a.employee_id and d.work_date = a.work_date
+    left join lateral private.paid_leave_on(a.employee_id, a.work_date) pl on true
     where a.err is null and a.work_date <= v_today
   )
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -450,10 +454,12 @@ begin
            'from', f, 'to', t) order by employee_id), '[]'::jsonb)
   into v_people from (
     select employee_id, count(*) as days, min(work_date) as f, max(work_date) as t,
-      count(*) filter (where st = 'Present') as present, count(*) filter (where st = 'Absent') as absent,
-      count(*) filter (where st = 'Weekoff') as weekoff, count(*) filter (where st = 'Paid Leave') as paid,
+      count(*) filter (where st = 'Present') - 0.5 * count(*) filter (where st = 'Present' and pl_half) as present,
+      count(*) filter (where st = 'Absent') - 0.5 * count(*) filter (where st = 'Absent' and pl_half) as absent,
+      count(*) filter (where st = 'Weekoff') as weekoff,
+      count(*) filter (where st = 'Paid Leave') + 0.5 * count(*) filter (where st in ('Present','Absent') and pl_half) as paid,
       count(*) filter (where st = 'Present' and tin > private.att_late_after()) as late,
-      count(*) filter (where st = 'Present' and mins < private.att_full_day_minutes()) as short,
+      count(*) filter (where st = 'Present' and mins < private.att_full_day_minutes() and not pl_half) as short,
       count(*) filter (where keep) as kept
     from ok group by employee_id
   ) p;
