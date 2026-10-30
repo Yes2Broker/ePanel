@@ -8,7 +8,7 @@ import type { Employee } from "@/types";
  * Built with exceljs (loaded only when downloading): it writes valid dropdowns,
  * frozen panes, filters and text cells that Excel opens cleanly.
  */
-const BLUE = "FF273992", YELLOW = "FFFFF8DC", GREY = "FFD9D9D9";
+const BLUE = "FF273992", YELLOW = "FFFFF8DC", GREY = "FFD9D9D9", ORANGE = "FFFFC48C", RED = "FFC0392B";
 const HEAD = ["Date", "Day", "Employee Code", "Name", "In Time", "Out Time", "Paid Leave", "Remark"];
 const WIDTHS = [12, 6, 15, 24, 10, 10, 11, 28];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -22,7 +22,13 @@ function order(a: Employee, b: Employee) {
     || a.id.localeCompare(b.id, undefined, { numeric: true });
 }
 
-export async function buildAttendanceTemplate(employees: Employee[], month: string) {
+/** Optional pre-fill ("Fill from eTimeOffice"): times per employee id and date, plus a "Check" sheet. */
+export interface TemplateFill {
+  times: Record<string, Record<string, { in: string; out: string }>>;
+  check: { title: string; rows: { cells: string[]; bad?: boolean }[]; bad?: boolean }[];
+}
+
+export async function buildAttendanceTemplate(employees: Employee[], month: string, fill?: TemplateFill) {
   const ExcelJS = (await import("exceljs")).default;
   const [y, m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -45,13 +51,15 @@ export async function buildAttendanceTemplate(employees: Employee[], month: stri
     const from = e.joiningDate && e.joiningDate.slice(0, 7) === month ? Number(e.joiningDate.slice(8, 10)) : 1;
     for (let d = from; d <= last; d++) {
       const date = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
-      const row = ws.addRow([date, DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], e.id, e.name, "", "", "", ""]);
+      const t = fill?.times[e.id]?.[`${month}-${String(d).padStart(2, "0")}`];
+      const row = ws.addRow([date, DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], e.id, e.name, t?.in ?? "", t?.out ?? "", "", ""]);
+      const single = !!t && !t.in !== !t.out; // only IN or only OUT: HR must fix it
       const bottom = d === last ? { style: "medium" as const, color: { argb: BLUE } } : thin;
       for (let c = 1; c <= 8; c++) {
         const cell = row.getCell(c);
         cell.numFmt = "@";
         cell.border = { top: thin, left: thin, right: thin, bottom };
-        if (c >= 5) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: YELLOW } };
+        if (c >= 5) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: single && c <= 6 ? ORANGE : YELLOW } };
       }
     }
   });
@@ -72,6 +80,21 @@ export async function buildAttendanceTemplate(employees: Employee[], month: stri
     "6. Save the file and upload it in Attendance → Upload.",
   ].forEach((t) => help.addRow([t]));
   help.getCell("A1").font = { bold: true, size: 13, color: { argb: BLUE } };
+
+  if (fill) {
+    // "Check" sheet: the accuracy checks shown in the panel before download.
+    const ck = wb.addWorksheet("Check");
+    ck.columns = [{ width: 34 }, { width: 18 }, { width: 18 }, { width: 40 }];
+    for (const sec of fill.check) {
+      const h = ck.addRow([sec.title]);
+      h.font = { bold: true, color: { argb: sec.bad ? RED : BLUE } };
+      for (const r of sec.rows) {
+        const row = ck.addRow(r.cells);
+        if (r.bad) row.font = { color: { argb: RED } };
+      }
+      ck.addRow([]);
+    }
+  }
 
   const data = new Uint8Array(await wb.xlsx.writeBuffer());
   return { data, name: `Y2B_Attendance_${MONTHS[m - 1]}-${y}.xlsx`, people: people.length };

@@ -190,3 +190,60 @@ export async function parseAttendanceFile(file: File): Promise<ParsedAttendance>
   }
   throw new Error("This file doesn't look like the eTimeOffice Month IN/OUT report, our template, or the old attendance sheet.");
 }
+
+export interface ETimeOfficeReport {
+  month: string | null; // YYYY-MM from "Report Month" (null if not found)
+  people: { code: string; name: string; days: Record<string, { in: string; out: string }> }[];
+}
+
+const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** "October 2026", "Oct-2026", "10/2026", "01/10/2026 To 31/10/2026" → "2026-10". */
+function parseMonth(s: string): string | null {
+  const t = s.toLowerCase();
+  let m = /([a-z]{3,})[a-z]*[\s,-]*(\d{4})/.exec(t);
+  if (m && MONTH_NAMES.indexOf(m[1].slice(0, 3)) >= 0) return `${m[2]}-${String(MONTH_NAMES.indexOf(m[1].slice(0, 3)) + 1).padStart(2, "0")}`;
+  m = /\b\d{1,2}[/.-](\d{1,2})[/.-](\d{4})\b/.exec(t);
+  if (m) return `${m[2]}-${m[1].padStart(2, "0")}`;
+  m = /\b(\d{1,2})[/.-](\d{4})\b/.exec(t);
+  return m ? `${m[2]}-${m[1].padStart(2, "0")}` : null;
+}
+
+/**
+ * The eTimeOffice "Month IN/OUT" report read strictly, for "Fill from eTimeOffice":
+ * one entry per employee block (Empcode + Name), IN from the "IN" column and OUT
+ * from the LAST "Out" column only ("--:--"/blank = no time), plus the Report Month.
+ */
+export async function readETimeOfficeReport(file: File): Promise<ETimeOfficeReport> {
+  const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: "array", cellDates: false });
+  let month: string | null = null;
+  const people: ETimeOfficeReport["people"] = [];
+  for (const sheet of wb.SheetNames) {
+    const rows = rowsOf(wb.Sheets[sheet]);
+    let cur: ETimeOfficeReport["people"][number] | null = null, inIdx = -1, outIdx = -1;
+    for (const r of rows) {
+      if (!month) {
+        const i = r.findIndex((c) => /report\s*month/i.test(text(c)));
+        if (i >= 0) month = parseMonth([text(r[i]).replace(/report\s*month\s*:?/i, ""), ...r.slice(i + 1).map(text)].join(" "));
+      }
+      if (norm(r[0]) === "empcode") {
+        const ni = r.findIndex((c) => norm(c) === "name");
+        cur = { code: text(r.slice(1, ni >= 0 ? ni : undefined).find((c) => text(c) !== "") ?? null), name: ni >= 0 ? text(r.slice(ni + 1).find((c) => text(c) !== "") ?? null) : "", days: {} };
+        people.push(cur);
+        inIdx = outIdx = -1;
+        continue;
+      }
+      if (norm(r[0]) === "date" && r.some((c) => norm(c) === "in")) {
+        inIdx = r.findIndex((c) => norm(c) === "in");
+        outIdx = r.reduce<number>((last, c, i) => (norm(c) === "out" ? i : last), -1);
+        continue;
+      }
+      if (!cur || inIdx < 0) continue;
+      const date = parseDate(r[0]);
+      if (!date) continue;
+      const tin = parseTime(r[inIdx]), tout = outIdx >= 0 ? parseTime(r[outIdx]) : "";
+      if (tin || tout) cur.days[date] = { in: tin, out: tout };
+    }
+  }
+  if (!people.length) throw new Error("This doesn't look like the eTimeOffice \"Month IN/OUT\" report (no Empcode blocks found).");
+  return { month, people };
+}

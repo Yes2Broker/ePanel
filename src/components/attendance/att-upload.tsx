@@ -13,6 +13,7 @@ import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { attUpdatesChanged } from "@/lib/att-updates";
 import type { AttendanceKind, AttendanceRow } from "@/lib/attendance-parse";
+import { singlesText, type FillSummary } from "@/lib/etimeoffice-fill";
 import { AttImportResult } from "@/types";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
@@ -66,20 +67,44 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
   // Pre-filled template for a month: every active employee × every day (attendance-template.ts).
   const [tplMonth, setTplMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [tplBusy, setTplBusy] = useState(false);
+  const saveFile = (t: { data: Uint8Array; name: string }) => {
+    const url = URL.createObjectURL(new Blob([t.data as Uint8Array<ArrayBuffer>], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = t.name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const downloadTemplate = async () => {
     setTplBusy(true);
     try {
       const [{ buildAttendanceTemplate }, employees] = await Promise.all([import("@/lib/attendance-template"), api.listEmployees()]);
-      const t = await buildAttendanceTemplate(employees, tplMonth);
-      const url = URL.createObjectURL(new Blob([t.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      const a = document.createElement("a");
-      a.href = url; a.download = t.name;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveFile(await buildAttendanceTemplate(employees, tplMonth));
     } catch (err) {
       toast(errorMessage(err), "error");
     } finally {
       setTplBusy(false);
+    }
+  };
+
+  // "Fill from eTimeOffice": the Month IN/OUT report → the same template with In/Out filled,
+  // after showing the accuracy checks. Codes are matched exactly as the upload does (server dry run).
+  const etoInput = useRef<HTMLInputElement>(null);
+  const [eto, setEto] = useState<{ summary: FillSummary; file: { data: Uint8Array; name: string } } | null>(null);
+  const fillFromETimeOffice = async (file: File | undefined) => {
+    if (!file) return;
+    setTplBusy(true);
+    try {
+      const [{ readETimeOfficeReport }, { prepareFill }, { buildAttendanceTemplate }, employees] = await Promise.all([
+        import("@/lib/attendance-parse"), import("@/lib/etimeoffice-fill"), import("@/lib/attendance-template"), api.listEmployees()]);
+      const report = await readETimeOfficeReport(file);
+      const resolve = async (code: string) => (await api.attImport("etimeoffice", [{ code, date: `${tplMonth}-01`, in: "", out: "" }], {}, file.name, true)).people[0]?.employee.id ?? null;
+      const { fill, summary } = await prepareFill(report, employees, tplMonth, resolve);
+      setEto({ summary, file: await buildAttendanceTemplate(employees, tplMonth, fill) });
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setTplBusy(false);
+      if (etoInput.current) etoInput.current.value = "";
     }
   };
 
@@ -163,8 +188,12 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
             <SecondaryButton onClick={downloadTemplate} disabled={tplBusy}>
               <Download className="h-4 w-4" /> {tplBusy ? "Preparing…" : "Download template"}
             </SecondaryButton>
+            <SecondaryButton onClick={() => etoInput.current?.click()} disabled={tplBusy}>
+              <FileUp className="h-4 w-4" /> Fill from eTimeOffice
+            </SecondaryButton>
           </span>
         </div>
+        <input ref={etoInput} type="file" accept=".xls,.xlsx" className="hidden" onChange={(e) => fillFromETimeOffice(e.target.files?.[0])} />
         <input ref={input} type="file" accept=".xls,.xlsx,.csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-ink-muted">
           <li><b className="font-medium">eTimeOffice</b>: the &quot;Month IN/OUT Report&quot; .xls exactly as downloaded.</li>
@@ -173,6 +202,28 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
           <li>Upload the month once and extra files any time. Days already in the panel are updated, never duplicated; days edited by HR are kept.</li>
         </ul>
       </Card>
+
+      {eto && (
+        <Modal open onClose={() => setEto(null)} title="Filled from eTimeOffice" size="md"
+          footer={<div className="flex justify-end gap-2"><SecondaryButton onClick={() => setEto(null)}>Close</SecondaryButton>
+            <PrimaryButton onClick={() => { saveFile(eto.file); setEto(null); }}><Download className="h-4 w-4" /> Download filled template</PrimaryButton></div>}>
+          <div className="space-y-3 text-sm">
+            <table className="w-full text-left text-xs">
+              <thead><tr className={tableHeadCls}><th className="py-1">Employee</th><th>Report days</th><th>Filled</th><th>To fix</th></tr></thead>
+              <tbody>{eto.summary.people.map((p) => (
+                <tr key={p.id} className={cn("border-t border-surface-border", !p.ok && "font-medium text-status-danger")}>
+                  <td className="py-1">{p.name}</td><td>{p.reportDays}</td><td>{p.filledDays}</td>
+                  <td className={p.singles ? "text-status-warning" : ""}>{p.singles ? singlesText(p.singles) : "—"}</td>
+                </tr>))}
+              </tbody>
+            </table>
+            {eto.summary.mismatched.length > 0 && <p className="text-status-danger">Code and name don&apos;t match (not filled): {eto.summary.mismatched.map((x) => `${x.reportName} (${x.code}) ≠ ${x.panelName}`).join(", ")}</p>}
+            {eto.summary.notInPanel.length > 0 && <p className="text-status-danger">In the report but not added: {eto.summary.notInPanel.map((x) => `${x.name} (${x.code}, ${x.why})`).join(", ")}</p>}
+            {eto.summary.missing.length > 0 && <p className="text-status-warning">Not in the report (rows left empty): {eto.summary.missing.map((x) => x.name).join(", ")}</p>}
+            <p className="text-xs text-ink-muted">Days with only an In or only an Out are orange in the file. The same checks are in its &quot;Check&quot; sheet.</p>
+          </div>
+        </Modal>
+      )}
 
       <ErrorBanner message={error} />
       {busy === "checking" && !preview && <Loading rows={3} />}
