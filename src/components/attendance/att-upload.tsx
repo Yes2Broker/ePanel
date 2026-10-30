@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
-import { Select } from "@/components/ui/pickers";
+import { MonthField, Select } from "@/components/ui/pickers";
 import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -60,6 +60,26 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
       toast(errorMessage(err), "error");
     } finally {
       setDeletingBusy(false);
+    }
+  };
+
+  // Pre-filled template for a month: every active employee × every day (attendance-template.ts).
+  const [tplMonth, setTplMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [tplBusy, setTplBusy] = useState(false);
+  const downloadTemplate = async () => {
+    setTplBusy(true);
+    try {
+      const [{ buildAttendanceTemplate }, employees] = await Promise.all([import("@/lib/attendance-template"), api.listEmployees()]);
+      const t = buildAttendanceTemplate(employees, tplMonth);
+      const url = URL.createObjectURL(new Blob([t.data as Uint8Array<ArrayBuffer>], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = t.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    } finally {
+      setTplBusy(false);
     }
   };
 
@@ -138,15 +158,17 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
           <PrimaryButton onClick={() => input.current?.click()} disabled={!!busy}>
             <FileUp className="h-4 w-4" /> {busy === "reading" ? "Reading…" : "Choose file"}
           </PrimaryButton>
-          <a href="/templates/Y2B_Attendance_Upload_Template.xlsx" download
-            className="inline-flex min-h-11 items-center gap-2 rounded-pill border border-surface-border bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-surface">
-            <Download className="h-4 w-4" /> Download template
-          </a>
+          <span className="inline-flex items-center gap-2">
+            <MonthField ariaLabel="Template month" value={tplMonth} onChange={setTplMonth} />
+            <SecondaryButton onClick={downloadTemplate} disabled={tplBusy}>
+              <Download className="h-4 w-4" /> {tplBusy ? "Preparing…" : "Download template"}
+            </SecondaryButton>
+          </span>
         </div>
         <input ref={input} type="file" accept=".xls,.xlsx,.csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-ink-muted">
           <li><b className="font-medium">eTimeOffice</b>: the &quot;Month IN/OUT Report&quot; .xls exactly as downloaded.</li>
-          <li><b className="font-medium">Template</b>: Date (DD/MM/YYYY) · Employee Code · In Time · Out Time · Paid Leave (Yes/blank) · Remark.</li>
+          <li><b className="font-medium">Template</b>: pre-filled with every active employee and day of the month; type only In Time / Out Time (and Paid Leave). The old 6-column template still works.</li>
           {isAdmin && <li><b className="font-medium">History</b> (Admin, one time): the old Google Sheet &quot;Attendance&quot; tab as CSV, or a monthly workbook with one sheet per person.</li>}
           <li>Upload the month once and extra files any time. Days already in the panel are updated, never duplicated; days edited by HR are kept.</li>
         </ul>

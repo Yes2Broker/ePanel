@@ -5,7 +5,8 @@ import * as XLSX from "xlsx";
  * Three formats, detected automatically:
  *  - "etimeoffice": the eTimeOffice "Month IN/OUT Report" (.xls/.xlsx) as downloaded:
  *    one block per employee ("Empcode 0002 … Name …"), then Date | Shift | IN | … | Out.
- *  - "template":    Date | Employee Code | In Time | Out Time | Paid Leave | Remark.
+ *  - "template":    Date | Employee Code | In Time | Out Time | Paid Leave | Remark, read by
+ *    header name (the pre-filled monthly template adds Day and Name, which are ignored).
  *  - "history":     the old Google Sheet "Attendance" tab (CSV) or the monthly workbook
  *    with one sheet per employee: Date | Employee Code "Name (Y2B_E07)" | In | Out |
  *    Working Hours | Late | Half Day | Status | Remark.
@@ -134,7 +135,9 @@ function parseTemplate(wb: XLSX.WorkBook): AttendanceRow[] {
       out: parseTime(r[cOut]),
       paid: /^y(es)?$/i.test(text(r[cPaid])),
       remark: cRemark >= 0 ? text(r[cRemark]) : "",
-    }));
+    }))
+    // A pre-filled day left empty is the same as no row (Absent, or Weekoff on their weekly off).
+    .filter((r) => r.in || r.out || r.paid || r.remark);
 }
 
 /** Old Google Sheet history (CSV) or the monthly workbook, one sheet per person. */
