@@ -14,10 +14,12 @@ const WIDTHS = [12, 6, 15, 24, 10, 10, 11, 28];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-/** Sales first, then the other departments A–Z; then employee code (EMP002 before EMP010). */
+/** Same order as eTimeOffice: Sales, Tech, HR, then other departments A–Z; then employee code (EMP002 before EMP010). */
+const DEPT_ORDER = ["Sales", "Tech", "HR"];
 function order(a: Employee, b: Employee) {
-  const d = (e: Employee) => (e.department === "Sales" ? "" : e.department);
-  return d(a).localeCompare(d(b)) || a.id.localeCompare(b.id, undefined, { numeric: true });
+  const rank = (e: Employee) => { const i = DEPT_ORDER.indexOf(e.department); return i < 0 ? DEPT_ORDER.length : i; };
+  return rank(a) - rank(b) || (rank(a) === DEPT_ORDER.length ? a.department.localeCompare(b.department) : 0)
+    || a.id.localeCompare(b.id, undefined, { numeric: true });
 }
 
 export async function buildAttendanceTemplate(employees: Employee[], month: string) {
