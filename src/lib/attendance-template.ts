@@ -26,6 +26,8 @@ function order(a: Employee, b: Employee) {
 export interface TemplateFill {
   times: Record<string, Record<string, { in: string; out: string }>>;
   check: { title: string; rows: { cells: string[]; bad?: boolean }[]; bad?: boolean }[];
+  /** Partial report (one or a few people): only these employee ids get rows. */
+  only?: string[];
 }
 
 /** Paid leaves from the Paid Leaves tab, per employee id and date (api.paidLeaveDays). */
@@ -37,7 +39,8 @@ export async function buildAttendanceTemplate(employees: Employee[], month: stri
   const [y, m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const monthEnd = `${month}-${String(last).padStart(2, "0")}`;
-  const people = employees.filter((e) => e.status === "Active" && e.role !== "Admin" && (!e.joiningDate || e.joiningDate <= monthEnd)).sort(order);
+  const people = employees.filter((e) => e.status === "Active" && e.role !== "Admin" && (!e.joiningDate || e.joiningDate <= monthEnd)
+    && (!fill?.only || fill.only.includes(e.id))).sort(order);
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Attendance", { views: [{ state: "frozen", ySplit: 1 }] });

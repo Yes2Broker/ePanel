@@ -225,6 +225,7 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
             </table>
             {eto.summary.mismatched.length > 0 && <p className="text-status-danger">Code and name don&apos;t match (not filled): {eto.summary.mismatched.map((x) => `${x.reportName} (${x.code}) ≠ ${x.panelName}`).join(", ")}</p>}
             {eto.summary.notInPanel.length > 0 && <p className="text-status-danger">In the report but not added: {eto.summary.notInPanel.map((x) => `${x.name} (${x.code}, ${x.why})`).join(", ")}</p>}
+            {eto.summary.partial && <p className="text-ink-muted">Partial report: the file has only {eto.summary.people.length === 1 ? "this person" : `these ${eto.summary.people.length} people`}. Uploading it changes only their days.</p>}
             {eto.summary.missing.length > 0 && <p className="text-status-warning">Not in the report (rows left empty): {eto.summary.missing.map((x) => x.name).join(", ")}</p>}
             <p className="text-xs text-ink-muted">Days with only an In or only an Out are orange in the file. The same checks are in its &quot;Check&quot; sheet.</p>
           </div>

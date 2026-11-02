@@ -13,6 +13,8 @@ export interface FillSummary {
   people: { id: string; name: string; reportDays: number; filledDays: number; singles: number; ok: boolean }[];
   notInPanel: { code: string; name: string; why: string }[];
   missing: { id: string; name: string }[];
+  /** The report has only some people (eTimeOffice export of one or a few): the file has only them. */
+  partial: boolean;
   mismatched: { code: string; reportName: string; id: string; panelName: string }[];
 }
 
@@ -47,7 +49,7 @@ export async function prepareFill(report: ETimeOfficeReport, employees: Employee
   const inTemplate = (e: Employee) => e.status === "Active" && e.role !== "Admin" && (!e.joiningDate || e.joiningDate <= monthEnd);
 
   const times: TemplateFill["times"] = {};
-  const summary: FillSummary = { people: [], notInPanel: [], missing: [], mismatched: [] };
+  const summary: FillSummary = { people: [], notInPanel: [], missing: [], mismatched: [], partial: false };
   const ids = await Promise.all(report.people.map((p) => resolve(p.code)));
   report.people.forEach((p, i) => {
     const emp = employees.find((e) => e.id === ids[i]);
@@ -63,7 +65,11 @@ export async function prepareFill(report: ETimeOfficeReport, employees: Employee
     summary.people.push({ id: emp.id, name: emp.name, reportDays, filledDays, singles, ok: reportDays === filledDays });
   });
   const seen = new Set([...Object.keys(times), ...summary.mismatched.map((m) => m.id)]);
-  summary.missing = employees.filter((e) => inTemplate(e) && !seen.has(e.id)).map((e) => ({ id: e.id, name: e.name }));
+  const missing = employees.filter((e) => inTemplate(e) && !seen.has(e.id)).map((e) => ({ id: e.id, name: e.name }));
+  // Fewer than half the people in the report = a partial export: only they go in the file,
+  // and "not in the report" isn't a problem. A full report keeps everyone (missing rows empty).
+  summary.partial = seen.size * 2 < seen.size + missing.length;
+  summary.missing = summary.partial ? [] : missing;
 
   const all = (cells: string[][]) => cells.map((c) => ({ cells: c, bad: true }));
   const check: TemplateFill["check"] = [{
@@ -74,5 +80,5 @@ export async function prepareFill(report: ETimeOfficeReport, employees: Employee
   if (summary.notInPanel.length) check.push({ title: "In the report but not added", rows: all(summary.notInPanel.map((x) => [`${x.name} (${x.code})`, x.why])), bad: true });
   if (summary.mismatched.length) check.push({ title: "Code and name don't match (not filled)", rows: all(summary.mismatched.map((x) => [`${x.reportName} (${x.code})`, `panel: ${x.panelName} (${x.id})`])), bad: true });
   if (summary.missing.length) check.push({ title: "Active in the panel but not in the report (rows left empty)", rows: all(summary.missing.map((x) => [`${x.name} (${x.id})`])), bad: true });
-  return { fill: { times, check } as TemplateFill, summary };
+  return { fill: { times, check, ...(summary.partial ? { only: Object.keys(times) } : {}) } as TemplateFill, summary };
 }
