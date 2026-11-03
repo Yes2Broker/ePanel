@@ -27,7 +27,8 @@ export default function AdminPermissionsPage() {
   const { user, refresh } = useSession();
   const toast = useToast();
   const employees = useApi(() => api.listEmployees());
-  const active = (employees.data ?? []).filter((e) => e.status === "Active");
+  // By Employee Code in number order (EMP002, EMP003 … EMP010 … EMP100), like the Employees page.
+  const active = (employees.data ?? []).filter((e) => e.status === "Active").sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {

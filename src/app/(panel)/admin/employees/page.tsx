@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Plus, Eye, Pencil, KeyRound } from "lucide-react";
+import { Search, Plus, Eye, Pencil, KeyRound, Copy } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/pickers";
-import { PrimaryButton } from "@/components/ui/button";
+import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/pills";
 import { Modal } from "@/components/ui/modal";
 import { Avatar } from "@/components/ui/avatar";
@@ -12,6 +12,7 @@ import { ErrorBanner, Loading, PageHeader, tableHeadCls } from "@/components/ui/
 import { useToast } from "@/components/ui/toast";
 import { EmployeeFormDialog, EmployeeFormValues } from "@/components/employees/employee-form-dialog";
 import { ResetPasswordDialog } from "@/components/employees/reset-password-dialog";
+import { copyLoginDetails } from "@/lib/login-details";
 import { useSession } from "@/context/session-context";
 import { DEPARTMENTS, ROLES, weekOffLabel } from "@/lib/constants";
 import { Employee } from "@/types";
@@ -71,15 +72,17 @@ export default function AdminEmployeesPage() {
     }
   };
 
+  // Stays open after saving so HR can "Copy login details" with the new password.
   const savePassword = async (newPassword: string) => {
-    if (!resetTarget) return;
+    if (!resetTarget) return false;
     setSaving(true);
     try {
       await api.resetPassword(resetTarget.id, newPassword);
       toast(`Password updated for ${resetTarget.name}.`);
-      setResetTarget(null);
+      return true;
     } catch (err) {
       toast(errorMessage(err), "error");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -192,9 +195,16 @@ export default function AdminEmployeesPage() {
       </Card>
 
       <EmployeeFormDialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null); }} onSave={save} initial={editing} saving={saving} canAssignAdmin={isAdmin} />
-      <ResetPasswordDialog open={!!resetTarget} onClose={() => setResetTarget(null)} onSave={savePassword} employeeName={resetTarget?.name || ""} saving={saving} />
+      <ResetPasswordDialog open={!!resetTarget} onClose={() => setResetTarget(null)} onSave={savePassword} employee={resetTarget} saving={saving} />
 
-      <Modal open={!!viewing} onClose={() => setViewing(null)} title="Employee Details" wide>
+      <Modal open={!!viewing} onClose={() => setViewing(null)} title="Employee Details" wide
+        footer={viewing && (
+          <div className="flex justify-end">
+            <SecondaryButton onClick={() => copyLoginDetails(viewing, "(HR will share separately)").then(() => toast("Copied"), () => toast("Couldn't copy. Allow clipboard access.", "error"))}>
+              <Copy className="h-4 w-4" /> Copy login details
+            </SecondaryButton>
+          </div>
+        )}>
         {viewing && (
           <div className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             {[["Full Name", viewing.name], ["Employee ID", viewing.id], ["Email", viewing.email], ["Mobile", viewing.mobile],
