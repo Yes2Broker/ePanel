@@ -132,7 +132,7 @@ export function ReportForm({
       const a = actions[item.key] ?? emptyAction;
       if (!a.action) return fail(`Select an action for ${item.client}.`);
       if (a.action === "done" && !a.time) return fail(`Enter time for ${item.client}`);
-      if (a.action === "done" && !HHMM.test(a.time)) return fail(`Type the visit time for ${item.client} as HH:MM, e.g. 14:30.`);
+      if (a.action === "done" && !HHMM.test(a.time)) return fail(`Pick the visit time for ${item.client}.`);
       if (a.action === "done" && form.isToday && a.time > now) return fail(`Visit time for ${item.client} can't be in the future.`);
       if (a.action === "reschedule" && !a.date) return fail(`Select new date for ${item.client}`);
       if (a.action === "reschedule" && a.date <= date) return fail(`New date for ${item.client} must be from tomorrow.`);
@@ -141,7 +141,7 @@ export function ReportForm({
     for (const f of future) {
       if (!f.visitId) return fail("Select a visit for every \"future visit done\" row.");
       if (!f.time) return fail("Enter time for every future visit done.");
-      if (!f.frozen && !HHMM.test(f.time)) return fail("Type visit times as HH:MM, e.g. 14:30.");
+      if (!f.frozen && !HHMM.test(f.time)) return fail("Pick a time for each future visit.");
       if (!f.frozen && form.isToday && f.time > now) return fail("Visit time can't be in the future.");
     }
     if (sole && walkIns.some((w) => !w.trim())) return fail("Enter a client name for every walk-in.");

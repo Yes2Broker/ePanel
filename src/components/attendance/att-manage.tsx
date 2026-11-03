@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { SecondaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { Modal } from "@/components/ui/modal";
-import { Select } from "@/components/ui/pickers";
+import { Select, time12 } from "@/components/ui/pickers";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -152,7 +152,7 @@ function DayTable({ rows, showName, onPick }: { rows: Row[]; showName: boolean; 
                 <AttPill status={d.status} />
               </div>
               <p className="mt-1 break-words text-xs text-ink-muted">
-                {d.in ?? "—"} – {d.out ?? "—"} · {hours(d.minutes)} h
+                {time12(d.in)} – {time12(d.out)} · {hours(d.minutes)} h
                 {lateText(d) && ` · Late ${lateText(d)}`}{halfText(d) && ` · Half ${halfText(d)}`}
                 {d.note && ` · ${d.note}`}{d.edited && " · edited"}
               </p>
@@ -175,8 +175,8 @@ function DayTable({ rows, showName, onPick }: { rows: Row[]; showName: boolean; 
                 <tr key={`${r.employee.id}${d.date}`} onClick={onPick ? () => onPick(r) : undefined} className={cn(onPick && "cursor-pointer hover:bg-surface")}>
                   <td className="whitespace-nowrap px-2 py-2">{formatDate(d.date, { weekday: true })}</td>
                   {showName && <td className="whitespace-nowrap px-2 py-2">{r.employee.name}</td>}
-                  <td className="px-2 py-2">{d.in ?? "—"}</td>
-                  <td className="px-2 py-2">{d.out ?? "—"}</td>
+                  <td className="whitespace-nowrap px-2 py-2">{time12(d.in)}</td>
+                  <td className="whitespace-nowrap px-2 py-2">{time12(d.out)}</td>
                   <td className="px-2 py-2">{d.minutes != null ? hours(d.minutes) : "—"}</td>
                   <td className={cn("px-2 py-2", d.late && "text-status-warning")}>{lateText(d)}</td>
                   <td className={cn("px-2 py-2", (d.shortDay || d.lateHalf) && "text-status-danger")}>{halfText(d)}</td>

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
-import { MonthField, Select } from "@/components/ui/pickers";
+import { MonthField, Select, time12 } from "@/components/ui/pickers";
 import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
@@ -321,7 +321,7 @@ export function AttendanceUpload({ onImported }: { onImported?: () => void }) {
                         <tr key={i}>
                           <td className="whitespace-nowrap px-2 py-1.5">{formatDate(c.date)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5">{c.employee.name}</td>
-                          <td className="whitespace-nowrap px-2 py-1.5">{c.in ?? "—"}–{c.out ?? "—"}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5">{time12(c.in)}–{time12(c.out)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5">{c.sheetLate || "—"} / {c.sheetHalf || "—"}</td>
                           <td className="whitespace-nowrap px-2 py-1.5">{c.late} / {c.half}</td>
                         </tr>

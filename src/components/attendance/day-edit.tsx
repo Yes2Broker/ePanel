@@ -10,7 +10,7 @@ import { useApi } from "@/lib/use-api";
 import { AttDay } from "@/types";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { AttPill, DayFlags, hours } from "@/components/attendance/att-format";
-import { Select, TimeInput } from "@/components/ui/pickers";
+import { Select, TimeInput, time12 } from "@/components/ui/pickers";
 
 export interface EditTarget { employeeId: string; name: string; date: string; day: AttDay | null }
 
@@ -35,7 +35,7 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
   const hhmm = (t: string) => !t || /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
   const save = async () => {
     if (!target) return;
-    if (!noTimes && (!hhmm(form.in) || !hhmm(form.out))) { toast("Type times as HH:MM, e.g. 09:45 or 18:30.", "error"); return; }
+    if (!noTimes && (!hhmm(form.in) || !hhmm(form.out))) { toast("Check the In and Out times.", "error"); return; }
     setSaving(true);
     try {
       const d = await api.attSetDay({ employeeId: target.employeeId, date: target.date, in: noTimes ? "" : form.in, out: noTimes ? "" : form.out, status: form.status, remark: form.remark });
@@ -60,7 +60,7 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
           {target.day && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface px-3 py-2 text-sm">
               <AttPill status={target.day.status} />
-              <span className="text-ink-muted">{target.day.in ?? "—"} – {target.day.out ?? "—"} · {hours(target.day.minutes)}</span>
+              <span className="text-ink-muted">{time12(target.day.in)} – {time12(target.day.out)} · {hours(target.day.minutes)}</span>
               <DayFlags d={target.day} />
             </div>
           )}
@@ -70,8 +70,8 @@ export function DayEdit({ target, onClose, onSaved }: { target: EditTarget | nul
           </Field>
           {!noTimes && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="In time (HH:MM)"><TimeInput ariaLabel="In time" value={form.in} onChange={(v) => setForm({ ...form, in: v })} /></Field>
-              <Field label="Out time (HH:MM)"><TimeInput ariaLabel="Out time" value={form.out} onChange={(v) => setForm({ ...form, out: v })} /></Field>
+              <Field label="In time"><TimeInput ariaLabel="In time" value={form.in} onChange={(v) => setForm({ ...form, in: v })} /></Field>
+              <Field label="Out time"><TimeInput ariaLabel="Out time" value={form.out} onChange={(v) => setForm({ ...form, out: v })} /></Field>
             </div>
           )}
           <Field label={form.status === "Paid Leave" ? "Remark (required)" : "Remark"}>

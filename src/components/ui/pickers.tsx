@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The panel's own Select, DatePicker, MonthField, TimeSelect and TimeInput —
+ * The panel's own Select, DatePicker, MonthField and TimePicker (TimeSelect /
+ * TimeInput wrap it) —
  * used everywhere instead of the browser's native pickers. On desktop the
  * list / calendar floats under the field; on phones it opens as a bottom sheet.
  */
@@ -309,34 +310,145 @@ export function timeLabel(t: string) {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** Pick a time from a list in 30-minute steps. Value "HH:MM". */
-export function TimeSelect({ value, onChange, ariaLabel, variant = "pill", disabled, min, max, className }: {
-  value: string; onChange: (v: string) => void; ariaLabel?: string; variant?: Variant; disabled?: boolean; min?: string; max?: string; className?: string;
-}) {
-  const options = useMemo(() => Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`)
-    .filter((t) => (!min || t >= min) && (!max || t <= max)).map((t) => ({ value: t, label: timeLabel(t) })), [min, max]);
-  return <Select value={value} onChange={onChange} options={options} ariaLabel={ariaLabel} variant={variant} disabled={disabled} className={className} placeholder="Pick a time" />;
+/** Display for any stored time ("19:00" or "19:00:00") → "7:00 PM"; empty → "—". */
+export function time12(t: string | null | undefined) {
+  return t && /^\d{1,2}:\d{2}/.test(t) ? timeLabel(t) : "—";
 }
 
 /**
- * Exact time typed as HH:MM (24-hour), e.g. attendance In/Out. Digits only;
- * the colon is added automatically. Out-of-range values are flagged.
+ * Typed time → 24-hour "HH:MM", or null if it isn't a time. Accepts "1030",
+ * "10:30", "10.30", "10:30 pm", "7pm", "7", "19:00".
  */
+export function parseTimeText(raw: string): string | null {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  const m = /^(\d{1,2})(?:[:.]?(\d{2}))?(am|pm|a|p)?$/.exec(s);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = m[2] ? Number(m[2]) : 0;
+  const ap = m[3]?.[0];
+  if (min > 59) return null;
+  if (ap) {
+    if (h < 1 || h > 12) return null;
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+  } else if (h > 23) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+const nowHHMM = () => new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
+const DEFAULT_CHIPS = ["09:00", "10:00", "10:30", "18:00", "19:00"];
+const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+
+/**
+ * The panel's time picker: shows "10:30 AM" (12-hour), saves 24-hour "HH:MM".
+ * Type straight into it ("1030", "7pm"…) or open the popup: quick times, Now,
+ * Hour / Minute / AM-PM columns (↑/↓ work), Clear and Done. Phones get a sheet.
+ */
+export function TimePicker({ value, onChange, ariaLabel, variant = "field", disabled, min, max, placeholder = "Pick a time", className, chips = DEFAULT_CHIPS }: {
+  value: string; onChange: (v: string) => void; ariaLabel?: string; variant?: Variant; disabled?: boolean;
+  min?: string; max?: string; placeholder?: string; className?: string; chips?: string[];
+}) {
+  const { open, setOpen, close } = usePopover();
+  const wrap = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  // Phones: no keyboard, the field opens the sheet.
+  const [phone, setPhone] = useState(false);
+  useEffect(() => setPhone(isPhone()), []);
+  const inRange = (t: string) => (!min || t >= min) && (!max || t <= max);
+  const valid = !value || (/^([01]\d|2[0-3]):[0-5]\d$/.test(value) && inRange(value));
+  const commitDraft = () => {
+    if (draft == null) return;
+    const t = draft.trim() ? parseTimeText(draft) : "";
+    if (t !== null) onChange(t);
+    setDraft(null);
+  };
+  return (
+    <div ref={wrap} className={cn("relative", variant === "pill" ? "inline-block" : "", className)}>
+      <input value={draft ?? (value ? time12(value) : "")} placeholder={placeholder} aria-label={ariaLabel} aria-invalid={!valid || (draft != null && !!draft.trim() && !parseTimeText(draft))} disabled={disabled}
+        autoComplete="off" inputMode="text" readOnly={phone}
+        onChange={(e) => setDraft(e.target.value)} onBlur={commitDraft}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitDraft(); } else if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}
+        onClick={() => { if (phone) setOpen(true); }}
+        className={cn(triggerCls(variant, !valid), "w-full pr-10 tabular-nums placeholder:text-ink-faint", variant === "pill" && "min-w-[8.5rem]")} />
+      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)} aria-label={`${ariaLabel ?? "Time"}: open time picker`} aria-haspopup="dialog" aria-expanded={open}
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-ink-faint hover:text-ink disabled:opacity-50"><Clock className="h-4 w-4" /></button>
+      {open && <TimePanel anchor={wrap} value={value} chips={chips} inRange={inRange} min={min} max={max} title={ariaLabel ?? "Pick a time"}
+        onClose={close} onPick={(t) => { onChange(t); setDraft(null); close(); }} />}
+    </div>
+  );
+}
+
+function TimePanel({ anchor, value, chips, inRange, min, max, title, onClose, onPick }: {
+  anchor: React.RefObject<HTMLElement>; value: string; chips: string[]; inRange: (t: string) => boolean; min?: string; max?: string; title: string;
+  onClose: () => void; onPick: (t: string) => void;
+}) {
+  const start = /^\d{2}:\d{2}/.test(value) ? value : "10:00";
+  const [h24, setH24] = useState(Number(start.slice(0, 2)));
+  const [m, setM] = useState(Number(start.slice(3, 5)));
+  const [custom, setCustom] = useState(!MINUTES.includes(Number(start.slice(3, 5))));
+  const h12 = ((h24 + 11) % 12) + 1, pm = h24 >= 12;
+  const setHour12 = (h: number) => setH24((h % 12) + (pm ? 12 : 0));
+  const out = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  const ok = inRange(out);
+  const big = "min-h-11 sm:min-h-9";
+  const cell = (on: boolean) => cn("w-full rounded-lg px-2 text-sm tabular-nums", big, on ? "bg-ink font-semibold text-white" : "text-ink hover:bg-surface");
+  const keys = (e: React.KeyboardEvent, step: (d: number) => void) => {
+    if (e.key === "ArrowUp") { e.preventDefault(); step(-1); } else if (e.key === "ArrowDown") { e.preventDefault(); step(1); } else if (e.key === "Enter" && ok) { e.preventDefault(); onPick(out); }
+  };
+  return (
+    <Popover open onClose={onClose} anchor={anchor} title={title} width={300}>
+      <div className="w-full space-y-2.5 p-1.5 sm:w-[300px]">
+        <div className="flex flex-wrap gap-1.5">
+          {[...chips, "now"].map((c) => {
+            const t = c === "now" ? nowHHMM() : c;
+            return <button key={c} type="button" disabled={!inRange(t)} onClick={() => onPick(t)}
+              className={cn("rounded-pill border border-surface-border px-2.5 text-xs text-ink hover:bg-surface disabled:opacity-40", big)}>{c === "now" ? "Now" : timeLabel(c)}</button>;
+          })}
+        </div>
+        <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Hour"
+            onKeyDown={(e) => keys(e, (d) => setHour12(((h12 - 1 + d + 12) % 12) + 1))}>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => <button key={h} type="button" onClick={() => setHour12(h)} className={cell(h === h12)}>{h}</button>)}
+          </div>
+          <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Minute"
+            onKeyDown={(e) => keys(e, (d) => { setCustom(false); setM((x) => (Math.round(x / 5) * 5 + d * 5 + 60) % 60); })}>
+            {MINUTES.map((x) => <button key={x} type="button" onClick={() => { setM(x); setCustom(false); }} className={cell(!custom && x === m)}>{String(x).padStart(2, "0")}</button>)}
+            {custom
+              ? <input autoFocus inputMode="numeric" aria-label="Custom minute" value={String(m)} maxLength={2}
+                  onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, "") || 0); if (v <= 59) setM(v); }}
+                  className={cn("w-full rounded-lg border border-brand px-2 text-center text-sm tabular-nums focus:outline-none", big)} />
+              : <button type="button" onClick={() => setCustom(true)} className={cn("w-full rounded-lg px-2 text-xs text-ink-muted hover:bg-surface", big)}>custom</button>}
+          </div>
+          <div className="flex flex-col gap-1" role="radiogroup" aria-label="AM or PM">
+            {["AM", "PM"].map((x) => (
+              <button key={x} type="button" role="radio" aria-checked={(x === "PM") === pm} onClick={() => setH24((h24 % 12) + (x === "PM" ? 12 : 0))}
+                className={cn("rounded-lg border px-3 text-sm", big, (x === "PM") === pm ? "border-ink bg-ink font-semibold text-white" : "border-surface-border text-ink hover:bg-surface")}>{x}</button>
+            ))}
+          </div>
+        </div>
+        {!ok && <p className="text-xs text-status-danger">Pick a time {min && max ? `between ${timeLabel(min)} and ${timeLabel(max)}` : max ? `up to ${timeLabel(max)}` : `from ${timeLabel(min!)}`}.</p>}
+        <div className="flex items-center justify-between gap-2 border-t border-surface-border pt-2">
+          <button type="button" onClick={() => onPick("")} className={cn("rounded-lg px-3 text-sm text-ink-muted hover:bg-surface", big)}>Clear</button>
+          <span className="text-sm font-medium tabular-nums text-ink">{timeLabel(out)}</span>
+          <button type="button" disabled={!ok} onClick={() => onPick(out)} className={cn("rounded-lg bg-ink px-4 text-sm font-medium text-white disabled:opacity-40", big)}>Done</button>
+        </div>
+      </div>
+    </Popover>
+  );
+}
+
+/** Times on a schedule (email / reminders): the same TimePicker, as a pill. */
+export function TimeSelect({ value, onChange, ariaLabel, variant = "pill", disabled, min, max, className }: {
+  value: string; onChange: (v: string) => void; ariaLabel?: string; variant?: Variant; disabled?: boolean; min?: string; max?: string; className?: string;
+}) {
+  // A schedule always has a time: Clear keeps the current one.
+  return <TimePicker value={value} onChange={(v) => v && onChange(v)} ariaLabel={ariaLabel} variant={variant} disabled={disabled} min={min} max={max} className={className} />;
+}
+
+/** Exact times (attendance In/Out, visit times): the same TimePicker, as a form field. */
 export function TimeInput({ value, onChange, ariaLabel, disabled, max, className }: {
   value: string; onChange: (v: string) => void; ariaLabel?: string; disabled?: boolean; max?: string; className?: string;
 }) {
-  const valid = !value || (/^([01]\d|2[0-3]):[0-5]\d$/.test(value) && (!max || value <= max));
-  const format = (raw: string) => {
-    const d = raw.replace(/\D/g, "").slice(0, 4);
-    return d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
-  };
-  return (
-    <div className={cn("relative", className)}>
-      <input value={value} inputMode="numeric" autoComplete="off" placeholder="HH:MM" maxLength={5} aria-label={ariaLabel} aria-invalid={!valid} disabled={disabled}
-        onChange={(e) => onChange(format(e.target.value))}
-        className={cn("min-h-11 w-full rounded-xl border bg-white py-2.5 pl-3.5 pr-9 text-base tabular-nums text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60 sm:text-sm",
-          valid ? "border-surface-border" : "border-status-danger")} />
-      <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" aria-hidden />
-    </div>
-  );
+  return <TimePicker value={value} onChange={onChange} ariaLabel={ariaLabel} disabled={disabled} max={max} className={className} />;
 }
