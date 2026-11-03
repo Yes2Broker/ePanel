@@ -50,7 +50,8 @@ export function Sidebar() {
         item={item}
         title={`${item.label}${item.comingSoon ? " (coming soon)" : item.external ? " (opens in a new tab)" : ""}`}
         className={cn(
-          "flex min-h-11 items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors",
+          // Tight rows so the whole menu fits the screen height (smaller still on short screens).
+          "flex min-h-9 items-center gap-3 rounded-lg px-2.5 py-1.5 text-sm transition-colors [@media(max-height:720px)]:min-h-8 [@media(max-height:720px)]:py-1",
           compact ? "justify-center" : "justify-center lg:justify-start",
           isActive ? "bg-white font-semibold text-ink shadow-card" : "font-normal text-ink-faint hover:text-ink-muted",
           item.comingSoon && !isActive && "opacity-70"
@@ -79,24 +80,25 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col overflow-y-auto bg-surface px-3.5 py-6 md:flex",
+        // Full height, never scrolls: everything is sized to fit.
+        "sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col overflow-hidden bg-surface px-3.5 py-4 md:flex [@media(max-height:720px)]:py-3",
         !compact && "lg:w-[280px] lg:px-5"
       )}
     >
-      <div className="mb-6 flex items-center gap-2 px-1">
-        <div className={cn("flex-1 justify-center", compact ? "flex" : "flex lg:hidden")}><LogoIcon size={40} /></div>
-        {!compact && <div className="hidden min-w-0 flex-1 lg:block"><FullLogo className="max-w-[180px]" priority /></div>}
+      <div className="mb-4 flex shrink-0 items-center gap-2 px-1 [@media(max-height:720px)]:mb-2">
+        <div className={cn("flex-1 justify-center", compact ? "flex" : "flex lg:hidden")}><LogoIcon size={34} /></div>
+        {!compact && <div className="hidden min-w-0 flex-1 lg:block"><FullLogo className="max-w-[160px] [@media(max-height:720px)]:max-w-[130px]" priority /></div>}
       </div>
-      <nav className="flex-1 space-y-4" aria-label="Main">
+      <nav className="min-h-0 flex-1 space-y-2.5 [@media(max-height:720px)]:space-y-1.5" aria-label="Main">
         {sections.map((sec) => (
-          <div key={sec.label} className="space-y-1">
-            <p className={cn("px-2.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint/80", compact ? "hidden" : "hidden lg:block")}>{sec.label}</p>
+          <div key={sec.label} className="space-y-0.5">
+            <p className={cn("px-2.5 text-[9.5px] font-semibold uppercase leading-4 tracking-wider text-ink-faint/80 [@media(max-height:720px)]:!hidden", compact ? "hidden" : "hidden lg:block")}>{sec.label}</p>
             {compact ? null : <div className="mx-2 border-t border-surface-border lg:hidden" aria-hidden />}
             {sec.items.map(link)}
           </div>
         ))}
       </nav>
-      <div className="mt-4 space-y-1 border-t border-surface-border pt-4">{bottom.map(link)}</div>
+      <div className="mt-2 shrink-0 space-y-0.5 border-t border-surface-border pt-2">{bottom.map(link)}</div>
     </aside>
   );
 }
