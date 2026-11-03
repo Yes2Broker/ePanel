@@ -54,6 +54,7 @@ export function EmployeeFormDialog({
   return (
     <Modal open={open} onClose={onClose} title={initial ? "Edit Employee" : "Add Employee"} wide>
       <form
+        autoComplete="off"
         onSubmit={(e) => {
           e.preventDefault();
           if (!initial && !idValid) return;

@@ -19,6 +19,8 @@ export function SuggestInput({ value, onChange, suggestions, placeholder, type =
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const id = useId();
+  // A random name/id each time the field appears, so Chrome can't match it to saved addresses.
+  const [fieldId] = useState(() => `f-${Math.random().toString(36).slice(2, 10)}`);
   const q = value.trim().toLowerCase().replace(/\s/g, "");
   const shown = suggestions.filter((s) => !q || s.value.toLowerCase().includes(q));
 
@@ -32,9 +34,11 @@ export function SuggestInput({ value, onChange, suggestions, placeholder, type =
   const pick = (v: string) => { onChange(v); setOpen(false); };
   return (
     <div ref={box} className="relative">
-      <input type={type} inputMode={inputMode} value={value} placeholder={placeholder} aria-label={label}
-        // A unique name + autocomplete off keeps Chrome's autofill popup away.
-        name={`y2b-${id}`} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+      {/* Always type="text" + new-password + a random name: stops Chrome's own autofill popup
+          (saved emails / "Manage addresses") from covering this list. */}
+      <input type="text" inputMode={type === "tel" ? "numeric" : type === "email" ? "email" : inputMode} value={value} placeholder={placeholder} aria-label={label}
+        id={fieldId} name={fieldId} autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+        data-lpignore="true" data-form-type="other"
         role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list"
         onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setActive(0); }}
