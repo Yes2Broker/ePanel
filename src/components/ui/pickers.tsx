@@ -337,17 +337,17 @@ export function parseTimeText(raw: string): string | null {
 }
 
 const nowHHMM = () => new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
-const DEFAULT_CHIPS = ["09:00", "10:00", "10:30", "18:00", "19:00"];
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
 
 /**
  * The panel's time picker: shows "10:30 AM" (12-hour), saves 24-hour "HH:MM".
- * Type straight into it ("1030", "7pm"…) or open the popup: quick times, Now,
- * Hour / Minute / AM-PM columns (↑/↓ work), Clear and Done. Phones get a sheet.
+ * Type straight into it ("1030", "7pm"…) or open the popup: Hour / Minute /
+ * AM-PM columns (↑/↓ work), scrolled to the value (or to now when empty),
+ * Clear and Done. Phones get a sheet.
  */
-export function TimePicker({ value, onChange, ariaLabel, variant = "field", disabled, min, max, placeholder = "Pick a time", className, chips = DEFAULT_CHIPS }: {
+export function TimePicker({ value, onChange, ariaLabel, variant = "field", disabled, min, max, placeholder = "Pick a time", className }: {
   value: string; onChange: (v: string) => void; ariaLabel?: string; variant?: Variant; disabled?: boolean;
-  min?: string; max?: string; placeholder?: string; className?: string; chips?: string[];
+  min?: string; max?: string; placeholder?: string; className?: string;
 }) {
   const { open, setOpen, close } = usePopover();
   const wrap = useRef<HTMLDivElement>(null);
@@ -373,17 +373,22 @@ export function TimePicker({ value, onChange, ariaLabel, variant = "field", disa
         className={cn(triggerCls(variant, !valid), "w-full pr-10 tabular-nums placeholder:text-ink-faint", variant === "pill" && "min-w-[8.5rem]")} />
       <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)} aria-label={`${ariaLabel ?? "Time"}: open time picker`} aria-haspopup="dialog" aria-expanded={open}
         className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-ink-faint hover:text-ink disabled:opacity-50"><Clock className="h-4 w-4" /></button>
-      {open && <TimePanel anchor={wrap} value={value} chips={chips} inRange={inRange} min={min} max={max} title={ariaLabel ?? "Pick a time"}
+      {open && <TimePanel anchor={wrap} value={value} inRange={inRange} min={min} max={max} title={ariaLabel ?? "Pick a time"}
         onClose={close} onPick={(t) => { onChange(t); setDraft(null); close(); }} />}
     </div>
   );
 }
 
-function TimePanel({ anchor, value, chips, inRange, min, max, title, onClose, onPick }: {
-  anchor: React.RefObject<HTMLElement>; value: string; chips: string[]; inRange: (t: string) => boolean; min?: string; max?: string; title: string;
+function TimePanel({ anchor, value, inRange, min, max, title, onClose, onPick }: {
+  anchor: React.RefObject<HTMLElement>; value: string; inRange: (t: string) => boolean; min?: string; max?: string; title: string;
   onClose: () => void; onPick: (t: string) => void;
 }) {
-  const start = /^\d{2}:\d{2}/.test(value) ? value : "10:00";
+  // Start at the value, or (empty) at now rounded to 5 minutes — highlighted, not filled in until Done.
+  const start = /^\d{2}:\d{2}/.test(value) ? value : (() => {
+    const [h, mm] = nowHHMM().split(":").map(Number);
+    const r = (Math.round((h * 60 + mm) / 5) * 5) % 1440;
+    return `${String(Math.floor(r / 60)).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`;
+  })();
   const [h24, setH24] = useState(Number(start.slice(0, 2)));
   const [m, setM] = useState(Number(start.slice(3, 5)));
   const [custom, setCustom] = useState(!MINUTES.includes(Number(start.slice(3, 5))));
@@ -391,6 +396,15 @@ function TimePanel({ anchor, value, chips, inRange, min, max, title, onClose, on
   const setHour12 = (h: number) => setH24((h % 12) + (pm ? 12 : 0));
   const out = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   const ok = inRange(out);
+  // Scroll the Hour / Minute columns to the highlighted time when the popup opens.
+  const cols = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const t = setTimeout(() => cols.current?.querySelectorAll<HTMLElement>("[data-on=true]").forEach((el) => {
+      const box = el.parentElement!;
+      box.scrollTop = el.offsetTop - box.clientHeight / 2 + el.clientHeight / 2;
+    }), 0);
+    return () => clearTimeout(t);
+  }, []);
   const big = "min-h-11 sm:min-h-9";
   const cell = (on: boolean) => cn("w-full rounded-lg px-2 text-sm tabular-nums", big, on ? "bg-ink font-semibold text-white" : "text-ink hover:bg-surface");
   const keys = (e: React.KeyboardEvent, step: (d: number) => void) => {
@@ -399,21 +413,14 @@ function TimePanel({ anchor, value, chips, inRange, min, max, title, onClose, on
   return (
     <Popover open onClose={onClose} anchor={anchor} title={title} width={300}>
       <div className="w-full space-y-2.5 p-1.5 sm:w-[300px]">
-        <div className="flex flex-wrap gap-1.5">
-          {[...chips, "now"].map((c) => {
-            const t = c === "now" ? nowHHMM() : c;
-            return <button key={c} type="button" disabled={!inRange(t)} onClick={() => onPick(t)}
-              className={cn("rounded-pill border border-surface-border px-2.5 text-xs text-ink hover:bg-surface disabled:opacity-40", big)}>{c === "now" ? "Now" : timeLabel(c)}</button>;
-          })}
-        </div>
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-          <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Hour"
+        <div ref={cols} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div className="relative max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Hour"
             onKeyDown={(e) => keys(e, (d) => setHour12(((h12 - 1 + d + 12) % 12) + 1))}>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => <button key={h} type="button" onClick={() => setHour12(h)} className={cell(h === h12)}>{h}</button>)}
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => <button key={h} type="button" data-on={h === h12} onClick={() => setHour12(h)} className={cell(h === h12)}>{h}</button>)}
           </div>
-          <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Minute"
+          <div className="relative max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Minute"
             onKeyDown={(e) => keys(e, (d) => { setCustom(false); setM((x) => (Math.round(x / 5) * 5 + d * 5 + 60) % 60); })}>
-            {MINUTES.map((x) => <button key={x} type="button" onClick={() => { setM(x); setCustom(false); }} className={cell(!custom && x === m)}>{String(x).padStart(2, "0")}</button>)}
+            {MINUTES.map((x) => <button key={x} type="button" data-on={!custom && x === m} onClick={() => { setM(x); setCustom(false); }} className={cell(!custom && x === m)}>{String(x).padStart(2, "0")}</button>)}
             {custom
               ? <input autoFocus inputMode="numeric" aria-label="Custom minute" value={String(m)} maxLength={2}
                   onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, "") || 0); if (v <= 59) setM(v); }}

@@ -56,6 +56,11 @@ export function ReportForm({
     form.scheduled.map((s) => ({ key: s.id, id: s.id, client: s.client, date: s.date, locked: s.locked }))
   );
   const [schedCount, setSchedCount] = useState(report && !imported ? String(form.scheduled.length) : "");
+  // The count only decides how many rows are SHOWN (and saved); typed rows are kept when it's
+  // cleared or lowered, so going back up restores them. Rows acted on later always show.
+  const schedN = isCount(schedCount) ? Math.min(Number(schedCount), 50) : 0;
+  const shownSched = sched.filter((r, i) => i < schedN || r.locked);
+  const filledSched = sched.filter((r) => r.client.trim() || r.date).length;
   const [actions, setActions] = useState<Record<string, ActionState>>(() =>
     Object.fromEntries(form.todayVisits.filter((v) => v.action).map((v) => [v.id, {
       action: v.action!.action, time: v.action!.time ?? "", date: v.action!.date ?? "", reason: v.action!.reason ?? "",
@@ -80,13 +85,13 @@ export function ReportForm({
       overdue: v.overdue,
       frozen: frozenIds.has(v.id),
     }));
-    const bookedHere = sched.filter((s) => s.date === date).map((s) => ({
+    const bookedHere = shownSched.filter((s) => s.date === date).map((s) => ({
       key: s.key, visitId: s.id, tempId: s.id ? undefined : s.key, client: s.client.trim() || "New visit",
       note: "Booked in this report", overdue: false, frozen: !!s.id && frozenIds.has(s.id),
     }));
     return [...fromServer, ...bookedHere];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.todayVisits, sched, date]);
+  }, [form.todayVisits, sched, schedN, date]);
 
   const usedFuture = new Set(future.map((f) => f.visitId).filter(Boolean));
   const maxTime = form.isToday ? nowHHMM() : undefined;
@@ -96,8 +101,10 @@ export function ReportForm({
   const onSchedCount = (v: string) => {
     setSchedCount(v);
     const n = isCount(v) ? Math.min(Number(v), 50) : 0;
-    setSched((rows) => resize(rows, n, () => ({ key: newTemp(), client: "", date: "", locked: false })));
+    // Only ever adds empty rows; never removes typed ones.
+    setSched((rows) => (rows.length >= n ? rows : [...rows, ...Array.from({ length: n - rows.length }, () => ({ key: newTemp(), client: "", date: "", locked: false }))]));
   };
+  const discardHiddenSched = () => setSched((rows) => rows.filter((r, i) => i < schedN || r.locked));
   const onFutureCount = (v: string) => {
     setFutureCount(v);
     const n = isCount(v) ? Math.min(Number(v), form.futureVisits.length) : 0;
@@ -122,7 +129,7 @@ export function ReportForm({
     for (const [k] of fields) if (!isCount(num[k])) return fail("Please enter valid positive numbers in all fields.");
     if (imported) return true;
     if (!isCount(schedCount || "0")) return fail("Please enter valid positive numbers in all fields.");
-    for (const s of sched) {
+    for (const s of shownSched) {
       if (!s.client.trim() || !s.date) return fail("Fill all scheduled visit fields.");
       if (s.date < date) return fail(`Scheduled visit date for ${s.client} must be today or later.`);
     }
@@ -155,7 +162,7 @@ export function ReportForm({
     const payload: ReportPayload = {
       leads: Number(num.leads), calls: Number(num.calls), positive: Number(num.positive), tokens: Number(num.tokens),
       ...(imported ? { scheduledCount: Number(num.scheduledCount), doneCount: Number(num.doneCount), walkInCount: Number(num.walkInCount || 0) } : {}),
-      scheduled: sched.map((s) => (s.id ? { id: s.id, client: s.client.trim(), date: s.date } : { tempId: s.key, client: s.client.trim(), date: s.date })),
+      scheduled: shownSched.map((s) => (s.id ? { id: s.id, client: s.client.trim(), date: s.date } : { tempId: s.key, client: s.client.trim(), date: s.date })),
       actions: todayItems.filter((i) => !i.frozen).map((i) => {
         const a = actions[i.key];
         return {
@@ -219,8 +226,14 @@ export function ReportForm({
 
       {!imported && (
         <>
-          <Section title="Today's Scheduled Visits" empty={sched.length === 0 ? "Enter \"Visit Scheduled Today\" above to add visits." : null}>
-            {sched.map((s, i) => (
+          <Section title="Today's Scheduled Visits" empty={shownSched.length === 0 && filledSched <= schedN ? "Enter \"Visit Scheduled Today\" above to add visits." : null}>
+            {schedCount !== "" && filledSched > schedN && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-warningBg px-3 py-2 text-sm text-status-warning" role="status">
+                <span>You have {filledSched} visits filled. Remove the extra ones or keep the count at {filledSched}.</span>
+                <button type="button" onClick={discardHiddenSched} className="font-medium underline underline-offset-2">Remove the extra ones</button>
+              </div>
+            )}
+            {shownSched.map((s, i) => (
               <div key={s.key} className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
                 <input aria-label={`Scheduled visit ${i + 1} client name`} placeholder="Client Name" value={s.client} disabled={s.locked}
                   onChange={(e) => setSched((rows) => rows.map((r) => (r.key === s.key ? { ...r, client: e.target.value } : r)))} className={inputCls} />
