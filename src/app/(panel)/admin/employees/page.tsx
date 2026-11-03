@@ -50,17 +50,15 @@ export default function AdminEmployeesPage() {
   // HR can manage everyone except Admin accounts (the database enforces this too).
   const canManage = (e: Employee) => isAdmin || e.role !== "Admin";
 
-  const save = async ({ password, simId, emailId, ...data }: EmployeeFormValues) => {
+  const save = async ({ password, ...data }: EmployeeFormValues) => {
     setSaving(true);
     try {
       if (editing) {
         await api.updateEmployee(editing.id, data);
         toast(`Saved changes for ${data.name}.`);
       } else {
-        const created = await api.createEmployee(data, password || "");
-        // Idle company SIM / email picked in the form (their login email and mobile stay as typed).
-        if (simId) await api.assetAssign("sim", simId, created.id).catch((err) => toast(errorMessage(err), "error"));
-        if (emailId) await api.assetAssign("email", emailId, created.id).catch((err) => toast(errorMessage(err), "error"));
+        // A company SIM / email picked in the form is assigned in the same save.
+        await api.createEmployee(data, password || "");
         toast(`${data.name} added. Share their password with them directly.`);
       }
       setDialogOpen(false);

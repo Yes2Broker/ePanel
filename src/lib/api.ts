@@ -87,7 +87,12 @@ interface SessionPayload {
   dashboard?: SavedDashboard | null;
 }
 
-type EmployeeInput = Omit<Employee, "salary"> & { salary: number | "" };
+type EmployeeInput = Omit<Employee, "salary"> & { salary: number | ""; simId?: string; emailId?: string };
+
+/** Until supabase/assets.sql is (re-)run the *_with_assets functions don't exist: save without assigning. */
+function withAssetsFallback<T>(call: Promise<T>, plain: () => Promise<T>) {
+  return call.catch((err) => { if (err instanceof ApiError && err.code === "PGRST202") return plain(); throw err; });
+}
 
 export const api = {
   // Auth
@@ -109,8 +114,11 @@ export const api = {
   assetHistory: (kind: AssetKind, id: string) => rpc<{ employee: string | null; employeeId: string | null; from: string; to: string | null; by: string | null; endedBy: string | null }[]>("asset_history_list", { p_kind: kind, p_id: id }),
   employeeAssets: (id: string) => rpc<{ sims: string[]; emails: string[] }>("employee_assets", { p_emp: id }),
   createEmployee: (data: EmployeeInput, password: string) =>
-    rpc<Employee>("create_employee", { p_data: data, p_password: password }),
-  updateEmployee: (id: string, data: EmployeeInput) => rpc<Employee>("update_employee", { p_id: id, p_data: data }),
+    withAssetsFallback(rpc<Employee>("create_employee_with_assets", { p_data: data, p_password: password }),
+      () => rpc<Employee>("create_employee", { p_data: data, p_password: password })),
+  // simId / emailId: an idle company SIM / email to assign in the same save (supabase/assets.sql).
+  updateEmployee: (id: string, data: EmployeeInput) => withAssetsFallback(rpc<Employee>("update_employee_with_assets", { p_id: id, p_data: data }),
+    () => rpc<Employee>("update_employee", { p_id: id, p_data: data })),
   resetPassword: (id: string, password: string) =>
     rpc<void>("reset_employee_password", { p_id: id, p_new_password: password }),
 

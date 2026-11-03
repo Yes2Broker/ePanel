@@ -243,6 +243,51 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- Add / edit employee with a company SIM and email picked in the form. The
+-- employee is saved and the items assigned in ONE transaction: if anything
+-- fails, nothing is saved or assigned. p_data.simId / p_data.emailId are
+-- optional; the item must be Idle (or already theirs).
+-- ---------------------------------------------------------------------------
+create or replace function private.asset_give(p_kind text, p_id uuid, p_emp text, p_since date, p_by text)
+returns void language plpgsql set search_path = public, private as $$
+declare
+  v_label text; v_old text; v_status text;
+begin
+  if p_id is null then return; end if;
+  if p_kind = 'sim' then select number, employee_id, status into v_label, v_old, v_status from company_sims where id = p_id for update;
+  else select email, employee_id, status into v_label, v_old, v_status from company_emails where id = p_id for update; end if;
+  if v_label is null then raise exception 'That company % no longer exists.', case when p_kind = 'sim' then 'SIM' else 'email' end using errcode = 'P0002'; end if;
+  if v_old = p_emp then return; end if;
+  if v_status <> 'Idle' then raise exception '% is no longer idle. Pick another one.', v_label using errcode = '23505'; end if;
+  if p_kind = 'sim' then update company_sims set status = 'Assigned', employee_id = p_emp, since = p_since, updated_at = now() where id = p_id;
+  else update company_emails set status = 'Assigned', employee_id = p_emp, since = p_since, updated_at = now() where id = p_id; end if;
+  perform private.asset_holder_changed(p_kind, p_id, v_label, v_old, p_emp, p_since, p_by);
+end $$;
+
+create or replace function public.create_employee_with_assets(p_token text, p_data jsonb, p_password text) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v jsonb := public.create_employee(p_token, p_data - 'simId' - 'emailId', p_password);
+  v_since date := coalesce(nullif(v ->> 'joiningDate', '')::date, private.today());
+begin
+  perform private.asset_give('sim', nullif(p_data ->> 'simId', '')::uuid, v ->> 'id', v_since, me.id);
+  perform private.asset_give('email', nullif(p_data ->> 'emailId', '')::uuid, v ->> 'id', v_since, me.id);
+  return v;
+end $$;
+
+create or replace function public.update_employee_with_assets(p_token text, p_id text, p_data jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  me employees := private.require_manager(p_token);
+  v jsonb := public.update_employee(p_token, p_id, p_data - 'simId' - 'emailId');
+begin
+  perform private.asset_give('sim', nullif(p_data ->> 'simId', '')::uuid, p_id, private.today(), me.id);
+  perform private.asset_give('email', nullif(p_data ->> 'emailId', '')::uuid, p_id, private.today(), me.id);
+  return v;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- One-time copy: each ACTIVE employee's profile mobile and email, as Assigned
 -- to them (empty and duplicate values skipped). Runs only the first time.
 -- ---------------------------------------------------------------------------
@@ -287,7 +332,7 @@ begin
   for f in
     select p.oid::regprocedure as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('assets_list','asset_save','asset_assign','asset_free','asset_delete','asset_history_list','employee_assets')
+    where n.nspname = 'public' and p.proname in ('assets_list','asset_save','asset_assign','asset_free','asset_delete','asset_history_list','employee_assets','create_employee_with_assets','update_employee_with_assets')
   loop
     execute format('revoke execute on function %s from public', f.sig);
     execute format('grant execute on function %s to anon, authenticated', f.sig);

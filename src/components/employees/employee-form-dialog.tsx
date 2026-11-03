@@ -7,12 +7,13 @@ import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Asset, Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export interface EmployeeFormValues {
   id: string; name: string; email: string; mobile: string; salary: number | "";
   joiningDate: string; department: Department; designation: string; role: Role;
   manager: string; status: EmploymentStatus; weekOff: number | null; password?: string;
-  /** New employee only: an idle company SIM / email to assign right away (SIMs & Emails). */
+  /** The idle company SIM / email picked in Mobile / Email: assigned in the same save (SIMs & Emails). */
   simId?: string; emailId?: string;
 }
 
@@ -32,9 +33,15 @@ export function EmployeeFormDialog({
     setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
     // New employee: suggest the next ID from the database (highest EMP number ever used + 1).
     if (!initial && open) api.nextEmployeeId().then((id) => setForm((f) => (f.id ? f : { ...f, id }))).catch(() => {});
-    if (!initial && open) api.assetsList().then((a) => setIdle({ sims: a.sims.filter((x) => x.status === "Idle"), emails: a.emails.filter((x) => x.status === "Idle") })).catch(() => setIdle(null));
+    // Company SIMs / emails to suggest: every Idle one, plus (edit) the ones already theirs.
+    const mine = (x: Asset) => x.status === "Idle" || (!!initial && x.employee?.id === initial.id);
+    if (open) api.assetsList().then((a) => setIdle({ sims: a.sims.filter(mine), emails: a.emails.filter(mine) })).catch(() => setIdle(null));
   }, [initial, open]);
   const [idle, setIdle] = useState<{ sims: Asset[]; emails: Asset[] } | null>(null);
+  // The listed item the field now holds (typed values that aren't listed are just text).
+  const digits = form.mobile.replace(/\D/g, "");
+  const pickedSim = digits.length >= 10 ? idle?.sims.find((x) => x.label === digits.slice(-10)) : undefined;
+  const pickedEmail = idle?.emails.find((x) => x.label === form.email.trim().toLowerCase());
   const idValid = /^EMP\d{3,}$/.test(form.id.trim().toUpperCase());
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -45,7 +52,7 @@ export function EmployeeFormDialog({
         onSubmit={(e) => {
           e.preventDefault();
           if (!initial && !idValid) return;
-          onSave({ ...form, id: form.id.trim().toUpperCase(), salary: form.salary.trim() === "" ? "" : Number(form.salary) });
+          onSave({ ...form, id: form.id.trim().toUpperCase(), salary: form.salary.trim() === "" ? "" : Number(form.salary), simId: pickedSim?.id ?? "", emailId: pickedEmail?.id ?? "" });
         }}
         className="space-y-4"
       >
@@ -57,8 +64,16 @@ export function EmployeeFormDialog({
               ? <span className="mt-1 block text-xs text-status-danger">Use the format EMP followed by the number, e.g. EMP022.</span>
               : <span className="mt-1 block text-xs text-ink-muted">Use the same number in the eTimeOffice machine ({form.id.trim().toUpperCase() || "EMP022"} = {(form.id.match(/\d+/)?.[0] ?? "022").padStart(4, "0")}).</span>)}
           </Field>
-          <Field label="Email (optional)"><input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
-          <Field label="Mobile Number"><input type="tel" inputMode="tel" autoComplete="off" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
+          <Field label="Email (optional)">
+            <input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" list="idle-company-emails" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Pick a company email or type any" className={inputCls} />
+            <datalist id="idle-company-emails">{idle?.emails.map((x) => <option key={x.id} value={x.label}>{x.status === "Idle" ? `${x.type} · idle` : `${x.type} · theirs`}</option>)}</datalist>
+            <AssetHint kind="emails" list={idle?.emails} picked={!!pickedEmail} />
+          </Field>
+          <Field label="Mobile Number">
+            <input type="tel" inputMode="tel" autoComplete="off" list="idle-company-sims" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} placeholder="Pick a company SIM or type a personal number" className={inputCls} />
+            <datalist id="idle-company-sims">{idle?.sims.map((x) => <option key={x.id} value={x.label}>{x.status === "Idle" ? `${x.type} · idle` : `${x.type} · theirs`}</option>)}</datalist>
+            <AssetHint kind="SIMs" list={idle?.sims} picked={!!pickedSim} />
+          </Field>
           <Field label="Salary"><input type="number" inputMode="numeric" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
           <Field label="Date of Joining"><DatePicker variant="field" ariaLabel="Date of Joining" value={form.joiningDate} onChange={(v) => set("joiningDate", v)} /></Field>
           <Field label="Department">
@@ -79,16 +94,6 @@ export function EmployeeFormDialog({
             <Select variant="field" ariaLabel="Employment Status" value={form.status} onChange={(v) => set("status", v as EmploymentStatus)}
               options={[{ value: "Active", label: "Active" }, { value: "Inactive", label: "Inactive" }]} />
           </Field>
-          {!initial && idle && (idle.sims.length > 0 || idle.emails.length > 0) && <>
-            <Field label="Company SIM (optional)">
-              <Select variant="field" ariaLabel="Company SIM" value={form.simId ?? ""} onChange={(v) => set("simId", v)}
-                options={[{ value: "", label: "None" }, ...idle.sims.map((s) => ({ value: s.id, label: `${s.label} (${s.type})` }))]} />
-            </Field>
-            <Field label="Company email (optional)">
-              <Select variant="field" ariaLabel="Company email" value={form.emailId ?? ""} onChange={(v) => set("emailId", v)}
-                options={[{ value: "", label: "None" }, ...idle.emails.map((s) => ({ value: s.id, label: s.label }))]} />
-            </Field>
-          </>}
           {!initial && (
             <Field label="Initial Password">
               <input required minLength={8} type="text" autoCapitalize="none" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="At least 8 characters" className={inputCls} />
@@ -106,5 +111,16 @@ export function EmployeeFormDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Under Mobile / Email: what picking from the list does, or that there's nothing idle. */
+function AssetHint({ kind, list, picked }: { kind: "SIMs" | "emails"; list: Asset[] | undefined; picked: boolean }) {
+  if (!list) return null;
+  if (!list.length) return <span className="mt-1 block text-xs text-ink-faint">No idle {kind} — add them in SIMs &amp; Emails.</span>;
+  return (
+    <span className={cn("mt-1 block text-xs", picked ? "text-status-success" : "text-ink-faint")}>
+      {picked ? `Company ${kind === "SIMs" ? "SIM" : "email"}: assigned to this employee when you save.` : `${list.length} company ${kind} to pick from, or type any.`}
+    </span>
   );
 }
