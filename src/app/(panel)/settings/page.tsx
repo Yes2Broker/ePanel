@@ -7,9 +7,12 @@ import { usePwa } from "@/context/pwa-context";
 import { PageHeader } from "@/components/ui/page";
 import { usePreferences } from "@/context/preferences-context";
 import { NotificationSettings } from "@/components/notifications/notification-settings";
+import { useToast } from "@/components/ui/toast";
+import { ASSIST_POS_RESET } from "@/components/assist/assist";
 
 export default function SettingsPage() {
   const { prefs, update } = usePreferences();
+  const toast = useToast();
   const { canInstall, install, installed } = usePwa();
 
   return (
@@ -33,11 +36,21 @@ export default function SettingsPage() {
         <h3 className="mb-3 text-sm font-semibold text-ink">Sidebar</h3>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-ink">Compact sidebar</p>
-            <p className="text-xs text-ink-faint">Show icons only, no labels (desktop).</p>
+            <p className="text-sm text-ink">Compact sidebar (icons only)</p>
+            <p className="text-xs text-ink-faint">Icons with tooltips, no labels (desktop).</p>
           </div>
           <Toggle checked={prefs.compactSidebar} onChange={(v) => update({ compactSidebar: v })} />
         </div>
+      </Card>
+
+      <Card className="flex items-center justify-between gap-4 p-4 sm:p-5">
+        <div>
+          <p className="text-sm text-ink">Y2B Assist button</p>
+          <p className="text-xs text-ink-faint">You can drag the button anywhere; this puts it back in the corner.</p>
+        </div>
+        <SecondaryButton className="shrink-0" onClick={() => { try { window.localStorage.removeItem("y2b-assist-pos"); } catch { /* blocked */ } window.dispatchEvent(new Event(ASSIST_POS_RESET)); toast("Assist button is back in the corner."); }}>
+          Reset Assist button position
+        </SecondaryButton>
       </Card>
 
       <Card className="flex items-center justify-between gap-4 p-4 sm:p-5">

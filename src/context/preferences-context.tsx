@@ -1,8 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useSession } from "@/context/session-context";
 
-/** Per-device display preferences. Kept in localStorage only. */
+/** Display preferences, per user on this device. Kept in localStorage only. */
 export interface Preferences {
   compactSidebar: boolean;
 }
@@ -20,10 +21,13 @@ const PreferencesContext = createContext<{
 
 export function PreferencesProvider({ children }: { children: React.ReactNode }) {
   const [prefs, setPrefs] = useState<Preferences>(DEFAULTS);
+  const userId = useSession().user?.id;
+  const key = `${STORAGE_KEY}-${userId ?? "guest"}`;
 
   useEffect(() => {
+    setPrefs(DEFAULTS);
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(key);
       if (raw) {
         const saved = JSON.parse(raw);
         setPrefs({ ...DEFAULTS, compactSidebar: !!saved.compactSidebar });
@@ -31,13 +35,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     } catch {
       // ignore unreadable storage
     }
-  }, []);
+  }, [key]);
 
   const update = (patch: Partial<Preferences>) => {
     setPrefs((current) => {
       const next = { ...current, ...patch };
       try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        window.localStorage.setItem(key, JSON.stringify(next));
       } catch {
         // storage blocked — preference lasts for this visit only
       }

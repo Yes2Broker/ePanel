@@ -24,24 +24,84 @@ const STATUS: Record<string, string> = {
  * screen on phones). The chat lives only in this browser tab (sessionStorage)
  * until the tab closes or "New chat"; nothing is saved on the server.
  */
+// Where the floating button sits (per device): which edge, and px from the top.
+const POS_KEY = "y2b-assist-pos";
+export const ASSIST_POS_RESET = "y2b-assist-pos-reset";
+type Pos = { side: "left" | "right"; y: number };
+const EDGE = 16;
+/** Keeps the button on screen and above the phone's bottom bar. */
+function clampY(y: number, h: number) {
+  const bottomBar = window.innerWidth < 768 ? 88 : 0;
+  return Math.min(Math.max(y, EDGE), window.innerHeight - bottomBar - h - EDGE);
+}
+
 export function Assist() {
   const { user, permissions } = useSession();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<Pos | null>(null);
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const start = useRef<{ px: number; py: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const moved = useRef(false);
+
+  useEffect(() => {
+    try { const p = JSON.parse(window.localStorage.getItem(POS_KEY) ?? "null"); if (p && (p.side === "left" || p.side === "right") && typeof p.y === "number") setPos(p); } catch { /* default spot */ }
+    const reset = () => setPos(null);
+    window.addEventListener(ASSIST_POS_RESET, reset);
+    return () => window.removeEventListener(ASSIST_POS_RESET, reset);
+  }, []);
+  // Stay on screen when the window changes size.
+  useEffect(() => {
+    const fit = () => setPos((p) => (p && btn.current ? { ...p, y: clampY(p.y, btn.current.offsetHeight) } : p));
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
   if (!ASSIST_ENABLED || !user || !permissions?.assist) return null;
+
+  const onDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    start.current = { px: e.clientX, py: e.clientY, ox: e.clientX - r.left, oy: e.clientY - r.top, moved: false };
+    moved.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const s = start.current;
+    if (!s) return;
+    // Only a drag of more than 5px counts as moving; a tap still opens the chat.
+    if (!s.moved && Math.hypot(e.clientX - s.px, e.clientY - s.py) <= 5) return;
+    s.moved = true;
+    setDrag({ x: e.clientX - s.ox, y: e.clientY - s.oy });
+  };
+  const onUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const s = start.current;
+    start.current = null;
+    if (!s?.moved) return;
+    moved.current = true;
+    const r = e.currentTarget.getBoundingClientRect();
+    const next: Pos = { side: r.left + r.width / 2 < window.innerWidth / 2 ? "left" : "right", y: clampY(r.top, r.height) };
+    setPos(next);
+    setDrag(null);
+    try { window.localStorage.setItem(POS_KEY, JSON.stringify(next)); } catch { /* lasts this visit */ }
+  };
+
+  const placed: React.CSSProperties | undefined = drag ? { left: drag.x, top: drag.y, right: "auto", bottom: "auto", transition: "none" }
+    : pos ? { top: pos.y, bottom: "auto", ...(pos.side === "left" ? { left: EDGE, right: "auto" } : { right: EDGE, left: "auto" }) } : undefined;
   return (
     <>
       {!open && (
-        <button onClick={() => setOpen(true)} aria-label="Open Y2B Assist"
-          className="fixed bottom-[calc(var(--nav-h)+1rem)] right-4 z-40 flex min-h-12 items-center gap-2 rounded-full bg-ink py-2.5 pl-3.5 pr-4 text-sm font-medium text-white shadow-lg hover:bg-ink/90 md:bottom-6 md:right-6">
+        <button ref={btn} onClick={() => { if (moved.current) { moved.current = false; return; } setOpen(true); }} aria-label="Open Y2B Assist"
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { start.current = null; setDrag(null); }}
+          style={placed} title="Drag to move"
+          className="fixed bottom-[calc(var(--nav-h)+1rem)] right-4 z-40 flex min-h-12 touch-none select-none items-center gap-2 rounded-full bg-ink py-2.5 pl-3.5 pr-4 text-sm font-medium text-white shadow-lg transition-[left,right,top] duration-200 hover:bg-ink/90 md:bottom-6 md:right-6">
           <Sparkles className="h-4 w-4" /> Y2B Assist
         </button>
       )}
-      <AssistChat key={user.id} open={open} onClose={() => setOpen(false)} />
+      <AssistChat key={user.id} open={open} onClose={() => setOpen(false)} side={pos?.side ?? "right"} />
     </>
   );
 }
 
-function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AssistChat({ open, onClose, side }: { open: boolean; onClose: () => void; side: "left" | "right" }) {
   const { user, permissions } = useSession();
   const manager = user?.role === "HR" || user?.role === "Admin";
   const can = areasOf(user?.role ?? "", permissions ?? {});
@@ -149,8 +209,10 @@ function AssistChat({ open, onClose }: { open: boolean; onClose: () => void }) {
       className={cn("fixed inset-0 z-50 sm:pointer-events-none", !open && "pointer-events-none invisible")}>
       <div onClick={onClose} className={cn("absolute inset-0 bg-ink/20 transition-opacity duration-200 sm:hidden", open ? "opacity-100" : "opacity-0")} />
       <div className={cn(
-        "pointer-events-auto absolute inset-0 flex flex-col bg-white transition-all duration-300 ease-out sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[420px] sm:shadow-2xl",
-        open ? "translate-y-0 opacity-100 sm:translate-x-0" : "translate-y-6 opacity-0 sm:translate-x-8 sm:translate-y-0")}>
+        // Opens on the side the button is on.
+        "pointer-events-auto absolute inset-0 flex flex-col bg-white transition-all duration-300 ease-out sm:inset-y-0 sm:w-[420px] sm:shadow-2xl",
+        side === "left" ? "sm:left-0 sm:right-auto" : "sm:left-auto sm:right-0",
+        open ? "translate-y-0 opacity-100 sm:translate-x-0" : cn("translate-y-6 opacity-0 sm:translate-y-0", side === "left" ? "sm:-translate-x-8" : "sm:translate-x-8"))}>
         {/* Header */}
         <div className="flex items-center gap-2.5 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <Avatar />
