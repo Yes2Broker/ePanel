@@ -194,7 +194,7 @@ export default function AdminEmployeesPage() {
         </div>
       </Card>
 
-      <EmployeeFormDialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null); }} onSave={save} initial={editing} saving={saving} canAssignAdmin={isAdmin} />
+      <EmployeeFormDialog open={dialogOpen} onClose={() => { setDialogOpen(false); setEditing(null); }} onSave={save} initial={editing} saving={saving} canAssignAdmin={isAdmin} employees={data ?? []} />
       <ResetPasswordDialog open={!!resetTarget} onClose={() => setResetTarget(null)} onSave={savePassword} employee={resetTarget} saving={saving} />
 
       <Modal open={!!viewing} onClose={() => setViewing(null)} title="Employee Details" wide

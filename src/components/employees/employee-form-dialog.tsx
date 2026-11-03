@@ -26,8 +26,9 @@ const EMPTY: FormState = {
 };
 
 export function EmployeeFormDialog({
-  open, onClose, onSave, initial, saving, canAssignAdmin,
-}: { open: boolean; onClose: () => void; onSave: (data: EmployeeFormValues) => void; initial: Employee | null; saving?: boolean; canAssignAdmin: boolean }) {
+  open, onClose, onSave, initial, saving, canAssignAdmin, employees,
+}: { open: boolean; onClose: () => void; onSave: (data: EmployeeFormValues) => void; initial: Employee | null; saving?: boolean; canAssignAdmin: boolean;
+  /** For the Reporting Manager suggestions. */ employees?: Employee[] }) {
   const [form, setForm] = useState<FormState>(EMPTY);
 
   useEffect(() => {
@@ -91,7 +92,14 @@ export function EmployeeFormDialog({
             <Select variant="field" ariaLabel="Role" value={form.role} onChange={(v) => set("role", v as Role)}
               options={ROLES.filter((r) => canAssignAdmin || r !== "Admin").map((r) => ({ value: r, label: r }))} />
           </Field>
-          <Field label="Reporting Manager"><input value={form.manager} onChange={(e) => set("manager", e.target.value)} className={inputCls} /></Field>
+          <Field label="Reporting Manager">
+            {/* Pick an active employee or type any other name; saved as text. */}
+            <SuggestInput label="Reporting Manager" value={form.manager} onChange={(v) => set("manager", v)} placeholder="Pick or type a name"
+              suggestions={(employees ?? []).filter((e) => e.status === "Active" && e.id !== initial?.id)
+                .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+                .map((e) => ({ value: e.name, note: `${e.id} · ${e.department}` }))}
+              empty="No active employees." />
+          </Field>
           <Field label="Weekly Off">
             <Select variant="field" ariaLabel="Weekly Off" value={form.weekOff == null ? "" : String(form.weekOff)} onChange={(v) => set("weekOff", v ? Number(v) : null)}
               options={[...WEEKDAYS.map((d, i) => ({ value: String(i + 1), label: d })), { value: "", label: "No weekly off" }]} />
