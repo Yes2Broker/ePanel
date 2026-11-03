@@ -43,7 +43,8 @@ export default function AdminEmployeesPage() {
     const matchesRole = roleFilter === "All" || e.role === roleFilter;
     const matchesStatus = statusFilter === "All" || e.status === statusFilter;
     return matchesSearch && matchesDept && matchesRole && matchesStatus;
-  }), [employees, search, deptFilter, roleFilter, statusFilter]);
+  // By Employee Code in number order (EMP002, EMP003 … EMP010 … EMP100).
+  }).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })), [employees, search, deptFilter, roleFilter, statusFilter]);
 
   // HR can manage everyone except Admin accounts (the database enforces this too).
   const canManage = (e: Employee) => isAdmin || e.role !== "Admin";
