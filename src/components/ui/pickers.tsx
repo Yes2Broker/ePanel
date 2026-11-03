@@ -36,8 +36,9 @@ function usePopover() {
   return { open, setOpen, close, triggerRef };
 }
 
-export function Popover({ open, onClose, anchor, title, children, width }: {
+export function Popover({ open, onClose, anchor, title, children, width, fit }: {
   open: boolean; onClose: () => void; anchor: React.RefObject<HTMLElement>; title: string; children: React.ReactNode; width?: number;
+  /** Size to the content (not the field's width), still aligned to the field and kept on screen. */ fit?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [phone, setPhone] = useState(false);
@@ -52,16 +53,16 @@ export function Popover({ open, onClose, anchor, title, children, width }: {
       const r = anchor.current?.getBoundingClientRect();
       if (!r) return;
       const h = panel.current?.offsetHeight ?? 320;
-      const w = Math.max(width ?? 0, r.width);
+      const w = fit ? (panel.current?.offsetWidth ?? 280) : Math.max(width ?? 0, r.width);
       const up = r.bottom + h + 8 > window.innerHeight && r.top - h - 8 > 0;
-      setPos({ top: up ? r.top - h - 6 : r.bottom + 6, left: Math.min(Math.max(8, r.left), window.innerWidth - w - 8), minWidth: w, up });
+      setPos({ top: up ? r.top - h - 6 : r.bottom + 6, left: Math.min(Math.max(8, r.left), window.innerWidth - w - 8), minWidth: fit ? 0 : w, up });
     };
     place();
     const raf = requestAnimationFrame(place);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [open, anchor, width]);
+  }, [open, anchor, width, fit]);
 
   useEffect(() => {
     if (!open) return;
@@ -349,33 +350,22 @@ export function TimePicker({ value, onChange, ariaLabel, variant = "field", disa
   value: string; onChange: (v: string) => void; ariaLabel?: string; variant?: Variant; disabled?: boolean;
   min?: string; max?: string; placeholder?: string; className?: string;
 }) {
-  const { open, setOpen, close } = usePopover();
-  const wrap = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState<string | null>(null);
-  // Phones: no keyboard, the field opens the sheet.
-  const [phone, setPhone] = useState(false);
-  useEffect(() => setPhone(isPhone()), []);
+  // Read-only: the whole box opens the popup (click, tap, Enter, Space); no typing.
+  const { open, setOpen, close, triggerRef } = usePopover();
   const inRange = (t: string) => (!min || t >= min) && (!max || t <= max);
   const valid = !value || (/^([01]\d|2[0-3]):[0-5]\d$/.test(value) && inRange(value));
-  const commitDraft = () => {
-    if (draft == null) return;
-    const t = draft.trim() ? parseTimeText(draft) : "";
-    if (t !== null) onChange(t);
-    setDraft(null);
-  };
   return (
-    <div ref={wrap} className={cn("relative", variant === "pill" ? "inline-block" : "", className)}>
-      <input value={draft ?? (value ? time12(value) : "")} placeholder={placeholder} aria-label={ariaLabel} aria-invalid={!valid || (draft != null && !!draft.trim() && !parseTimeText(draft))} disabled={disabled}
-        autoComplete="off" inputMode="text" readOnly={phone}
-        onChange={(e) => setDraft(e.target.value)} onBlur={commitDraft}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitDraft(); } else if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}
-        onClick={() => { if (phone) setOpen(true); }}
-        className={cn(triggerCls(variant, !valid), "w-full pr-10 tabular-nums placeholder:text-ink-faint", variant === "pill" && "min-w-[8.5rem]")} />
-      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)} aria-label={`${ariaLabel ?? "Time"}: open time picker`} aria-haspopup="dialog" aria-expanded={open}
-        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-ink-faint hover:text-ink disabled:opacity-50"><Clock className="h-4 w-4" /></button>
-      {open && <TimePanel anchor={wrap} value={value} inRange={inRange} min={min} max={max} title={ariaLabel ?? "Pick a time"}
-        onClose={close} onPick={(t) => { onChange(t); setDraft(null); close(); }} />}
-    </div>
+    <>
+      <button ref={triggerRef} type="button" disabled={disabled} aria-haspopup="dialog" aria-expanded={open} aria-invalid={!valid}
+        aria-label={ariaLabel ? `${ariaLabel}${value ? `: ${time12(value)}` : ""}` : undefined} data-value={value}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(triggerCls(variant, !valid), "tabular-nums", variant === "pill" && "min-w-[8.5rem]", className)}>
+        <span className={cn("min-w-0 truncate", !value && "text-ink-faint")}>{value ? time12(value) : placeholder}</span>
+        <Clock className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />
+      </button>
+      {open && <TimePanel anchor={triggerRef} value={value} inRange={inRange} min={min} max={max} title={ariaLabel ?? "Pick a time"}
+        onClose={close} onPick={(t) => { onChange(t); close(); }} />}
+    </>
   );
 }
 
@@ -383,10 +373,12 @@ function TimePanel({ anchor, value, inRange, min, max, title, onClose, onPick }:
   anchor: React.RefObject<HTMLElement>; value: string; inRange: (t: string) => boolean; min?: string; max?: string; title: string;
   onClose: () => void; onPick: (t: string) => void;
 }) {
-  // Start at the value, or (empty) at now rounded to 5 minutes — highlighted, not filled in until Done.
+  // Start at the value, or (empty) at now — highlighted, not filled in until Done.
   const start = /^\d{2}:\d{2}/.test(value) ? value : (() => {
     const [h, mm] = nowHHMM().split(":").map(Number);
-    const r = (Math.round((h * 60 + mm) / 5) * 5) % 1440;
+    // Round DOWN to 5 minutes (5:53 → 5:50), never later than allowed.
+    let r = Math.floor((h * 60 + mm) / 5) * 5;
+    if (max) r = Math.min(r, Math.floor((Number(max.slice(0, 2)) * 60 + Number(max.slice(3, 5))) / 5) * 5);
     return `${String(Math.floor(r / 60)).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`;
   })();
   const [h24, setH24] = useState(Number(start.slice(0, 2)));
@@ -406,21 +398,26 @@ function TimePanel({ anchor, value, inRange, min, max, title, onClose, onPick }:
     return () => clearTimeout(t);
   }, []);
   const big = "min-h-11 sm:min-h-9";
-  const cell = (on: boolean) => cn("w-full rounded-lg px-2 text-sm tabular-nums", big, on ? "bg-ink font-semibold text-white" : "text-ink hover:bg-surface");
+  const cell = (on: boolean) => cn("w-full rounded-lg px-2 text-sm tabular-nums disabled:cursor-not-allowed disabled:opacity-30", big, on ? "bg-ink font-semibold text-white" : "text-ink hover:bg-surface");
+  // Times outside min / max can't be picked.
+  const at = (h: number, mm: number) => `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  const hourOff = (h: number, isPm = pm) => { const x = (h % 12) + (isPm ? 12 : 0); return MINUTES.every((mm) => !inRange(at(x, mm))); };
+  const minuteOff = (mm: number) => !inRange(at(h24, mm));
+  const halfOff = (isPm: boolean) => Array.from({ length: 12 }, (_, i) => i + 1).every((h) => hourOff(h, isPm));
   const keys = (e: React.KeyboardEvent, step: (d: number) => void) => {
     if (e.key === "ArrowUp") { e.preventDefault(); step(-1); } else if (e.key === "ArrowDown") { e.preventDefault(); step(1); } else if (e.key === "Enter" && ok) { e.preventDefault(); onPick(out); }
   };
   return (
-    <Popover open onClose={onClose} anchor={anchor} title={title} width={300}>
-      <div className="w-full space-y-2.5 p-1.5 sm:w-[300px]">
+    <Popover open onClose={onClose} anchor={anchor} title={title} fit>
+      <div className="w-full space-y-2.5 p-1.5 sm:w-[264px]">
         <div ref={cols} className="grid grid-cols-[1fr_1fr_auto] gap-2">
           <div className="relative max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Hour"
             onKeyDown={(e) => keys(e, (d) => setHour12(((h12 - 1 + d + 12) % 12) + 1))}>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => <button key={h} type="button" data-on={h === h12} onClick={() => setHour12(h)} className={cell(h === h12)}>{h}</button>)}
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => <button key={h} type="button" data-on={h === h12} disabled={hourOff(h)} onClick={() => setHour12(h)} className={cell(h === h12)}>{h}</button>)}
           </div>
           <div className="relative max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-surface-border p-1 focus:outline-none focus:ring-2 focus:ring-brand" tabIndex={0} aria-label="Minute"
             onKeyDown={(e) => keys(e, (d) => { setCustom(false); setM((x) => (Math.round(x / 5) * 5 + d * 5 + 60) % 60); })}>
-            {MINUTES.map((x) => <button key={x} type="button" data-on={!custom && x === m} onClick={() => { setM(x); setCustom(false); }} className={cell(!custom && x === m)}>{String(x).padStart(2, "0")}</button>)}
+            {MINUTES.map((x) => <button key={x} type="button" data-on={!custom && x === m} disabled={minuteOff(x)} onClick={() => { setM(x); setCustom(false); }} className={cell(!custom && x === m)}>{String(x).padStart(2, "0")}</button>)}
             {custom
               ? <input autoFocus inputMode="numeric" aria-label="Custom minute" value={String(m)} maxLength={2}
                   onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, "") || 0); if (v <= 59) setM(v); }}
@@ -429,8 +426,8 @@ function TimePanel({ anchor, value, inRange, min, max, title, onClose, onPick }:
           </div>
           <div className="flex flex-col gap-1" role="radiogroup" aria-label="AM or PM">
             {["AM", "PM"].map((x) => (
-              <button key={x} type="button" role="radio" aria-checked={(x === "PM") === pm} onClick={() => setH24((h24 % 12) + (x === "PM" ? 12 : 0))}
-                className={cn("rounded-lg border px-3 text-sm", big, (x === "PM") === pm ? "border-ink bg-ink font-semibold text-white" : "border-surface-border text-ink hover:bg-surface")}>{x}</button>
+              <button key={x} type="button" role="radio" aria-checked={(x === "PM") === pm} disabled={halfOff(x === "PM")} onClick={() => setH24((h24 % 12) + (x === "PM" ? 12 : 0))}
+                className={cn("rounded-lg border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-30", big, (x === "PM") === pm ? "border-ink bg-ink font-semibold text-white" : "border-surface-border text-ink hover:bg-surface")}>{x}</button>
             ))}
           </div>
         </div>

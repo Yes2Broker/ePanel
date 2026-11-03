@@ -263,7 +263,8 @@ export function ReportForm({
                       {serverAction?.action === "done" ? `Done at ${time12(serverAction.time)}` : serverAction?.action === "reschedule" ? `Rescheduled to ${shortDate(serverAction.date)}` : `Cancelled`} — updated later in another report
                     </p>
                   ) : (
-                    <>
+                    // One line: action ≈40% (50% on phones), its time / date / reason ≈60%.
+                    <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-[2fr_3fr]">
                       <Select variant="field" ariaLabel={`Action for ${item.client}`} value={a.action} onChange={(v) => set({ action: v as VisitActionType })} placeholder="Select Action"
                         options={[{ value: "done", label: "Done" }, { value: "reschedule", label: "Reschedule" }, { value: "cancel", label: "Cancel" }]} />
                       {a.action === "done" && (
@@ -275,7 +276,8 @@ export function ReportForm({
                       {a.action === "cancel" && (
                         <input aria-label={`Cancel reason for ${item.client}`} placeholder="Reason to cancel" value={a.reason} onChange={(e) => set({ reason: e.target.value })} className={inputCls} />
                       )}
-                    </>
+                      {!a.action && <span />}
+                    </div>
                   )}
                 </div>
               );
