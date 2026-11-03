@@ -226,6 +226,15 @@ begin
   return coalesce((select jsonb_agg(private.with_salary(private.employee_json(e), e, v_me) order by e.name) from employees e), '[]'::jsonb);
 end $$;
 
+-- Suggested ID for a new employee: highest EMP number ever used (active and
+-- inactive; employees are never deleted) + 1, e.g. EMP022. HR can change it.
+create or replace function public.next_employee_id(p_token text) returns text
+language plpgsql stable security definer set search_path = public, private as $$
+begin
+  perform private.require_manager(p_token);
+  return 'EMP' || lpad((coalesce(max(substring(id from '^EMP(\d+)$')::int), 0) + 1)::text, 3, '0') from employees;
+end $$;
+
 create or replace function public.create_employee(p_token text, p_data jsonb, p_password text) returns jsonb
 language plpgsql volatile security definer set search_path = public, extensions, private as $$
 declare
@@ -242,8 +251,13 @@ begin
      and exists (select 1 from employees where lower(email) = lower(trim(p_data ->> 'email'))) then
     raise exception 'An employee with this email already exists.' using errcode = '23505';
   end if;
+  if upper(trim(coalesce(p_data ->> 'id', ''))) !~ '^EMP\d{3,}$' then
+    raise exception 'Employee ID must look like EMP022.' using errcode = '22023';
+  end if;
+  -- One new employee at a time, so two HR saving together can't both take the same ID.
+  perform pg_advisory_xact_lock(hashtext('create_employee'));
   if exists (select 1 from employees where id = upper(trim(p_data ->> 'id'))) then
-    raise exception 'An employee with this ID already exists.' using errcode = '23505';
+    raise exception '% is already used. Use the next number instead.', upper(trim(p_data ->> 'id')) using errcode = '23505';
   end if;
 
   insert into employees (id, name, email, mobile, department, role, designation, salary, joining_date, manager, status, week_off, password_hash)
@@ -454,7 +468,7 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname in (
       'login_employee','logout_employee','get_me','change_my_password',
-      'list_employees','create_employee','update_employee','reset_employee_password',
+      'list_employees','next_employee_id','create_employee','update_employee','reset_employee_password',
       'get_employee_permissions','set_employee_permission',
       'employee_dashboard','admin_dashboard','save_dashboard_layout'
     )

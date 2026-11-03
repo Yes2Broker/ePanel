@@ -6,6 +6,7 @@ import { DatePicker, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
+import { api } from "@/lib/api";
 
 export interface EmployeeFormValues {
   id: string; name: string; email: string; mobile: string; salary: number | "";
@@ -27,7 +28,10 @@ export function EmployeeFormDialog({
 
   useEffect(() => {
     setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
+    // New employee: suggest the next ID from the database (highest EMP number ever used + 1).
+    if (!initial && open) api.nextEmployeeId().then((id) => setForm((f) => (f.id ? f : { ...f, id }))).catch(() => {});
   }, [initial, open]);
+  const idValid = /^EMP\d{3,}$/.test(form.id.trim().toUpperCase());
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -36,13 +40,19 @@ export function EmployeeFormDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSave({ ...form, salary: form.salary.trim() === "" ? "" : Number(form.salary) });
+          if (!initial && !idValid) return;
+          onSave({ ...form, id: form.id.trim().toUpperCase(), salary: form.salary.trim() === "" ? "" : Number(form.salary) });
         }}
         className="space-y-4"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full Name"><input required value={form.name} onChange={(e) => set("name", e.target.value)} className={inputCls} /></Field>
-          <Field label="Employee ID"><input required disabled={!!initial} autoCapitalize="characters" value={form.id} onChange={(e) => set("id", e.target.value)} className={inputCls} /></Field>
+          <Field label="Employee ID">
+            <input required disabled={!!initial} autoCapitalize="characters" value={form.id} onChange={(e) => set("id", e.target.value)} placeholder="EMP022" className={inputCls} aria-invalid={!initial && !!form.id && !idValid} />
+            {!initial && (form.id && !idValid
+              ? <span className="mt-1 block text-xs text-status-danger">Use the format EMP followed by the number, e.g. EMP022.</span>
+              : <span className="mt-1 block text-xs text-ink-muted">Use the same number in the eTimeOffice machine ({form.id.trim().toUpperCase() || "EMP022"} = {(form.id.match(/\d+/)?.[0] ?? "022").padStart(4, "0")}).</span>)}
+          </Field>
           <Field label="Email (optional)"><input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} /></Field>
           <Field label="Mobile Number"><input type="tel" inputMode="tel" autoComplete="off" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} className={inputCls} /></Field>
           <Field label="Salary"><input type="number" inputMode="numeric" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>

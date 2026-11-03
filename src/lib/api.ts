@@ -100,6 +100,7 @@ export const api = {
 
   // Employees (HR / Admin)
   listEmployees: () => rpc<Employee[]>("list_employees"),
+  nextEmployeeId: () => rpc<string>("next_employee_id"),
   createEmployee: (data: EmployeeInput, password: string) =>
     rpc<Employee>("create_employee", { p_data: data, p_password: password }),
   updateEmployee: (id: string, data: EmployeeInput) => rpc<Employee>("update_employee", { p_id: id, p_data: data }),
