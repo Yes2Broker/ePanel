@@ -25,7 +25,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   // The /admin area is for HR and Admin only. The database enforces this
   // too; this just keeps employees from landing on an empty page.
   // A switched-off feature shows "Coming soon" to everyone instead.
-  const blocked = !!user && !isManager && pathname.startsWith("/admin") && !lockedFeature;
+  const blocked = !!user && !isManager && (pathname.startsWith("/admin") || pathname.startsWith("/assets")) && !lockedFeature;
   // The installed app opens at /dashboard; HR and Admin's dashboard is /admin.
   const toAdmin = !!user && isManager && pathname === "/dashboard";
   useEffect(() => {

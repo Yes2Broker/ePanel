@@ -35,6 +35,7 @@ is loaded once from a seed file kept out of Git.
 5. `supabase/leave.sql` — Leave
 6. `supabase/attendance.sql` — Attendance and the salary sheet
 7. `supabase/assist.sql` — Y2B Assist (question limit and its read-only helpers)
+   - `supabase/assets.sql` — SIMs & Emails (company SIM cards and email accounts)
 8. `supabase/cleanup_unused.sql` — one time: drops functions and old tables
    the panel no longer uses (only tables nothing depends on)
 9. *(optional)* `supabase/email_schedule.sql` — the 10 PM email timer (edit

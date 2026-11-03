@@ -348,3 +348,20 @@ export interface PaidLeave extends Omit<PaidLeaveInput, "employees"> {
   updatedAt: string | null;
 }
 export interface PaidLeaveDay { employeeId: string; date: string; reason: string; halfDay: boolean }
+
+// ---------------------------------------------------------------------------
+// SIMs & Emails (company SIM cards and email accounts) — see supabase/assets.sql
+// ---------------------------------------------------------------------------
+export type AssetKind = "sim" | "email";
+export type AssetStatus = "Assigned" | "Idle" | "Blocked";
+export interface Asset {
+  id: string;
+  kind: AssetKind;
+  label: string; // SIM number or email address
+  type: string; // operator or provider
+  status: AssetStatus;
+  employee: { id: string; name: string; status: string } | null;
+  since: string | null;
+  note: string;
+}
+export interface AssetInput { label: string; type: string; status: AssetStatus; employeeId: string; since: string; note: string }

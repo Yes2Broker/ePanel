@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { DatePicker, Select } from "@/components/ui/pickers";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
-import { Employee, Department, Role, EmploymentStatus } from "@/types";
+import { Asset, Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
 import { api } from "@/lib/api";
 
@@ -12,13 +12,15 @@ export interface EmployeeFormValues {
   id: string; name: string; email: string; mobile: string; salary: number | "";
   joiningDate: string; department: Department; designation: string; role: Role;
   manager: string; status: EmploymentStatus; weekOff: number | null; password?: string;
+  /** New employee only: an idle company SIM / email to assign right away (SIMs & Emails). */
+  simId?: string; emailId?: string;
 }
 
 type FormState = Omit<EmployeeFormValues, "salary"> & { salary: string };
 
 const EMPTY: FormState = {
   id: "", name: "", email: "", mobile: "", salary: "", joiningDate: "",
-  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active", weekOff: 7, password: "",
+  department: "Sales", designation: "", role: "Employee", manager: "", status: "Active", weekOff: 7, password: "", simId: "", emailId: "",
 };
 
 export function EmployeeFormDialog({
@@ -30,7 +32,9 @@ export function EmployeeFormDialog({
     setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
     // New employee: suggest the next ID from the database (highest EMP number ever used + 1).
     if (!initial && open) api.nextEmployeeId().then((id) => setForm((f) => (f.id ? f : { ...f, id }))).catch(() => {});
+    if (!initial && open) api.assetsList().then((a) => setIdle({ sims: a.sims.filter((x) => x.status === "Idle"), emails: a.emails.filter((x) => x.status === "Idle") })).catch(() => setIdle(null));
   }, [initial, open]);
+  const [idle, setIdle] = useState<{ sims: Asset[]; emails: Asset[] } | null>(null);
   const idValid = /^EMP\d{3,}$/.test(form.id.trim().toUpperCase());
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -75,6 +79,16 @@ export function EmployeeFormDialog({
             <Select variant="field" ariaLabel="Employment Status" value={form.status} onChange={(v) => set("status", v as EmploymentStatus)}
               options={[{ value: "Active", label: "Active" }, { value: "Inactive", label: "Inactive" }]} />
           </Field>
+          {!initial && idle && (idle.sims.length > 0 || idle.emails.length > 0) && <>
+            <Field label="Company SIM (optional)">
+              <Select variant="field" ariaLabel="Company SIM" value={form.simId ?? ""} onChange={(v) => set("simId", v)}
+                options={[{ value: "", label: "None" }, ...idle.sims.map((s) => ({ value: s.id, label: `${s.label} (${s.type})` }))]} />
+            </Field>
+            <Field label="Company email (optional)">
+              <Select variant="field" ariaLabel="Company email" value={form.emailId ?? ""} onChange={(v) => set("emailId", v)}
+                options={[{ value: "", label: "None" }, ...idle.emails.map((s) => ({ value: s.id, label: s.label }))]} />
+            </Field>
+          </>}
           {!initial && (
             <Field label="Initial Password">
               <input required minLength={8} type="text" autoCapitalize="none" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="At least 8 characters" className={inputCls} />

@@ -39,6 +39,8 @@ export function pageAccess(role: string, permissions: Partial<Record<string, boo
     attendance: isManager || can("attendance"),
     reports: isManager || can("normalReport") || can("soleSelling"),
     leave: isManager || can("leave"),
+    // SIMs & Emails: HR and Admin only.
+    assets: isManager,
   };
 }
 

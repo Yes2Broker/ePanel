@@ -34,6 +34,7 @@ export default function AdminEmployeesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [viewing, setViewing] = useState<Employee | null>(null);
+  const viewingAssets = useApi(() => (viewing ? api.employeeAssets(viewing.id) : Promise.resolve(null)), [viewing?.id]);
   const [resetTarget, setResetTarget] = useState<Employee | null>(null);
 
   const filtered = useMemo(() => employees.filter((e) => {
@@ -49,14 +50,17 @@ export default function AdminEmployeesPage() {
   // HR can manage everyone except Admin accounts (the database enforces this too).
   const canManage = (e: Employee) => isAdmin || e.role !== "Admin";
 
-  const save = async ({ password, ...data }: EmployeeFormValues) => {
+  const save = async ({ password, simId, emailId, ...data }: EmployeeFormValues) => {
     setSaving(true);
     try {
       if (editing) {
         await api.updateEmployee(editing.id, data);
         toast(`Saved changes for ${data.name}.`);
       } else {
-        await api.createEmployee(data, password || "");
+        const created = await api.createEmployee(data, password || "");
+        // Idle company SIM / email picked in the form (their login email and mobile stay as typed).
+        if (simId) await api.assetAssign("sim", simId, created.id).catch((err) => toast(errorMessage(err), "error"));
+        if (emailId) await api.assetAssign("email", emailId, created.id).catch((err) => toast(errorMessage(err), "error"));
         toast(`${data.name} added. Share their password with them directly.`);
       }
       setDialogOpen(false);
@@ -198,7 +202,8 @@ export default function AdminEmployeesPage() {
             {[["Full Name", viewing.name], ["Employee ID", viewing.id], ["Email", viewing.email], ["Mobile", viewing.mobile],
               ["Department", viewing.department], ["Role", viewing.role], ["Designation", viewing.designation],
               ["Salary", formatINR(viewing.salary)], ["Date of Joining", viewing.joiningDate ? formatDate(viewing.joiningDate) : ""],
-              ["Reporting Manager", viewing.manager], ["Weekly Off", weekOffLabel(viewing.weekOff)], ["Status", viewing.status]].map(([label, value]) => (
+              ["Reporting Manager", viewing.manager], ["Weekly Off", weekOffLabel(viewing.weekOff)], ["Status", viewing.status],
+              ["Company SIM", viewingAssets.data?.sims.join(", ")], ["Company email", viewingAssets.data?.emails.join(", ")]].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-ink-faint">{label}</p>
                 <p className="mt-0.5 break-words font-medium text-ink">{value || "—"}</p>

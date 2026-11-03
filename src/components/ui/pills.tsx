@@ -2,6 +2,9 @@ import { cn } from "@/lib/utils";
 
 const STATUS_STYLES: Record<string, string> = {
   Present: "bg-status-successBg text-status-success",
+  Assigned: "bg-status-successBg text-status-success",
+  Idle: "bg-status-neutralBg text-ink-muted",
+  Blocked: "bg-status-dangerBg text-status-danger",
   Completed: "bg-status-successBg text-status-success",
   Submitted: "bg-status-successBg text-status-success",
   Approved: "bg-status-successBg text-status-success",

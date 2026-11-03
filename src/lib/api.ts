@@ -5,7 +5,7 @@ import {
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
-  PaidLeave, PaidLeaveInput, PaidLeaveDay,
+  PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind,
 } from "@/types";
 
 /**
@@ -101,6 +101,13 @@ export const api = {
   // Employees (HR / Admin)
   listEmployees: () => rpc<Employee[]>("list_employees"),
   nextEmployeeId: () => rpc<string>("next_employee_id"),
+  assetsList: () => rpc<{ sims: Asset[]; emails: Asset[] }>("assets_list"),
+  assetSave: (kind: AssetKind, id: string | null, data: AssetInput) => rpc<string>("asset_save", { p_kind: kind, p_id: id, p_data: data }),
+  assetAssign: (kind: AssetKind, id: string, employeeId: string) => rpc<void>("asset_assign", { p_kind: kind, p_id: id, p_emp: employeeId }),
+  assetFree: (kind: AssetKind, id: string) => rpc<void>("asset_free", { p_kind: kind, p_id: id }),
+  assetDelete: (kind: AssetKind, id: string) => rpc<void>("asset_delete", { p_kind: kind, p_id: id }),
+  assetHistory: (kind: AssetKind, id: string) => rpc<{ employee: string | null; employeeId: string | null; from: string; to: string | null; by: string | null; endedBy: string | null }[]>("asset_history_list", { p_kind: kind, p_id: id }),
+  employeeAssets: (id: string) => rpc<{ sims: string[]; emails: string[] }>("employee_assets", { p_emp: id }),
   createEmployee: (data: EmployeeInput, password: string) =>
     rpc<Employee>("create_employee", { p_data: data, p_password: password }),
   updateEmployee: (id: string, data: EmployeeInput) => rpc<Employee>("update_employee", { p_id: id, p_data: data }),
