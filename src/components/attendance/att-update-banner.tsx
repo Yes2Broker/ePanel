@@ -44,7 +44,7 @@ export function AttUpdateBanner({ where = "attendance", href }: { where?: "dashb
             </Link>
           ) : (
             <PrimaryButton onClick={() => mark(u.month)} disabled={busy === u.month} className="min-h-10 shrink-0">
-              <Check className="h-4 w-4" /> {busy === u.month ? "Saving…" : "Mark as checked ✓"}
+              <Check className="h-4 w-4" /> {busy === u.month ? "Saving…" : "Mark as checked"}
             </PrimaryButton>
           )}
         </div>

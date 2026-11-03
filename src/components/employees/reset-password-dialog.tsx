@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function ResetPasswordDialog({
   open, onClose, onSave, employeeName, saving,
@@ -21,7 +22,7 @@ export function ResetPasswordDialog({
         className="space-y-4"
       >
         <Field label="New Password">
-          <input required autoFocus minLength={8} autoCapitalize="none" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="At least 8 characters" />
+          <PasswordInput required autoFocus minLength={8} autoCapitalize="none" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="At least 8 characters" />
         </Field>
         <p className="text-xs text-ink-faint">Share this new password with the employee directly. They'll be signed out of every device.</p>
         <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:justify-end">

@@ -12,6 +12,7 @@ import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
 import { initials, formatINR, formatDate } from "@/lib/utils";
 import { weekOffLabel } from "@/lib/constants";
+import { PasswordInput } from "@/components/ui/password-input";
 
 function Row({ label, value, locked }: { label: string; value: React.ReactNode; locked?: boolean }) {
   return (
@@ -104,13 +105,13 @@ function ChangePasswordCard() {
       <p className="mt-0.5 text-xs text-ink-faint">Forgot your current password? HR or Admin can reset it for you.</p>
       <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="Current password">
-          <input type="password" required autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={inputCls} />
+          <PasswordInput required autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={inputCls} />
         </Field>
         <Field label="New password">
-          <input type="password" required minLength={8} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} />
+          <PasswordInput required minLength={8} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} />
         </Field>
         <Field label="Confirm new password">
-          <input type="password" required autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} />
+          <PasswordInput required autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} />
         </Field>
         <div className="flex items-center justify-between gap-3 sm:col-span-3">
           <p className="text-xs text-status-danger" role="alert">{error}</p>

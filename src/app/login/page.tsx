@@ -6,6 +6,7 @@ import { Lock } from "lucide-react";
 import { homePathFor, useSession } from "@/context/session-context";
 import { errorMessage } from "@/lib/api";
 import { FullLogo, LogoIcon } from "@/components/ui/logo";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export default function LoginPage() {
   const { user, loading, login } = useSession();
@@ -84,9 +85,8 @@ export default function LoginPage() {
             </div>
             <div>
               <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-ink-muted">Password</label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 required
                 autoComplete="current-password"
                 value={password}
