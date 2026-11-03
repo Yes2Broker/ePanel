@@ -7,6 +7,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Asset, Employee, Department, Role, EmploymentStatus } from "@/types";
 import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { SuggestInput } from "@/components/employees/suggest-input";
 import { cn } from "@/lib/utils";
 
 export interface EmployeeFormValues {
@@ -33,9 +34,13 @@ export function EmployeeFormDialog({
     setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
     // New employee: suggest the next ID from the database (highest EMP number ever used + 1).
     if (!initial && open) api.nextEmployeeId().then((id) => setForm((f) => (f.id ? f : { ...f, id }))).catch(() => {});
-    // Company SIMs / emails to suggest: every Idle one, plus (edit) the ones already theirs.
-    const mine = (x: Asset) => x.status === "Idle" || (!!initial && x.employee?.id === initial.id);
-    if (open) api.assetsList().then((a) => setIdle({ sims: a.sims.filter(mine), emails: a.emails.filter(mine) })).catch(() => setIdle(null));
+    // Company SIMs / emails to suggest: every Idle one; on edit, someone who already has one
+    // only sees theirs (one company SIM and one company email per person).
+    const pickable = (list: Asset[]) => {
+      const theirs = initial ? list.filter((x) => x.employee?.id === initial.id) : [];
+      return theirs.length ? theirs : list.filter((x) => x.status === "Idle");
+    };
+    if (open) api.assetsList().then((a) => setIdle({ sims: pickable(a.sims), emails: pickable(a.emails) })).catch(() => setIdle(null));
   }, [initial, open]);
   const [idle, setIdle] = useState<{ sims: Asset[]; emails: Asset[] } | null>(null);
   // The listed item the field now holds (typed values that aren't listed are just text).
@@ -65,13 +70,13 @@ export function EmployeeFormDialog({
               : <span className="mt-1 block text-xs text-ink-muted">Use the same number in the eTimeOffice machine ({form.id.trim().toUpperCase() || "EMP022"} = {(form.id.match(/\d+/)?.[0] ?? "022").padStart(4, "0")}).</span>)}
           </Field>
           <Field label="Email (optional)">
-            <input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" list="idle-company-emails" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Pick a company email or type any" className={inputCls} />
-            <datalist id="idle-company-emails">{idle?.emails.map((x) => <option key={x.id} value={x.label}>{x.status === "Idle" ? `${x.type} · idle` : `${x.type} · theirs`}</option>)}</datalist>
+            <SuggestInput label="Email" type="email" inputMode="email" value={form.email} onChange={(v) => set("email", v)} placeholder="Pick a company email or type any"
+              suggestions={(idle?.emails ?? []).map((x) => ({ value: x.label, note: `${x.type} · ${x.status === "Idle" ? "Idle" : "Theirs"}` }))} empty="No idle emails. Add them in SIMs & Emails." />
             <AssetHint kind="emails" list={idle?.emails} picked={!!pickedEmail} />
           </Field>
           <Field label="Mobile Number">
-            <input type="tel" inputMode="tel" autoComplete="off" list="idle-company-sims" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} placeholder="Pick a company SIM or type a personal number" className={inputCls} />
-            <datalist id="idle-company-sims">{idle?.sims.map((x) => <option key={x.id} value={x.label}>{x.status === "Idle" ? `${x.type} · idle` : `${x.type} · theirs`}</option>)}</datalist>
+            <SuggestInput label="Mobile Number" type="tel" inputMode="tel" value={form.mobile} onChange={(v) => set("mobile", v)} placeholder="Pick a company SIM or type a personal number"
+              suggestions={(idle?.sims ?? []).map((x) => ({ value: x.label, note: `${x.type} · ${x.status === "Idle" ? "Idle" : "Theirs"}` }))} empty="No idle SIMs. Add them in SIMs & Emails." />
             <AssetHint kind="SIMs" list={idle?.sims} picked={!!pickedSim} />
           </Field>
           <Field label="Salary"><input type="number" inputMode="numeric" min={0} value={form.salary} onChange={(e) => set("salary", e.target.value)} className={inputCls} /></Field>
@@ -117,10 +122,10 @@ export function EmployeeFormDialog({
 /** Under Mobile / Email: what picking from the list does, or that there's nothing idle. */
 function AssetHint({ kind, list, picked }: { kind: "SIMs" | "emails"; list: Asset[] | undefined; picked: boolean }) {
   if (!list) return null;
-  if (!list.length) return <span className="mt-1 block text-xs text-ink-faint">No idle {kind} — add them in SIMs &amp; Emails.</span>;
+  if (!list.length) return <span className="mt-1 block text-xs text-ink-faint">No idle {kind}. Add them in SIMs &amp; Emails.</span>;
   return (
     <span className={cn("mt-1 block text-xs", picked ? "text-status-success" : "text-ink-faint")}>
-      {picked ? `Company ${kind === "SIMs" ? "SIM" : "email"}: assigned to this employee when you save.` : `${list.length} company ${kind} to pick from, or type any.`}
+      {picked ? `Company ${kind === "SIMs" ? "SIM" : "email"}: assigned to this employee when you save.` : `${list.length} company ${list.length === 1 ? kind.replace(/s$/, "") : kind} to pick, or type any.`}
     </span>
   );
 }

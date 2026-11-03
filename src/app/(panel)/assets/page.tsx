@@ -39,7 +39,11 @@ export default function AssetsPage() {
   const k = KIND[kind];
   const items = (kind === "sim" ? list.data?.sims : list.data?.emails) ?? [];
   const active = useMemo(() => (people.data ?? []).filter((e) => e.status === "Active").sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })), [people.data]);
-  const empOptions = active.map((e) => ({ value: e.id, label: `${e.name} (${e.id})` }));
+  // One company SIM and one company email per person: only people without one of this kind
+  // (plus whoever already holds the item being edited).
+  const holders = new Set(items.map((a) => a.employee?.id).filter(Boolean));
+  const empOptions = (keep?: string) => active.filter((e) => !holders.has(e.id) || e.id === keep).map((e) => ({ value: e.id, label: `${e.name} (${e.id})` }));
+  const [freeing, setFreeing] = useState<Asset | null>(null);
   const q = search.trim().toLowerCase();
   const rows = items.filter((a) => (status === "All" || a.status === status)
     && (!q || a.label.toLowerCase().includes(q) || a.employee?.name.toLowerCase().includes(q) || a.note.toLowerCase().includes(q)));
@@ -89,7 +93,7 @@ export default function AssetsPage() {
                   <td className="max-w-[14rem] truncate px-3 py-2.5 text-ink-muted" title={a.note}>{a.note || "—"}</td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-right">
                     {a.status === "Assigned"
-                      ? <SecondaryButton className="mr-1 min-h-9 px-3 py-1 text-xs" disabled={busy} onClick={() => run(() => api.assetFree(kind, a.id), `${a.label} is free now.`)}><UserMinus className="h-3.5 w-3.5" /> Free</SecondaryButton>
+                      ? <SecondaryButton className="mr-1 min-h-9 px-3 py-1 text-xs" disabled={busy} onClick={() => setFreeing(a)}><UserMinus className="h-3.5 w-3.5" /> Free</SecondaryButton>
                       : <SecondaryButton className="mr-1 min-h-9 px-3 py-1 text-xs" disabled={busy} onClick={() => setAssigning(a)}><UserPlus className="h-3.5 w-3.5" /> Assign</SecondaryButton>}
                     <Icon label={`History of ${a.label}`} onClick={() => setHistory(a)}><History className="h-4 w-4" /></Icon>
                     <Icon label={`Edit ${a.label}`} onClick={() => setForm({ id: a.id, data: { label: a.label, type: a.type, status: a.status, employeeId: a.employee?.id ?? "", since: a.since ?? todayISO(), note: a.note } })}><Pencil className="h-4 w-4" /></Icon>
@@ -115,7 +119,7 @@ export default function AssetsPage() {
             <Field label={k.typeLabel}><Select variant="field" value={form.data.type} onChange={(v) => setForm({ ...form, data: { ...form.data, type: v } })} options={k.types.map((t) => ({ value: t, label: t }))} /></Field>
             <Field label="Status"><Select variant="field" value={form.data.status} onChange={(v) => setForm({ ...form, data: { ...form.data, status: v as AssetStatus } })} options={STATUSES.map((s) => ({ value: s, label: s }))} /></Field>
             {form.data.status === "Assigned" && <>
-              <Field label="Assigned to"><Select variant="field" ariaLabel="Assigned to" value={form.data.employeeId} onChange={(v) => setForm({ ...form, data: { ...form.data, employeeId: v } })} options={empOptions} placeholder="Choose employee" /></Field>
+              <Field label="Assigned to"><Select variant="field" ariaLabel="Assigned to" value={form.data.employeeId} onChange={(v) => setForm({ ...form, data: { ...form.data, employeeId: v } })} options={empOptions(form.id ? items.find((x) => x.id === form.id)?.employee?.id : undefined)} placeholder="Choose employee" /></Field>
               <Field label="Assigned since"><DatePicker variant="field" value={form.data.since} max={todayISO()} onChange={(v) => setForm({ ...form, data: { ...form.data, since: v } })} /></Field>
             </>}
             <div className="sm:col-span-2"><Field label="Note"><input value={form.data.note} onChange={(e) => setForm({ ...form, data: { ...form.data, note: e.target.value } })} maxLength={200} className={inputCls} /></Field></div>
@@ -123,7 +127,14 @@ export default function AssetsPage() {
           {kind === "email" && <p className="mt-3 text-xs text-ink-muted">Passwords are never stored here.</p>}
         </Modal>
       )}
-      {assigning && <AssignDialog asset={assigning} options={empOptions} busy={busy} onClose={() => setAssigning(null)}
+      {freeing && (
+        <Modal open onClose={() => setFreeing(null)} title={`Free ${freeing.label}?`} size="sm"
+          footer={<div className="flex justify-end gap-2"><SecondaryButton onClick={() => setFreeing(null)}>Cancel</SecondaryButton>
+            <PrimaryButton disabled={busy} onClick={() => run(() => api.assetFree(kind, freeing.id), `${freeing.label} is free now.`, () => setFreeing(null))}>Free</PrimaryButton></div>}>
+          <p className="text-sm text-ink">Free {freeing.label} from {freeing.employee?.name ?? "its holder"}? It will become Idle.</p>
+        </Modal>
+      )}
+      {assigning && <AssignDialog asset={assigning} options={empOptions()} busy={busy} onClose={() => setAssigning(null)}
         onAssign={(emp) => run(() => api.assetAssign(kind, assigning.id, emp), `${assigning.label} assigned.`, () => setAssigning(null))} />}
       {deleting && (
         <Modal open onClose={() => setDeleting(null)} title={`Delete ${deleting.label}?`} size="sm"
@@ -147,7 +158,7 @@ function AssignDialog({ asset, options, busy, onClose, onAssign }: { asset: Asse
   return (
     <Modal open onClose={onClose} title={`Assign ${asset.label}`} size="sm"
       footer={<div className="flex justify-end gap-2"><SecondaryButton onClick={onClose}>Cancel</SecondaryButton><PrimaryButton disabled={!emp || busy} onClick={() => onAssign(emp)}>Assign</PrimaryButton></div>}>
-      <Field label="Employee"><Select variant="field" ariaLabel="Employee" value={emp} onChange={setEmp} options={options} placeholder="Choose employee" /></Field>
+      <Field label="Employee"><Select variant="field" ariaLabel="Employee" value={emp} onChange={setEmp} options={options} placeholder={options.length ? "Choose employee" : `Everyone already has a company ${asset.kind === "sim" ? "SIM" : "email"}`} /></Field>
       <p className="mt-2 text-xs text-ink-muted">Status becomes Assigned from today. Their login email and profile mobile don&apos;t change.</p>
     </Modal>
   );

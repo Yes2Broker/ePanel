@@ -74,6 +74,19 @@ begin
   end if;
 end $$;
 
+-- One company SIM and one company email per person: refuse a second one.
+create or replace function private.asset_one_each(p_kind text, p_emp text, p_asset uuid)
+returns void language plpgsql set search_path = public, private as $$
+begin
+  if p_emp is null then return; end if;
+  if (p_kind = 'sim' and exists (select 1 from company_sims where employee_id = p_emp and id is distinct from p_asset))
+     or (p_kind = 'email' and exists (select 1 from company_emails where employee_id = p_emp and id is distinct from p_asset)) then
+    raise exception '% already has a company %. Free it first.',
+      (select split_part(name, ' ', 1) from employees where id = p_emp), case when p_kind = 'sim' then 'SIM' else 'email' end
+      using errcode = '23505';
+  end if;
+end $$;
+
 create or replace function private.asset_json(p_kind text, p_id uuid, p_label text, p_extra text, p_status text, p_emp text, p_since date, p_note text)
 returns jsonb language sql stable set search_path = public, private as $$
   select jsonb_build_object('id', p_id, 'kind', p_kind, 'label', p_label, 'type', p_extra, 'status', p_status,
@@ -137,6 +150,7 @@ begin
     raise exception 'Choose an active employee.' using errcode = '22023';
   end if;
   if v_emp is not null then v_since := coalesce(v_since, private.today()); end if;
+  perform private.asset_one_each(p_kind, v_emp, p_id);
 
   if p_kind = 'sim' then
     v_label := regexp_replace(v_label, '\D', '', 'g');
@@ -183,6 +197,7 @@ begin
   if not exists (select 1 from employees where id = p_emp and status = 'Active') then
     raise exception 'Choose an active employee.' using errcode = '22023';
   end if;
+  perform private.asset_one_each(p_kind, p_emp, p_id);
   if p_kind = 'sim' then
     update company_sims s set status = 'Assigned', employee_id = p_emp, since = private.today(), updated_at = now()
       from (select id, employee_id from company_sims where id = p_id) o where s.id = o.id returning s.number, o.employee_id into v_label, v_old;
@@ -258,6 +273,7 @@ begin
   else select email, employee_id, status into v_label, v_old, v_status from company_emails where id = p_id for update; end if;
   if v_label is null then raise exception 'That company % no longer exists.', case when p_kind = 'sim' then 'SIM' else 'email' end using errcode = 'P0002'; end if;
   if v_old = p_emp then return; end if;
+  perform private.asset_one_each(p_kind, p_emp, p_id);
   if v_status <> 'Idle' then raise exception '% is no longer idle. Pick another one.', v_label using errcode = '23505'; end if;
   if p_kind = 'sim' then update company_sims set status = 'Assigned', employee_id = p_emp, since = p_since, updated_at = now() where id = p_id;
   else update company_emails set status = 'Assigned', employee_id = p_emp, since = p_since, updated_at = now() where id = p_id; end if;
