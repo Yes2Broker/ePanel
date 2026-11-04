@@ -1,5 +1,6 @@
 "use client";
 
+import { FiledLate } from "@/components/reports/filed-late";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Clock, Eye, FileText, Pencil, Plus, Trash2 } from "lucide-react";
@@ -179,7 +180,7 @@ export function ReportsTable({ manager }: { manager: boolean }) {
               <Card key={r.id} className="p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="break-words text-sm font-medium text-ink">{formatDate(r.date, { weekday: true })}{manager && <span className="font-normal text-ink-muted"> · {r.employeeName}</span>}</p>
+                    <p className="break-words text-sm font-medium text-ink">{formatDate(r.date, { weekday: true })}{manager && <span className="font-normal text-ink-muted"> · {r.employeeName}</span>}<FiledLate r={r} /></p>
                     <p className="break-words text-xs text-ink-muted">{r.title}{r.source === "import" ? " · imported" : ""}</p>
                   </div>
                 </div>
@@ -201,7 +202,7 @@ export function ReportsTable({ manager }: { manager: boolean }) {
               <tbody className="divide-y divide-surface-border">
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td className="whitespace-nowrap px-3 py-2">{formatDate(r.date, { weekday: true })}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatDate(r.date, { weekday: true })}<FiledLate r={r} /></td>
                     {manager && <td className="whitespace-nowrap px-3 py-2">{r.employeeName}</td>}
                     <td className="px-3 py-2">{r.title}{r.source === "import" && <span className="text-xs text-ink-faint"> · imported</span>}</td>
                     <td className="px-3 py-2 text-right">{r.leads}</td>

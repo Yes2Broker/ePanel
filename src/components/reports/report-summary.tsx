@@ -1,5 +1,6 @@
 "use client";
 
+import { FiledLate } from "@/components/reports/filed-late";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Download, History, Pencil } from "lucide-react";
@@ -60,7 +61,7 @@ export function ReportSummary({
       <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
         <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
           <div>
-            <p className="text-sm font-semibold text-ink">Name: {report.employeeName}</p>
+            <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
             {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
           </div>
           <table className="w-full overflow-hidden rounded-xl border border-surface-border text-sm">

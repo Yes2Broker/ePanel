@@ -195,7 +195,7 @@ export function shortDate(v: string) {
   return `${d} ${MONTHS[m - 1].slice(0, 3)} ${y}`;
 }
 
-function CalendarGrid({ value, min, max, onPick }: { value: string; min?: string; max?: string; onPick: (v: string) => void }) {
+function CalendarGrid({ value, min, max, onPick, blocked }: { value: string; min?: string; max?: string; onPick: (v: string) => void; blocked?: { dates: string[]; why: string } }) {
   const today = todayISO();
   const start = value || (max && max < today ? max : today);
   const [view, setView] = useState({ y: Number(start.slice(0, 4)), m: Number(start.slice(5, 7)) - 1 });
@@ -218,12 +218,13 @@ function CalendarGrid({ value, min, max, onPick }: { value: string; min?: string
         {cells.map((d, i) => {
           if (!d) return <div key={`e${i}`} />;
           const v = iso(view.y, view.m, d);
-          const off = (min && v < min) || (max && v > max);
+          const taken = !!blocked?.dates.includes(v);
+          const off = (min && v < min) || (max && v > max) || taken;
           return (
-            <button key={v} type="button" disabled={!!off} onClick={() => onPick(v)} aria-label={shortDate(v)} aria-pressed={v === value}
+            <button key={v} type="button" disabled={!!off} onClick={() => onPick(v)} aria-label={`${shortDate(v)}${taken ? ` (${blocked!.why})` : ""}`} aria-pressed={v === value} title={taken ? blocked!.why : undefined}
               className={cn("mx-auto flex h-10 w-10 items-center justify-center rounded-full text-sm sm:h-9 sm:w-9",
                 v === value ? "bg-ink font-semibold text-white" : v === today ? "font-semibold text-brand ring-1 ring-brand" : "text-ink hover:bg-surface",
-                off && "pointer-events-none opacity-30")}>
+                off && "pointer-events-none opacity-30", taken && "line-through")}>
               {d}
             </button>
           );
@@ -240,10 +241,11 @@ function CalendarGrid({ value, min, max, onPick }: { value: string; min?: string
 
 /** Date field → small calendar. Value "YYYY-MM-DD" ("" = none). */
 export function DatePicker({
-  value, onChange, min, max, ariaLabel, placeholder = "Pick a date", variant = "pill", disabled, invalid, className,
+  value, onChange, min, max, ariaLabel, placeholder = "Pick a date", variant = "pill", disabled, invalid, className, blocked,
 }: {
   value: string; onChange: (v: string) => void; min?: string; max?: string; ariaLabel?: string; placeholder?: string;
   variant?: Variant; disabled?: boolean; invalid?: boolean; className?: string;
+  /** Days that can't be picked, and why (e.g. "Already filled, use Edit"). */ blocked?: { dates: string[]; why: string };
 }) {
   const { open, setOpen, close, triggerRef } = usePopover();
   return (
@@ -254,7 +256,8 @@ export function DatePicker({
         <CalendarIcon className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />
       </button>
       <Popover open={open} onClose={close} anchor={triggerRef} title={ariaLabel ?? placeholder}>
-        <CalendarGrid value={value} min={min} max={max} onPick={(v) => { onChange(v); close(); }} />
+        <CalendarGrid value={value} min={min} max={max} blocked={blocked} onPick={(v) => { onChange(v); close(); }} />
+        {blocked && blocked.dates.length > 0 && <p className="px-2 pb-1 text-xs text-ink-faint">Crossed-out days: {blocked.why.toLowerCase()}.</p>}
       </Popover>
     </>
   );

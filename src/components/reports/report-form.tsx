@@ -10,6 +10,7 @@ import { api, errorMessage } from "@/lib/api";
 import { ReportFormData, ReportPayload, SalesReportDetail, VisitActionType } from "@/types";
 import { addDays, cn } from "@/lib/utils";
 import { longDate, nowHHMM, shortDate, time12 } from "@/lib/report-format";
+import { todayISO } from "@/lib/utils";
 
 const inputCls =
   "min-h-11 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
@@ -34,8 +35,9 @@ function resize<T extends { locked?: boolean }>(list: T[], n: number, make: () =
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function ReportForm({
-  form, onSaved, isManager,
-}: { form: ReportFormData; onSaved: (r: SalesReportDetail) => void; isManager: boolean }) {
+  form, onSaved, isManager, onDateChange,
+}: { form: ReportFormData; onSaved: (r: SalesReportDetail) => void; isManager: boolean;
+  /** New report: pick another report date (reloads the form for that day). */ onDateChange?: (d: string) => void }) {
   const toast = useToast();
   const report = form.report;
   const imported = report?.source === "import";
@@ -196,7 +198,13 @@ export function ReportForm({
         <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">{report ? "Edit report" : "New report"}</p>
         <h1 className="mt-0.5 text-lg font-semibold text-ink">{form.title}</h1>
         <div className="mt-3 grid grid-cols-1 gap-3 text-sm min-[400px]:grid-cols-2">
-          <div><p className="text-xs text-ink-faint">Date</p><p className="font-medium text-ink">{longDate(date)}</p></div>
+          {!report && onDateChange ? (
+            // Past days of this month can be filed too (employees: 1st → today, from joining).
+            <div><p className="mb-1 text-xs text-ink-faint">Report date</p>
+              <DatePicker variant="field" ariaLabel="Report date" value={date} onChange={(d) => d !== date && onDateChange(d)}
+                min={form.minDate ?? undefined} max={todayISO()} blocked={{ dates: form.filledDates ?? [], why: "Already filled, use Edit" }} />
+            </div>
+          ) : <div><p className="text-xs text-ink-faint">Date</p><p className="font-medium text-ink">{longDate(date)}</p></div>}
           <div><p className="text-xs text-ink-faint">Name</p><p className="font-medium text-ink">{form.employee.name}</p></div>
         </div>
         {imported && <p className="mt-3 rounded-xl bg-surface px-3 py-2 text-xs text-ink-muted">Imported from the old sheet — only the numbers can be edited.</p>}

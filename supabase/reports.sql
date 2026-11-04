@@ -253,6 +253,9 @@ language sql stable set search_path = public, private as $$
     'leads', r.leads, 'calls', r.calls, 'positive', r.positive, 'scheduled', r.scheduled,
     'done', r.done, 'tokens', r.tokens, 'walkIn', r.walk_in,
     'source', r.source, 'submittedAt', r.submitted_at,
+    -- Filed on a later day than the report date (shown as "Filed late").
+    'filedLate', r.source = 'panel' and r.report_date < (r.submitted_at at time zone private.tz())::date,
+    'filedOn', (r.submitted_at at time zone private.tz())::date,
     'editableUntil', r.submitted_at + interval '24 hours',
     'updatedAt', r.updated_at
   )
@@ -473,8 +476,12 @@ begin
         raise exception 'You don''t have access to this report. Contact HR or Admin.' using errcode = '42501';
       end if;
     end if;
-    if not private.is_manager(v_me) and v_date <> private.today() then
-      raise exception 'Reports can only be filed for today.' using errcode = '22023';
+    -- Employees: this month only (1st → today), not before joining. On the 1st, last month locks.
+    if not private.is_manager(v_me) and (v_date < date_trunc('month', private.today())::date or v_date > private.today()) then
+      raise exception 'You can file reports only for this month, from the 1st up to today.' using errcode = '22023';
+    end if;
+    if not private.is_manager(v_me) and v_emp.joining_date is not null and v_date < v_emp.joining_date then
+      raise exception 'That date is before your joining date.' using errcode = '22023';
     end if;
     if v_date > private.today() then
       raise exception 'You can''t file a report for a future date.' using errcode = '22023';
@@ -497,6 +504,11 @@ begin
     'title', private.report_title(v_type, v_project),
     'date', v_date,
     'isToday', v_date = private.today(),
+    -- New report date picker: the earliest allowed day and the days already filed this month.
+    'minDate', case when private.is_manager(v_me) then null else greatest(date_trunc('month', private.today())::date, coalesce(v_emp.joining_date, '0001-01-01'::date)) end,
+    'filledDates', coalesce((select jsonb_agg(d.report_date order by d.report_date) from sales_reports d
+                              where d.deleted_at is null and d.employee_id = v_emp.id and d.report_type = v_type and d.project_id is not distinct from v_project
+                                and d.report_date >= date_trunc('month', private.today())::date), '[]'::jsonb),
     'nowTime', private.now_time(),
     'report', case when r.id is null then null else private.report_row_json(r) end,
     -- Visits booked in this report.
@@ -591,8 +603,12 @@ begin
         raise exception 'You don''t have access to this report. Contact HR or Admin.' using errcode = '42501';
       end if;
     end if;
-    if not v_is_manager and v_date <> private.today() then
-      raise exception 'Reports can only be filed for today.' using errcode = '22023';
+    -- Employees: this month only (1st → today), not before joining. On the 1st, last month locks.
+    if not v_is_manager and (v_date < date_trunc('month', private.today())::date or v_date > private.today()) then
+      raise exception 'You can file reports only for this month, from the 1st up to today.' using errcode = '22023';
+    end if;
+    if not v_is_manager and v_emp.joining_date is not null and v_date < v_emp.joining_date then
+      raise exception 'That date is before your joining date.' using errcode = '22023';
     end if;
     if v_date > private.today() then
       raise exception 'You can''t file a report for a future date.' using errcode = '22023';

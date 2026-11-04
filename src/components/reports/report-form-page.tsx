@@ -13,10 +13,12 @@ import { useApi } from "@/lib/use-api";
 import { ReportFormData, SalesReportDetail } from "@/types";
 
 /** Loads the form (new or edit), then shows the summary popup after saving. */
-export function ReportFormPage({ load, backHref }: { load: () => Promise<ReportFormData>; backHref: string }) {
+export function ReportFormPage({ load, backHref, depKey = "", onDateChange }: {
+  load: () => Promise<ReportFormData>; backHref: string; depKey?: string; onDateChange?: (d: string) => void;
+}) {
   const router = useRouter();
   const { isManager } = useSession();
-  const { data, loading, error, reload } = useApi(load);
+  const { data, loading, error, reload } = useApi(load, [depKey]);
   const [saved, setSaved] = useState<SalesReportDetail | null>(null);
 
   // Someone already filed this one today: open it instead of a blank form.
@@ -32,7 +34,7 @@ export function ReportFormPage({ load, backHref }: { load: () => Promise<ReportF
       <ErrorBanner message={error} onRetry={reload} />
       {loading && !data && <Loading />}
       {data && !data.existingReportId && !saved && (
-        <ReportForm form={data} isManager={isManager} onSaved={setSaved} />
+        <ReportForm key={data.date} form={data} isManager={isManager} onSaved={setSaved} onDateChange={onDateChange} />
       )}
       {saved && (
         <ReportSummary

@@ -167,6 +167,9 @@ export interface ReportTotals {
 
 export interface SalesReportRow {
   id: string;
+  /** Filed on a later day than the report date. */
+  filedLate?: boolean;
+  filedOn?: string;
   employeeId: string;
   employeeName: string;
   date: string;
@@ -219,6 +222,9 @@ export interface ReportFormData {
   date: string;
   isToday: boolean;
   nowTime: string;
+  /** New reports: earliest day an employee may file (null for HR/Admin) and days already filed this month. */
+  minDate?: string | null;
+  filledDates?: string[];
   report: SalesReportRow | null;
   scheduled: { id: string; client: string; date: string; locked: boolean }[];
   todayVisits: {
