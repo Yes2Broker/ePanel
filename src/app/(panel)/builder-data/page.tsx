@@ -51,7 +51,8 @@ function messageFor(p: BuilderProject) {
 type Sort = "latest" | "low" | "high" | "possession" | "az";
 interface Filters { q: string; city: string[]; locality: string[]; type: string[]; status: string[]; category: string[]; sort: Sort }
 const EMPTY: Filters = { q: "", city: [], locality: [], type: [], status: [], category: [], sort: "latest" };
-const PAGE = 20;
+// 24 fills whole rows at 1, 2, 3 and 4 columns; only the last page can be partial.
+const PAGE = 24;
 
 /** Builder Data: simple cards for everyone; add / edit for "Builder Data – manage". */
 export default function BuilderDataPage() {
