@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   if (HOW_TO.test(question) && /\b(apply|leave|chutti|chhutti)\b/i.test(question) && areas.leave) return say(HOWTO_LEAVE);
   if (HOW_TO.test(question) && /\b(file|fill|submit|bhar|bharu|bharun)\b/i.test(question) && /\breports?\b/i.test(question) && areas.reports && filesReports(perms)) return say(HOWTO_REPORT);
   const language = replyLanguage(question);
-  const tools = toolsFor(me.role, perms);
+  const tools = toolsFor(me.role, perms, question);
   // The period is worked out here, from the whole chat, never by the model.
   const period = resolvePeriod(chat.filter((m) => m.role === "user").map((m) => m.content), me.today);
   const ctx = { token, today: me.today, period, me: { id: me.id, name: me.name }, files: filesReports(perms), hinglish: isHinglish(question) && !/[\u0900-\u097F\u0A80-\u0AFF]/.test(question) };

@@ -5,7 +5,7 @@ import {
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
-  PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind,
+  PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind, BuilderList,
 } from "@/types";
 
 /**
@@ -113,6 +113,11 @@ export const api = {
   assetDelete: (kind: AssetKind, id: string) => rpc<void>("asset_delete", { p_kind: kind, p_id: id }),
   assetHistory: (kind: AssetKind, id: string) => rpc<{ employee: string | null; employeeId: string | null; from: string; to: string | null; by: string | null; endedBy: string | null }[]>("asset_history_list", { p_kind: kind, p_id: id }),
   employeeAssets: (id: string) => rpc<{ sims: string[]; emails: string[] }>("employee_assets", { p_emp: id }),
+  builderList: () => rpc<BuilderList>("builder_list"),
+  builderSave: (id: string | null, data: Record<string, unknown>) => rpc<string>("builder_save", { p_id: id, p_data: data }),
+  builderDelete: (id: string) => rpc<void>("builder_delete", { p_id: id }),
+  builderSetAvailable: (unitId: string, available: number) => rpc<void>("builder_set_available", { p_unit: unitId, p_available: available }),
+  localityAdd: (city: string, name: string) => rpc<void>("locality_add", { p_city: city, p_name: name }),
   createEmployee: (data: EmployeeInput, password: string) =>
     withAssetsFallback(rpc<Employee>("create_employee_with_assets", { p_data: data, p_password: password }),
       () => rpc<Employee>("create_employee", { p_data: data, p_password: password })),

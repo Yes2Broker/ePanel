@@ -6,7 +6,7 @@ import { isFeatureEnabled, pageAccess } from "@/lib/features";
  * Shared by the server (tools, fixed replies) and the panel (suggestions).
  */
 /** The person's Permissions page switches (from get_me). */
-export type Perms = Partial<Record<"attendance" | "normalReport" | "soleSelling" | "leave" | "builderData", boolean>>;
+export type Perms = Partial<Record<"attendance" | "normalReport" | "soleSelling" | "leave" | "builderData" | "builderManage", boolean>>;
 export type Area = "reports" | "attendance" | "leave";
 /**
  * Which pages this person has: the panel's own menu rule (HR/Admin always,

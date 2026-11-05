@@ -45,7 +45,7 @@ language sql stable as $$ select (now() at time zone private.tz())::date $$;
 
 create or replace function private.modules() returns text[]
 language sql immutable as $$
-  select array['attendance','tasks','normalReport','soleSelling','builderData','analytics','leave','assist']
+  select array['attendance','tasks','normalReport','soleSelling','builderData','builderManage','analytics','leave','assist']
 $$;
 
 -- Salary is never in here: only an Admin sees it (see private.with_salary).
@@ -73,6 +73,8 @@ language sql stable as $$
     when 'normalReport' then e.department in ('Sales','Admin')
     when 'soleSelling' then e.department = 'Sales'
     when 'builderData' then e.department <> 'Tech'
+    -- Add / edit / delete builder projects and see owner, contact and brokerage.
+    when 'builderManage' then e.role = 'Admin'
     when 'analytics' then e.role = 'Admin'
     when 'leave' then true
     when 'assist' then true

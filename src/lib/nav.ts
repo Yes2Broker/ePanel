@@ -14,7 +14,6 @@ export interface NavItem {
   external?: boolean; // another Yes2Broker site, opened in a new tab
 }
 
-const BUILDER_DATA_URL = "https://yes2broker.github.io/Builder-Data/";
 const ANALYTICS_URL = "https://analytics.yes2broker.in/";
 
 /** Every item this person may see, by name. Missing = not allowed. */
@@ -35,7 +34,7 @@ function itemsFor(user: Employee, permissions: Permissions | null) {
     attendance: feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, pages.attendance),
     reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, pages.reports),
     leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, pages.leave),
-    builderData: can("builderData") &&({ href: BUILDER_DATA_URL, label: "Builder Data", icon: Building2, external: true } as NavItem),
+    builderData: (can("builderData") || can("builderManage")) && ({ href: "/builder-data", label: "Builder Data", short: "Builder", icon: Building2 } as NavItem),
     analytics: user.role === "Admin" && can("analytics") && ({ href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true } as NavItem),
     permissions: isManager && ({ href: "/admin/permissions", label: "Permissions", icon: ShieldCheck } as NavItem),
     profile: { href: "/profile", label: "Profile", icon: User } as NavItem,
@@ -98,7 +97,7 @@ export function pageTitle(pathname: string): string {
   const feature = featureForPath(pathname) ?? (pathname.startsWith("/coming-soon/") ? (pathname.split("/")[2] as FeatureKey) : null);
   if (feature && FEATURES[feature]) return FEATURES[feature].label;
   const titles: [string, string][] = [
-    ["/admin/employees", "Employees"], ["/assets", "SIMs & Emails"], ["/admin/permissions", "Permissions"], ["/admin", "Dashboard"],
+    ["/admin/employees", "Employees"], ["/assets", "SIMs & Emails"], ["/builder-data", "Builder Data"], ["/admin/permissions", "Permissions"], ["/admin", "Dashboard"],
     ["/dashboard", "Dashboard"], ["/profile", "Profile"], ["/settings", "Settings"],
   ];
   return titles.find(([p]) => pathname === p || pathname.startsWith(`${p}/`))?.[1] ?? "Yes2Broker";

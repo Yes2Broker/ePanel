@@ -3,7 +3,7 @@
  * emails, passwords and tokens are removed by field name, and any email
  * address or Indian mobile number left inside text is blanked out.
  */
-const DROP = /^(salary|salaries|monthly|final|perDay|mobile|phone|phones|email|emails|password|passwordHash|password_hash|token|p_token|secret|recipients|attachment)$/i;
+const DROP = /^(salary|salaries|monthly|final|perDay|mobile|phone|phones|email|emails|password|passwordHash|password_hash|token|p_token|secret|recipients|attachment|owner|contactPhone|brokeragePct|payoutPlan|saleDeed)$/i;
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const PHONE = /(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)/g;
 

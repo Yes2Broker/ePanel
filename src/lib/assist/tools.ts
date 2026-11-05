@@ -225,6 +225,34 @@ export const TOOLS: ToolDef[] = [
       ]), 8) };
     },
   },
+  {
+    // Builder Data (needs the "Builder Data" permission). Owner, contact phone, brokerage,
+    // payout and sale deed are never included, whatever the person may see in the panel.
+    name: "builder_projects",
+    description: "Builder projects by bhk (3 BHK, Shop…), locality, budget in ₹ (1 Cr=10000000), status, possession before YYYY-MM-DD.",
+    parameters: { type: "object", properties: {
+      bhk: { type: "string" }, locality: { type: "string" }, budget_max: { type: "number" }, budget_min: { type: "number" },
+      status: { type: "string" }, possession_before: { type: "string" },
+    } },
+    run: async (ctx, a) => {
+      const list = (await call("builder_list", { p_token: ctx.token })) as { projects: Row[] };
+      const want = (x: unknown) => String(x ?? "").toLowerCase().replace(/\s+/g, "");
+      const bhk = a.bhk ? want(/^\d(\.5)?$/.test(String(a.bhk).trim()) ? `${a.bhk} BHK` : a.bhk) : "";
+      const min = Number(a.budget_min) || 0, max = Number(a.budget_max) || 0;
+      const short = (n: number) => (n >= 1e7 ? `${Number((n / 1e7).toFixed(2))} Cr` : `${Number((n / 1e5).toFixed(2))} L`);
+      const hits = list.projects.filter((p) => !p.soldOut
+        && (!a.locality || want(p.locality).includes(want(a.locality)) || want(p.subLocality).includes(want(a.locality)))
+        && (!a.status || p.status === a.status) && (!a.possession_before || (p.possession && String(p.possession) <= String(a.possession_before))))
+        .map((p) => ({ p, units: (p.units as Row[]).filter((u) => (!bhk || want(u.type) === bhk)
+          && (!min || Number(u.boxPrice) >= min) && (!max || (Number(u.boxPrice) > 0 && Number(u.boxPrice) <= max))) }))
+        .filter((x) => x.units.length);
+      if (!hits.length) return { say: "**No matching builder projects.** Try a wider budget or another locality." };
+      return { count: hits.length, projects: table(["project", "locality", "status", "possession", "units"], hits.slice(0, 8).map(({ p, units }) => [
+        p.name, [p.locality, p.subLocality].filter(Boolean).join(" → "), p.status, p.possession ? String(p.possession).slice(0, 7) : "",
+        units.slice(0, 3).map((u) => `${u.type}${u.size ? ` ${u.size} ${u.sizeUnit}` : ""}${u.boxPrice ? ` ₹${short(Number(u.boxPrice))}` : ""} (${u.available} avail)`).join("; "),
+      ]), 8) };
+    },
+  },
 ];
 
 const person = { type: "string", description: "name or ID; omit for me" };
@@ -232,7 +260,11 @@ const person = { type: "string", description: "name or ID; omit for me" };
 /** The tools this role may use. HR/Admin's reports + attendance take a person (name or ID). */
 // Only about the person's own filed reports (managing the team's doesn't count).
 const OWN_REPORT_TOOLS = new Set(["my_visits", "today_report_status"]);
-export const toolsFor = (role: Role, perms: Perms): Tool[] => TOOLS.filter((t) =>
+const canBuilder = (perms: Perms) => !!(perms.builderData || perms.builderManage);
+// The builder tool is only offered for property questions (keeps every other request small).
+const PROPERTY = /\b(\d(\.5)?\s*bhk|bhk|flats?|projects?|builders?|propert(y|ies)|possession|budget|crores?|cr|lakhs?|lacs?|shops?|showrooms?|plots?|bungalows?|penthouses?|offices?|rera|sq\.?\s?(ft|yrd)|inventory|units?)\b|\dbhk/i;
+export const isPropertyQuestion = (q: string) => PROPERTY.test(q);
+export const toolsFor = (role: Role, perms: Perms, question = ""): Tool[] => TOOLS.filter((t) => t.name === "builder_projects" ? canBuilder(perms) && isPropertyQuestion(question) :
   (!t.managers || isManager(role)) && areasOf(role, perms)[AREA[t.name]] && (!OWN_REPORT_TOOLS.has(t.name) || filesReports(perms))).map((t) => ({
   name: t.name, description: t.description,
   parameters: isManager(role) && (t.name === "reports" || t.name === "attendance") ? { type: "object", properties: { person } } : t.parameters,
@@ -243,7 +275,8 @@ export async function runTool(role: Role, perms: Perms, ctx: Ctx, name: string, 
   const tool = TOOLS.find((t) => t.name === name);
   if (!tool || (tool.managers && !isManager(role))) return NOT_YOURS;
   // Checked again here: a tool the person's permissions don't allow never runs.
-  if (!areasOf(role, perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], role, perms) };
+  if (tool.name === "builder_projects") { if (!canBuilder(perms)) return { final: "Builder Data isn't turned on for you. Ask HR or Admin." }; }
+  else if (!areasOf(role, perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], role, perms) };
   if (OWN_REPORT_TOOLS.has(tool.name) && !filesReports(perms)) return { final: NO_OWN_REPORTS };
   let args: Record<string, string | undefined> = {};
   try { args = rawArgs ? JSON.parse(rawArgs) : {}; } catch { return { error: "Bad tool arguments." }; }

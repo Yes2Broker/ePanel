@@ -22,6 +22,7 @@ export const MODULE_KEYS = [
   "normalReport",
   "soleSelling",
   "builderData",
+  "builderManage",
   "analytics",
   "leave",
   "assist",
@@ -371,3 +372,54 @@ export interface Asset {
   note: string;
 }
 export interface AssetInput { label: string; type: string; status: AssetStatus; employeeId: string; since: string; note: string }
+
+// ---------------------------------------------------------------------------
+// Builder Data — see supabase/builder.sql. Sensitive fields (owner, contactPhone,
+// brokeragePct, payoutPlan, saleDeed) only come back for "Builder Data – manage".
+// ---------------------------------------------------------------------------
+export const UNIT_TYPES = ["1 BHK", "2 BHK", "2.5 BHK", "3 BHK", "4 BHK", "5 BHK", "Shop", "Showroom", "Office", "Bungalow", "Plot", "Penthouse"] as const;
+export const BUILDER_STATUSES = ["Under Construction", "Ready to Move", "New Launch"] as const;
+export interface BuilderUnit {
+  id?: string;
+  type: string;
+  size: number | null;
+  sizeUnit: "sq.ft" | "sq.yrd";
+  total: number;
+  available: number;
+  pricePerUnit: number | null;
+  boxPrice: number | null;
+  saleDeed?: number | null;
+}
+export interface BuilderProject {
+  id: string;
+  name: string;
+  category: "Residential" | "Commercial";
+  city: string;
+  locality: string;
+  subLocality: string;
+  amenities: number | null;
+  floors: number | null;
+  blocks: number | null;
+  parkingPerUnit: number | null;
+  status: string;
+  possession: string | null;
+  rera: boolean;
+  builder: string;
+  contactName: string;
+  remark: string;
+  soldOut: boolean;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  units: BuilderUnit[];
+  owner?: string;
+  contactPhone?: string;
+  brokeragePct?: number | null;
+  payoutPlan?: string;
+}
+export interface BuilderList {
+  canManage: boolean;
+  canAddLocality: boolean;
+  projects: BuilderProject[];
+  localities: { city: string; name: string }[];
+}
