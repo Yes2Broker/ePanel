@@ -209,7 +209,7 @@ export default function BuilderDataPage() {
       )}
       {rows.length > shown && <div className="flex justify-center"><SecondaryButton onClick={() => setShown((s) => s + PAGE)}>Load more ({rows.length - shown} more)</SecondaryButton></div>}
 
-      {open && <Details p={open} manage={!!data?.canManage} onClose={() => setDetails(null)} onCopy={copy} onChanged={list.reload}
+      {open && <Details p={open} manage={!!data?.canManage} onClose={() => setDetails(null)} onCopy={copy}
         onEdit={() => setEditing(open)} onDelete={() => setDeleting(open)} />}
       {editing && data && <ProjectForm initial={editing === "new" ? null : editing} list={data} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); list.reload(); }} />}
       {deleting && (
@@ -227,19 +227,14 @@ function Info({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 /** Details: a centred popup (full-screen sheet on phones). */
-function Details({ p, manage, onClose, onCopy, onChanged, onEdit, onDelete }: {
-  p: BuilderProject; manage: boolean; onClose: () => void; onCopy: (p: BuilderProject) => void; onChanged: () => void; onEdit: () => void; onDelete: () => void;
+function Details({ p, manage, onClose, onCopy, onEdit, onDelete }: {
+  p: BuilderProject; manage: boolean; onClose: () => void; onCopy: (p: BuilderProject) => void; onEdit: () => void; onDelete: () => void;
 }) {
-  const toast = useToast();
-  const [avail, setAvail] = useState<Record<string, string>>({});
-  const saveAvail = async (id: string) => {
-    try { await api.builderSetAvailable(id, Number(avail[id])); toast("Availability updated."); setAvail((a) => { const n = { ...a }; delete n[id]; return n; }); onChanged(); } catch (err) { toast(errorMessage(err), "error"); }
-  };
   const units = [...p.units].sort((a, b) => UNIT_TYPES.indexOf(a.type as never) - UNIT_TYPES.indexOf(b.type as never) || (a.size ?? 0) - (b.size ?? 0));
   const dash = (v: unknown) => (v == null || v === "" ? "—" : String(v));
   const perSize = (u: BuilderProject["units"][number]) => (u.pricePerUnit ? `₹${shortINR(u.pricePerUnit).replace(" ", "")} / ${u.sizeUnit}` : "");
   return (
-    <Modal open onClose={onClose} wide title={p.name} subtitle={[p.subLocality, p.locality, p.city].filter(Boolean).join(", ")}
+    <Modal open onClose={onClose} wide largeTitle title={p.name} subtitle={[p.subLocality, p.locality, p.city].filter(Boolean).join(", ")}
       bodyClassName="max-sm:min-h-[85dvh]"
       footer={manage ? <div className="flex justify-end gap-2">
         <SecondaryButton onClick={onEdit}><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
@@ -269,14 +264,6 @@ function Details({ p, manage, onClose, onCopy, onChanged, onEdit, onDelete }: {
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-muted">
                   <span>{[perSize(u), `${u.available} of ${u.total} available`].filter(Boolean).join(" · ")}{manage && u.saleDeed ? ` · Sale deed ${rs(u.saleDeed)}` : ""}</span>
-                  {manage && u.id && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span>Update available</span>
-                      <input aria-label={`Available ${u.type} ${u.size ?? ""}`} inputMode="numeric" value={avail[u.id] ?? String(u.available)}
-                        onChange={(e) => setAvail((a) => ({ ...a, [u.id!]: e.target.value.replace(/\D/g, "") }))} className="w-16 rounded-lg border border-surface-border px-2 py-1 text-sm text-ink" />
-                      {avail[u.id] != null && avail[u.id] !== String(u.available) && <button onClick={() => saveAvail(u.id!)} className="rounded-lg bg-ink px-2.5 py-1 text-xs font-medium text-white">Save</button>}
-                    </span>
-                  )}
                 </div>
               </li>
             ))}
