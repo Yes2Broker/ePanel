@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Modal, Field, inputCls } from "@/components/ui/modal";
 import { PrimaryButton, SecondaryButton, Toggle } from "@/components/ui/button";
@@ -35,6 +35,14 @@ export function ProjectForm({ initial, list, onClose, onSaved }: { initial: Buil
     pricePerUnit: str(u.pricePerUnit), boxPrice: str(u.boxPrice), saleDeed: str(u.saleDeed),
   })) : [newRow()]));
   const [localities, setLocalities] = useState(list.localities);
+  // Phones get stacked unit cards instead of the table.
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(max-width: 639px)");
+    const on = () => setPhone(m.matches);
+    on(); m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
   const [newLoc, setNewLoc] = useState("");
   const set = (patch: Partial<typeof p>) => setP((x) => ({ ...x, ...patch }));
   const setRow = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -130,7 +138,35 @@ export function ProjectForm({ initial, list, onClose, onSaved }: { initial: Buil
             <SecondaryButton onClick={() => setRows((rs) => [...rs, newRow({ type: rs[rs.length - 1]?.type ?? "2 BHK", sizeUnit: rs[rs.length - 1]?.sizeUnit ?? "sq.ft" })])}><Plus className="h-4 w-4" /> Add unit</SecondaryButton>
           </div>
           {tried && err.units && <p className="text-sm text-status-danger">{err.units}</p>}
-          <div className="overflow-x-auto rounded-xl border border-surface-border">
+          {/* Phones: each unit as a small stacked card (no sideways scrolling). */}
+          {phone ? <div className="space-y-3">
+            {rows.map((r) => (
+              <div key={r.key} className="space-y-2 rounded-xl border border-surface-border p-3">
+                <div className="flex items-center gap-2">
+                  <select aria-label="Unit type" value={r.type} onChange={(e) => setRow(r.key, { type: e.target.value, sizeUnit: ["Plot", "Bungalow"].includes(e.target.value) ? "sq.yrd" : r.sizeUnit })} className={cn(cell, "flex-1")}>
+                    {UNIT_TYPES.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                  <button type="button" aria-label={`Remove ${r.type} ${r.size}`} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-ink-muted hover:bg-status-dangerBg hover:text-status-danger"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="col-span-2 block text-sm text-ink-muted">Size
+                    <div className="mt-1 flex gap-1"><input aria-label={`Size (${r.type})`} inputMode="decimal" value={r.size} onChange={(e) => setRow(r.key, { size: digits(e.target.value) })} className={cell} />
+                      <select aria-label="Size unit" value={r.sizeUnit} onChange={(e) => setRow(r.key, { sizeUnit: e.target.value as Row["sizeUnit"] })} className={cn(cell, "w-24")}><option>sq.ft</option><option>sq.yrd</option></select></div>
+                  </label>
+                  <label className="block text-sm text-ink-muted">Total<input aria-label={`Total (${r.type})`} inputMode="numeric" value={r.total} onChange={(e) => setRow(r.key, { total: e.target.value.replace(/\D/g, "") })} className={cn(cell, "mt-1")} /></label>
+                  <label className="block text-sm text-ink-muted">Available<input aria-label={`Available (${r.type})`} inputMode="numeric" value={r.available} onChange={(e) => setRow(r.key, { available: e.target.value.replace(/\D/g, "") })} className={cn(cell, "mt-1", rowErr(r) && "border-status-danger")} /></label>
+                  {rowErr(r) && <span className="col-span-2 text-sm text-status-danger">{rowErr(r)}</span>}
+                  {(["pricePerUnit", "boxPrice", "saleDeed"] as const).map((k) => (
+                    <label key={k} className={cn("block text-sm text-ink-muted", k === "saleDeed" && "col-span-2")}>{{ pricePerUnit: "Price / unit ₹", boxPrice: "Box price ₹", saleDeed: "Sale deed ₹" }[k]}
+                      <input aria-label={`${{ pricePerUnit: "Price per unit", boxPrice: "Box price", saleDeed: "Sale deed" }[k]} (${r.type})`} inputMode="numeric" value={r[k]} onChange={(e) => setRow(r.key, { [k]: digits(e.target.value) })} className={cn(cell, "mt-1")} />
+                      {toAmount(r[k]) && <span className="mt-0.5 block text-ink-muted">₹{shortINR(toAmount(r[k]))}</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div> : <div className="overflow-x-auto rounded-xl border border-surface-border">
             <table className="w-full text-left text-sm">
               <thead className="bg-surface text-ink-muted"><tr>
                 <th className="px-2.5 py-2 font-medium">Type</th><th className="px-1.5 font-medium">Size</th><th className="px-1.5 font-medium">Total</th><th className="px-1.5 font-medium">Available</th>
@@ -164,7 +200,7 @@ export function ProjectForm({ initial, list, onClose, onSaved }: { initial: Buil
                 ))}
               </tbody>
             </table>
-          </div>
+          </div>}
         </section>
 
         <section className="space-y-4">
