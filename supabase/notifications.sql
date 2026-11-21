@@ -55,7 +55,7 @@ revoke all on notifications, push_subscriptions, notification_prefs from anon, a
 create or replace function private.notify_types() returns text[]
 language sql immutable as $$
   select array['leave_decision','att_updated','att_day','report_changed','report_reminder',
-               'leave_request','leave_cancelled','att_checked','email_failed','visit_today']
+               'leave_request','leave_cancelled','att_checked','email_failed','visit_today','lb_winner']
 $$;
 
 -- One notification for one person, unless they're inactive or turned the type off.
@@ -315,6 +315,8 @@ begin
   if p_cron then
     perform private.make_report_reminders();
     perform private.make_visit_reminders();
+    -- Leaderboard winners on the 1st (leaderboard.sql; skipped until it's run).
+    if to_regprocedure('private.lb_announce()') is not null then execute 'select private.lb_announce()'; end if;
     delete from push_subscriptions where last_seen < now() - interval '90 days';
   end if;
   update notifications set push_batch = '00000000-0000-0000-0000-000000000000', pushed_at = now()

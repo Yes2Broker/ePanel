@@ -423,3 +423,17 @@ export interface BuilderList {
   projects: BuilderProject[];
   localities: { city: string; name: string }[];
 }
+
+// Leaderboard (monthly race: site visits done + closures)
+export interface LbPlayer {
+  id: string; name: string; designation: string; visits: number; closures: number;
+  rankVisits: number; rankClosures: number; prevVisits: number | null; prevClosures: number | null;
+  titles: number; me: boolean;
+}
+export interface LbWinner { category: "visits" | "closures"; id: string; name: string; designation: string; value: number; me: boolean }
+export interface Leaderboard { month: string; live: boolean; daysLeft: number; minMonth: string; players: LbPlayer[]; winners: LbWinner[] }
+export interface LbBanner {
+  champions: { month: string; winners: LbWinner[] } | null;
+  race: { visits: number; closures: number; rankVisits: number; rankClosures: number; players: number;
+    visitsToNext: number | null; closuresToNext: number | null; daysLeft: number } | null;
+}

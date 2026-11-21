@@ -5,7 +5,7 @@ import {
   AttMonth, AttTeamMonthRow, AttTeamDayRow, AttDay, AttChange, AttImportResult, AttDashboard, PersonRef,
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
-  PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind, BuilderList,
+  PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind, BuilderList, Leaderboard, LbBanner,
 } from "@/types";
 
 /**
@@ -114,6 +114,8 @@ export const api = {
   assetHistory: (kind: AssetKind, id: string) => rpc<{ employee: string | null; employeeId: string | null; from: string; to: string | null; by: string | null; endedBy: string | null }[]>("asset_history_list", { p_kind: kind, p_id: id }),
   employeeAssets: (id: string) => rpc<{ sims: string[]; emails: string[] }>("employee_assets", { p_emp: id }),
   builderList: () => rpc<BuilderList>("builder_list"),
+  leaderboard: (month: string | null) => rpc<Leaderboard>("leaderboard", { p_month: month ? `${month}-01` : null }),
+  leaderboardBanner: () => rpc<LbBanner>("leaderboard_banner"),
   builderSave: (id: string | null, data: Record<string, unknown>) => rpc<string>("builder_save", { p_id: id, p_data: data }),
   builderDelete: (id: string) => rpc<void>("builder_delete", { p_id: id }),
   builderSetAvailable: (unitId: string, available: number) => rpc<void>("builder_set_available", { p_unit: unitId, p_available: available }),
