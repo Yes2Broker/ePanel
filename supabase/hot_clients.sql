@@ -27,6 +27,14 @@ create table if not exists hot_clients (
   closed_at timestamptz
 );
 create index if not exists hot_clients_emp_idx on hot_clients (employee_id, status);
+-- Lead type: Hot (closing soon) or Warm. Existing rows become Hot.
+alter table hot_clients add column if not exists temperature text not null default 'Hot';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'hot_clients_temperature_check') then
+    alter table hot_clients add constraint hot_clients_temperature_check check (temperature in ('Hot','Warm'));
+  end if;
+end $$;
 
 create table if not exists hot_client_changes (
   id bigint generated always as identity primary key,
@@ -57,13 +65,13 @@ language sql stable set search_path = public, private as $$
     'id', h.id, 'employeeId', h.employee_id, 'employeeName', (select name from employees where id = h.employee_id),
     'name', h.customer_name, 'phone', h.customer_phone,
     'projectId', h.project_id, 'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, ''),
-    'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'status', h.status,
+    'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'status', h.status, 'temperature', h.temperature,
     'createdAt', h.created_at, 'updatedAt', h.updated_at,
     'closedOn', case when h.closed_at is null then null else (h.closed_at at time zone private.tz())::date end)
 $$;
 
 -- Add / change one hot client (shared by the tab and the report form).
--- p: {id?, employeeId?, name, phone, projectId?, project?, expectedDate, remarks?, status?}
+-- p: {id?, employeeId?, name, phone, projectId?, project?, expectedDate, remarks?, status?, temperature?}
 create or replace function private.hc_apply(v_me employees, p jsonb) returns uuid
 language plpgsql volatile set search_path = public, private as $$
 declare
@@ -71,7 +79,7 @@ declare
   v_new hot_clients;
   v_id uuid := nullif(p ->> 'id', '')::uuid;
   v_emp text := coalesce(nullif(p ->> 'employeeId', ''), v_me.id);
-  v_name text; v_phone text; v_pid uuid; v_pname text; v_date date; v_remarks text; v_status text;
+  v_name text; v_phone text; v_pid uuid; v_pname text; v_date date; v_remarks text; v_status text; v_temp text;
   v_today date := private.today();
 begin
   if v_id is not null then
@@ -80,7 +88,7 @@ begin
     v_emp := v_old.employee_id;
     -- Only the fields sent change; the rest keep their values.
     p := jsonb_build_object('name', v_old.customer_name, 'phone', v_old.customer_phone, 'projectId', v_old.project_id,
-           'project', v_old.project_name, 'expectedDate', v_old.expected_closure_date, 'remarks', v_old.remarks, 'status', v_old.status)
+           'project', v_old.project_name, 'expectedDate', v_old.expected_closure_date, 'remarks', v_old.remarks, 'status', v_old.status, 'temperature', v_old.temperature)
          || (p - 'id' - 'employeeId');
   end if;
   v_name := trim(coalesce(p ->> 'name', ''));
@@ -90,6 +98,7 @@ begin
   v_date := nullif(p ->> 'expectedDate', '')::date;
   v_remarks := nullif(trim(coalesce(p ->> 'remarks', '')), '');
   v_status := coalesce(nullif(p ->> 'status', ''), 'Active');
+  v_temp := coalesce(nullif(p ->> 'temperature', ''), 'Hot');
   if length(v_phone) = 12 and v_phone like '91%' then v_phone := substr(v_phone, 3); end if;
   if v_emp <> v_me.id and not private.is_manager(v_me) then
     raise exception 'You can only change your own hot clients.' using errcode = '42501';
@@ -102,6 +111,7 @@ begin
   if v_phone !~ '^[0-9]{10}$' then raise exception 'Enter a 10-digit contact number for %.', v_name using errcode = '22023'; end if;
   if v_date is null then raise exception 'Pick the expected closure date for %.', v_name using errcode = '22023'; end if;
   if v_status not in ('Active','Closed-Won','Lost') then raise exception 'Unknown status.' using errcode = '22023'; end if;
+  if v_temp not in ('Hot','Warm') then raise exception 'Choose Hot or Warm.' using errcode = '22023'; end if;
   -- A new date (when adding, or when changing it) must be today or later.
   if v_date < v_today and (v_id is null or v_date is distinct from v_old.expected_closure_date) then
     raise exception 'Expected closure date for % must be today or later.', v_name using errcode = '22023';
@@ -111,15 +121,15 @@ begin
   end if;
 
   if v_id is null then
-    insert into hot_clients (employee_id, customer_name, customer_phone, project_id, project_name, expected_closure_date, remarks, status, created_by, closed_at)
-    values (v_emp, v_name, v_phone, v_pid, v_pname, v_date, v_remarks, v_status, v_me.id, case when v_status <> 'Active' then now() end)
+    insert into hot_clients (employee_id, customer_name, customer_phone, project_id, project_name, expected_closure_date, remarks, status, temperature, created_by, closed_at)
+    values (v_emp, v_name, v_phone, v_pid, v_pname, v_date, v_remarks, v_status, v_temp, v_me.id, case when v_status <> 'Active' then now() end)
     returning * into v_new;
     insert into hot_client_changes (client_id, field, new_value, changed_by) values (v_new.id, 'Added', v_name, v_me.id);
     return v_new.id;
   end if;
 
   update hot_clients set customer_name = v_name, customer_phone = v_phone, project_id = v_pid, project_name = v_pname,
-    expected_closure_date = v_date, remarks = v_remarks, status = v_status,
+    expected_closure_date = v_date, remarks = v_remarks, status = v_status, temperature = v_temp,
     closed_at = case when v_status = 'Active' then null when v_old.status = 'Active' then now() else closed_at end,
     updated_at = now(), updated_by = v_me.id
   where id = v_id returning * into v_new;
@@ -132,7 +142,8 @@ begin
                 coalesce((select name from builder_projects where id = v_new.project_id), v_new.project_name)),
     ('Expected closure', to_char(v_old.expected_closure_date, 'DD Mon YYYY'), to_char(v_new.expected_closure_date, 'DD Mon YYYY')),
     ('Remarks', v_old.remarks, v_new.remarks),
-    ('Status', v_old.status, v_new.status)) x(f, o, n)
+    ('Status', v_old.status, v_new.status),
+    ('Type', v_old.temperature, v_new.temperature)) x(f, o, n)
   where o is distinct from n;
   return v_id;
 end $$;
@@ -149,7 +160,7 @@ declare
 begin
   if not private.hc_allowed(v_me) then raise exception 'Hot clients need the daily report permission.' using errcode = '42501'; end if;
   return coalesce((
-    select jsonb_agg(private.hc_json(h) order by h.status <> 'Active', h.expected_closure_date, h.customer_name)
+    select jsonb_agg(private.hc_json(h) order by h.status <> 'Active', h.temperature <> 'Hot', h.expected_closure_date, h.customer_name)
     from hot_clients h
     where (case when v_mgr then p_employee is null or h.employee_id = p_employee else h.employee_id = v_me.id end)
   ), '[]'::jsonb);
@@ -224,7 +235,8 @@ begin
   return jsonb_build_object(
     'active', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
         'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, ''),
-        'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, '')) order by h.expected_closure_date, h.customer_name)
+        'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'temperature', h.temperature)
+        order by h.temperature <> 'Hot', h.expected_closure_date, h.customer_name)
       from hot_clients h where h.employee_id = r.employee_id and h.created_at < v_end
         and (h.status = 'Active' or h.closed_at >= v_end)), '[]'::jsonb),
     'won', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
