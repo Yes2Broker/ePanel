@@ -193,6 +193,14 @@ language sql immutable as $$
          or (coalesce(v.reschedule_date, v.visit_date) < p_date and v.source = 'panel'))
 $$;
 
+-- The same rule for the form's "Today's Visits Action" list and the save
+-- check: needs an action on p_date, and wasn't booked in a deleted report.
+create or replace function private.visit_due(v public.site_visits, p_date date) returns boolean
+language sql stable set search_path = public, private as $$
+  select private.visit_needs_action(v, p_date)
+     and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
+$$;
+
 -- Why someone isn't expected to file on a day ('On leave', 'Weekly off',
 -- 'Holiday', ...). The real version lives in leave.sql; this stand-in only
 -- exists until that runs, and re-running this file never replaces it.
@@ -529,8 +537,7 @@ begin
                order by v.booked_on, v.created_at)
       from site_visits v
       where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
-        and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
-        and (private.visit_needs_action(v, v_date)
+        and (private.visit_due(v, v_date)
              or (r.id is not null and exists (select 1 from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'today')))
     ), '[]'::jsonb),
     -- Upcoming visits that can be marked "future visit done".
@@ -738,7 +745,7 @@ begin
   -- Every visit due (or overdue) on the report date needs an action.
   select coalesce(array_agg(v.id), '{}') into v_eligible from site_visits v
   where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
-    and private.visit_needs_action(v, v_date);
+    and private.visit_due(v, v_date);
 
   for v_item in select * from jsonb_array_elements(coalesce(p_payload -> 'actions', '[]'::jsonb)) loop
     v_id := coalesce(nullif(v_temp ->> (v_item ->> 'tempId'), ''), nullif(v_item ->> 'visitId', ''))::uuid;
@@ -790,7 +797,12 @@ begin
   end loop;
   select count(*) into n from unnest(v_eligible) e where not (e = any (v_seen));
   if n > 0 then
-    raise exception 'Select an action (Done / Reschedule / Cancel) for every visit due today, including overdue ones.' using errcode = '22023';
+    -- Name them, so it's clear which visit is missing (e.g. one due on the report date).
+    raise exception 'Pick an action (Done / Reschedule / Cancel) for: %.', (
+      select string_agg(v.client_name || case when coalesce(v.reschedule_date, v.visit_date) < v_date
+                                              then ' (due ' || to_char(coalesce(v.reschedule_date, v.visit_date), 'FMDD Mon') || ')' else '' end,
+                        ', ' order by coalesce(v.reschedule_date, v.visit_date), v.client_name)
+      from site_visits v where v.id = any (v_eligible) and not (v.id = any (v_seen))) using errcode = '22023';
   end if;
 
   -- ---------- future visits done today ----------
