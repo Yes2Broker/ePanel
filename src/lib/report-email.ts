@@ -33,8 +33,8 @@ function dateLabel(iso: string) {
 
 function subjectFor(g: Group, date: string) {
   return g.type === "Normal"
-    ? `📊 Daily Sales Performance Report — ${dateLabel(date)}`
-    : `📊 ${g.title} Report — ${dateLabel(date)}`;
+    ? `Daily Sales Performance Report — ${dateLabel(date)}`
+    : `${g.title} Report — ${dateLabel(date)}`;
 }
 
 function section(g: Group, key: "daily" | "wtd" | "mtd", label: string) {
@@ -74,14 +74,14 @@ const LEGEND: [string, string][] = [
 ];
 
 function buildHtml(g: Group, date: string) {
-  const heading = g.type === "Normal" ? "📊 Sales Performance Report" : `📊 ${esc(g.title)}`;
+  const heading = g.type === "Normal" ? "Sales Performance Report" : `${esc(g.title)}`;
   const legend = LEGEND.map(([k, v]) => `<div style="padding:4px 0;font-size:12px;color:#4a5568;border-bottom:1px solid #f0f0f0;"><b style="color:${ACCENT};display:inline-block;min-width:38px;">${k}</b> = ${v}</div>`).join("");
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#f0f4f8;font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;}</style></head><body>`
     + `<div style="max-width:600px;margin:0 auto;">`
     + `<div style="background:${ACCENT};padding:20px 16px 16px;text-align:center;margin-bottom:12px;"><div style="font-size:20px;font-weight:800;color:#fff;">${heading}</div><div style="margin-top:4px;font-size:12px;color:#bfdbfe;">${dateLabel(date)} &nbsp;&middot;&nbsp; Generated at 10:00 PM</div></div>`
     + `<div style="background:#fff;padding:12px 0 16px;">`
     + section(g, "daily", "DAILY") + section(g, "wtd", "WTD") + section(g, "mtd", "MTD")
-    + `<div style="padding:12px 14px 4px;border-top:1px solid #e8edf2;"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#718096;margin-bottom:8px;">📖 Key</div>${legend}</div>`
+    + `<div style="padding:12px 14px 4px;border-top:1px solid #e8edf2;"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#718096;margin-bottom:8px;">Key</div>${legend}</div>`
     + `<div style="margin-top:14px;text-align:center;font-size:11px;color:#a0aec0;">Automated report &middot; Do not reply to this email.</div>`
     + `</div></div></body></html>`;
 }

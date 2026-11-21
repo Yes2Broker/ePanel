@@ -261,7 +261,7 @@ begin
   delete from hot_client_report_snaps where report_id = p_report;
 end $$;
 
--- The "🔥 Hot clients" block of a report: active that day, closed / lost that day.
+-- The hot clients block of a report: active that day, closed / lost that day.
 create or replace function public.hot_clients_for_report(p_token text, p_report_id uuid) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
 declare
