@@ -59,7 +59,7 @@ function rpc<T>(fn: string, args: Record<string, unknown> = {}, withToken = true
 // the pushes at once (the every-30-minute cron is only the backup).
 const NOTIFIES = new Set([
   "leave_apply", "leave_decide", "leave_cancel", "att_set_day", "att_import", "att_delete_upload", "att_mark_checked",
-  "save_sales_report", "delete_sales_report", "notify_test",
+  "save_sales_report", "save_sales_report_hot", "delete_sales_report", "notify_test",
 ]);
 
 function sendPushesNow() {
