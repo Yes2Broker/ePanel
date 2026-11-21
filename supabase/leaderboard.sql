@@ -4,9 +4,8 @@
 -- Run AFTER functions.sql, notifications.sql and reports.sql.
 -- Safe to re-run: it only creates what's missing and replaces functions.
 --
--- Who races: active employees (not Admins) with a daily report permission,
--- plus anyone else who filed a report that month. Everyone active can see the
--- board: names, designations and the two counts only (no phone, email, salary).
+-- Who races: active employees in the Sales department. Everyone active can see
+-- the board: names, designations and the two counts only (no phone, email, salary).
 --
 -- Winners: on the 1st of each month the first call (the 30-minute cron via
 -- push_claim, or anyone opening the panel) locks last month's winners (ties
@@ -29,26 +28,38 @@ alter table leaderboard_months enable row level security;
 alter table leaderboard_winners enable row level security;
 revoke all on leaderboard_months, leaderboard_winners from anon, authenticated;
 
--- Each racer's totals for a date range.
+-- Each racer's totals for a date range. Only the Sales department races.
 create or replace function private.lb_rows(p_from date, p_to date)
 returns table (id text, name text, designation text, visits int, closures int)
 language sql stable set search_path = public, private as $$
   select e.id, e.name, coalesce(e.designation, ''), coalesce(sum(r.done), 0)::int, coalesce(sum(r.tokens), 0)::int
   from employees e
   left join sales_reports r on r.employee_id = e.id and r.deleted_at is null and r.report_date between p_from and p_to
-  where e.status = 'Active' and e.role <> 'Admin'
-    and (r.id is not null
-         or coalesce((private.permissions_json(e) ->> 'normalReport')::boolean, false)
-         or coalesce((private.permissions_json(e) ->> 'soleSelling')::boolean, false))
+  where e.status = 'Active' and e.department = 'Sales'
   group by e.id, e.name, e.designation
 $$;
 
--- Ranked: rank 1 = most. Ties share a rank.
+-- Ranked: rank 1 = most; ties share a rank. 0 = not ranked (null).
+drop function if exists private.lb_ranked(date, date);
 create or replace function private.lb_ranked(p_from date, p_to date)
 returns table (id text, name text, designation text, visits int, closures int, rank_visits int, rank_closures int)
 language sql stable set search_path = public, private as $$
-  select r.*, (rank() over (order by r.visits desc))::int, (rank() over (order by r.closures desc))::int
+  select r.*,
+    case when r.visits > 0 then (rank() over (order by r.visits desc))::int end,
+    case when r.closures > 0 then (rank() over (order by r.closures desc))::int end
   from private.lb_rows(p_from, p_to) r
+$$;
+
+-- Filed a report on every working day this week so far (today counts once filed).
+create or replace function private.lb_streak(p_emp text, p_week_off smallint, p_today date) returns boolean
+language sql stable set search_path = public, private as $$
+  with days as (
+    select d::date as d from generate_series(p_today - (extract(isodow from p_today)::int - 1), p_today, interval '1 day') d
+    where private.is_working_day(d::date, p_week_off)
+      and (d::date < p_today or exists (select 1 from sales_reports where employee_id = p_emp and report_date = p_today and deleted_at is null))
+  )
+  select count(*) > 0 and bool_and(exists (select 1 from sales_reports s where s.employee_id = p_emp and s.report_date = days.d and s.deleted_at is null))
+  from days
 $$;
 
 -- Locks last month's winners and tells everyone, once per month.
@@ -112,6 +123,8 @@ begin
     'month', to_char(v_from, 'YYYY-MM'),
     'live', v_live,
     'daysLeft', case when v_live then v_end - v_today + 1 else 0 end,
+    -- Midnight after the last day, India time (for the countdown).
+    'endsAt', to_char(((v_end + 1)::timestamp at time zone private.tz()) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     'minMonth', coalesce((select to_char(min(report_date), 'YYYY-MM') from sales_reports where deleted_at is null), to_char(v_today, 'YYYY-MM')),
     'players', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -120,10 +133,16 @@ begin
         -- Yesterday's rank, for the ▲▼ arrows (this month only, from the 2nd).
         'prevVisits', y.rank_visits, 'prevClosures', y.rank_closures,
         'titles', (select count(*) from leaderboard_winners w where w.employee_id = r.id),
-        'me', r.id = v_me.id) order by r.rank_visits, r.name)
+        'streak', v_live and private.lb_streak(r.id, e.week_off, v_today),
+        'me', r.id = v_me.id) order by r.name)
       from private.lb_ranked(v_from, v_to) r
+      join employees e on e.id = r.id
       left join private.lb_ranked(v_from, v_today - 1) y on y.id = r.id and v_live and v_today > v_from), '[]'::jsonb),
-    'winners', private.lb_winners_json(v_from, v_me.id)
+    'winners', private.lb_winners_json(v_from, v_me.id),
+    'racing', v_me.department = 'Sales',
+    -- Hall of fame: the last 12 announced months.
+    'hall', coalesce((select jsonb_agg(jsonb_build_object('month', to_char(m.month, 'YYYY-MM'), 'winners', private.lb_winners_json(m.month, v_me.id)) order by m.month desc)
+                      from (select month from leaderboard_months order by month desc limit 12) m), '[]'::jsonb)
   );
 end $$;
 

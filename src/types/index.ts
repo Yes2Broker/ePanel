@@ -427,13 +427,16 @@ export interface BuilderList {
 // Leaderboard (monthly race: site visits done + closures)
 export interface LbPlayer {
   id: string; name: string; designation: string; visits: number; closures: number;
-  rankVisits: number; rankClosures: number; prevVisits: number | null; prevClosures: number | null;
-  titles: number; me: boolean;
+  rankVisits: number | null; rankClosures: number | null; prevVisits: number | null; prevClosures: number | null;
+  titles: number; streak: boolean; me: boolean;
 }
 export interface LbWinner { category: "visits" | "closures"; id: string; name: string; designation: string; value: number; me: boolean }
-export interface Leaderboard { month: string; live: boolean; daysLeft: number; minMonth: string; players: LbPlayer[]; winners: LbWinner[] }
+export interface Leaderboard {
+  month: string; live: boolean; daysLeft: number; endsAt: string; minMonth: string; racing: boolean;
+  players: LbPlayer[]; winners: LbWinner[]; hall: { month: string; winners: LbWinner[] }[];
+}
 export interface LbBanner {
   champions: { month: string; winners: LbWinner[] } | null;
-  race: { visits: number; closures: number; rankVisits: number; rankClosures: number; players: number;
+  race: { visits: number; closures: number; rankVisits: number | null; rankClosures: number | null; players: number;
     visitsToNext: number | null; closuresToNext: number | null; daysLeft: number } | null;
 }

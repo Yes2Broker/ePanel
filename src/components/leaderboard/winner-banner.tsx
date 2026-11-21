@@ -69,10 +69,10 @@ export function WinnerBanner() {
         <Link href="/leaderboard" className="flex items-center gap-3 rounded-card border border-amber-200 bg-gradient-to-r from-amber-50 to-white px-4 py-3 text-sm shadow-card hover:border-amber-300">
           <Trophy className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
           <span className="min-w-0 flex-1 text-ink">
-            <b>This month: #{race.rankVisits} in visits</b>
-            {race.visitsToNext != null ? ` (${race.visitsToNext} to move up)` : race.visits > 0 ? " 👑" : ""}
-            {" · "}<b>#{race.rankClosures} in closures</b>
-            {race.closuresToNext != null ? ` (${race.closuresToNext} to move up)` : race.closures > 0 ? " 👑" : ""}
+            <b>This month: {race.rankVisits ? `#${race.rankVisits} in visits` : "visits: your first one puts you on the board"}</b>
+            {race.rankVisits ? (race.visitsToNext != null ? ` (${race.visitsToNext} to move up)` : " 👑") : ""}
+            {" · "}<b>{race.rankClosures ? `#${race.rankClosures} in closures` : "no closures yet"}</b>
+            {race.rankClosures ? (race.closuresToNext != null ? ` (${race.closuresToNext} to move up)` : " 👑") : ""}
             <span className="text-ink-muted"> · {race.daysLeft} {race.daysLeft === 1 ? "day" : "days"} left</span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />

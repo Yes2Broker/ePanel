@@ -8,7 +8,7 @@ const COLORS = ["#FFC233", "#FF5E7E", "#3DD68C", "#5B8CFF", "#B57BFF", "#FFFFFF"
  * Full-screen fireworks + confetti for a few seconds. Doesn't block clicks.
  * Skipped for people who turned on "reduce motion". Change `run` to fire again.
  */
-export function Fireworks({ run, duration = 4500 }: { run: number; duration?: number }) {
+export function Fireworks({ run, duration = 4500, colors = COLORS, bursts = true }: { run: number; duration?: number; colors?: string[]; bursts?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!run || typeof window === "undefined") return;
@@ -24,7 +24,7 @@ export function Fireworks({ run, duration = 4500 }: { run: number; duration?: nu
     const parts: P[] = [];
     const burst = () => {
       const x = innerWidth * (0.15 + Math.random() * 0.7), y = innerHeight * (0.12 + Math.random() * 0.35);
-      const c = COLORS[Math.floor(Math.random() * COLORS.length)];
+      const c = colors[Math.floor(Math.random() * colors.length)];
       for (let i = 0; i < 60; i++) {
         const a = (Math.PI * 2 * i) / 60, s = 2 + Math.random() * 3.5;
         parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, c, r: 2, spark: true, rot: 0 });
@@ -33,14 +33,14 @@ export function Fireworks({ run, duration = 4500 }: { run: number; duration?: nu
     const confetti = () => {
       for (let i = 0; i < 6; i++) parts.push({
         x: Math.random() * innerWidth, y: -10, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 2,
-        life: 1, c: COLORS[Math.floor(Math.random() * COLORS.length)], r: 4 + Math.random() * 4, spark: false, rot: Math.random() * 6,
+        life: 1, c: colors[Math.floor(Math.random() * colors.length)], r: 4 + Math.random() * 4, spark: false, rot: Math.random() * 6,
       });
     };
     const start = performance.now();
     let last = 0, raf = 0;
     const tick = (t: number) => {
       const busy = t - start < duration;
-      if (busy && t - last > 380) { burst(); last = t; }
+      if (bursts && busy && t - last > 380) { burst(); last = t; }
       if (busy) confetti();
       ctx.clearRect(0, 0, innerWidth, innerHeight);
       for (let i = parts.length - 1; i >= 0; i--) {
@@ -58,6 +58,7 @@ export function Fireworks({ run, duration = 4500 }: { run: number; duration?: nu
     };
     raf = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); ctx.clearRect(0, 0, innerWidth, innerHeight); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, duration]);
   return <canvas ref={ref} aria-hidden data-fireworks={run || undefined} className="pointer-events-none fixed inset-0 z-[60] h-full w-full" />;
 }
