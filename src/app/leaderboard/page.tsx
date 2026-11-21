@@ -44,17 +44,20 @@ export default function LeaderboardPage() {
 
 /** Dark empty world while the session loads (no white flash). */
 function Shell() {
-  return <div className="lb-world fixed inset-0"><style>{CSS}</style></div>;
+  return <div className="lb-world fixed inset-0"><style dangerouslySetInnerHTML={{ __html: CSS }} /></div>;
 }
 
 /** Same login as the panel; signed out → login → back here. */
 function Gate() {
   const { user, loading } = useSession();
   const router = useRouter();
+  // Render the lobby only after mounting, so the server HTML (empty world) always matches.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   }, [loading, user, router]);
-  if (loading || !user) return <Shell />;
+  if (!mounted || loading || !user) return <Shell />;
   return <Lobby name={user.name} />;
 }
 
@@ -152,7 +155,7 @@ function Lobby({ name }: { name: string }) {
 
   return (
     <div className={cn("lb-world relative min-h-[100dvh] w-full text-white [overflow-x:clip]", tv && "lb-tv", idle && "cursor-none")} data-tv={tv || undefined}>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
       <Fireworks run={fire} />
@@ -516,7 +519,7 @@ const CSS = `
 .lb-tv .lb-row{padding-top:1rem;padding-bottom:1rem}
 .lb-tv .lb-row .text-\[15px\]{font-size:1.25rem}
 .lb-tv .lb-row .text-xl{font-size:1.75rem}
-@keyframes lbFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes lbFade{from{opacity:0}to{opacity:1}}
 @keyframes lbTimer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @keyframes lbSpin{to{transform:rotate(360deg)}}
 @keyframes lbFloat{0%{opacity:0;transform:translateY(10px) scale(.6)}50%{opacity:.9}100%{opacity:0;transform:translateY(-40px) scale(1)}}
