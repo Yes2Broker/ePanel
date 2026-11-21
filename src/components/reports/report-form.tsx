@@ -141,10 +141,12 @@ export function ReportForm({
       if (s.date < date) return fail(`Scheduled visit date for ${s.client} must be today or later.`);
     }
     const now = nowHHMM();
+    // Every visit due on the report date (and overdue ones) needs an action: name all that are missing.
+    const missing = todayItems.filter((i) => !i.frozen && !(actions[i.key] ?? emptyAction).action).map((i) => i.client);
+    if (missing.length) return fail(`Pick an action (Done / Reschedule / Cancel) for: ${missing.join(", ")}.`);
     for (const item of todayItems) {
       if (item.frozen) continue;
       const a = actions[item.key] ?? emptyAction;
-      if (!a.action) return fail(`Select an action for ${item.client}.`);
       if (a.action === "done" && !a.time) return fail(`Enter time for ${item.client}`);
       if (a.action === "done" && !HHMM.test(a.time)) return fail(`Pick the visit time for ${item.client}.`);
       if (a.action === "done" && form.isToday && a.time > now) return fail(`Visit time for ${item.client} can't be in the future.`);
