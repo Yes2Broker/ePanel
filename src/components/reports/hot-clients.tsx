@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Download, Flame, History, Pencil, Phone, Plus, Undo2, X } from "lucide-react";
+import { Check, CheckCircle2, Download, Flame, History, Pencil, Phone, Plus, Undo2, X, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Skeleton } from "@/components/ui/page";
@@ -35,14 +35,19 @@ export function hotText(b: HotReportBlock | null | undefined, reportDate?: strin
     lines.push(`${head} (${group.length})`);
     group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
   }
-  if (b.won.length) lines.push(`✅ Closed today: ${named(b.won)}`);
-  if (b.lost.length) lines.push(`❌ Lost today: ${named(b.lost)}`);
+  if (b.won.length) lines.push(`Closed today: ${named(b.won)}`);
+  if (b.lost.length) lines.push(`Lost today: ${named(b.lost)}`);
   return lines.join("\n");
 }
 
 /** The summary popup's hot & warm table (same look as the Particulars table; also in the image). */
 export function HotTable({ block, reportDate }: { block: HotReportBlock | null | undefined; reportDate: string }) {
+  // On screen, tap a row to see its full name / project / remarks. The saved image
+  // shows everything in full (the capture copy carries data-capture; see report-summary).
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
   if (!hasHot(block)) return null;
+  const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const full = "group-data-[capture]/cap:whitespace-normal group-data-[capture]/cap:break-words";
   const groups = GROUPS.map(([t, head]) => ({ t, head, rows: groupOf(block, t) })).filter((g) => g.rows.length);
   return (
     <div className="space-y-1.5" aria-label="Hot and warm clients summary">
@@ -67,15 +72,18 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
               </tr>
               {g.rows.map((c, i) => {
                 const late = c.expectedDate < reportDate;
+                const k = `${g.t}-${i}`, wide = open.has(k);
                 return (
-                  <tr key={i} className="border-t border-surface-border align-top">
+                  <tr key={i} onClick={() => toggle(k)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(k); } }}
+                    tabIndex={0} aria-expanded={wide} aria-label={`${c.name}${wide ? "" : ", tap for full details"}`}
+                    className="cursor-pointer border-t border-surface-border align-top hover:bg-surface focus-visible:bg-surface focus-visible:outline-none">
                     <td className="py-2 pl-2.5 pr-1 text-ink-muted">{i + 1}</td>
-                    <td className="truncate px-1.5 py-2 font-semibold text-ink" title={c.name}>{c.name}</td>
-                    <td className="truncate px-1.5 py-2 text-ink-muted" title={c.project}>{c.project || "-"}</td>
+                    <td className={cn("px-1.5 py-2 font-semibold text-ink", wide ? "whitespace-normal break-words" : "truncate", full)} title={c.name}>{c.name}</td>
+                    <td className={cn("px-1.5 py-2 text-ink-muted", wide ? "whitespace-normal break-words" : "truncate", full)} title={c.project}>{c.project || "-"}</td>
                     <td className={cn("px-1.5 py-2 leading-tight", late ? "font-semibold text-status-danger" : "text-ink")}>
                       {dayMonth(c.expectedDate)}{late && <span className="block text-[10px] font-medium uppercase">Overdue</span>}
                     </td>
-                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className="line-clamp-2 break-words" title={c.remarks}>{c.remarks || "-"}</span></td>
+                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className={cn("break-words", !wide && "line-clamp-2", "group-data-[capture]/cap:line-clamp-none")} title={c.remarks}>{c.remarks || "-"}</span></td>
                   </tr>
                 );
               })}
@@ -83,8 +91,8 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
           ))}
         </table>
       )}
-      {block.won.length > 0 && <p className="text-xs text-ink-muted">✅ <b className="font-medium text-ink">Closed today:</b> {named(block.won)}</p>}
-      {block.lost.length > 0 && <p className="text-xs text-ink-muted">❌ <b className="font-medium text-ink">Lost today:</b> {named(block.lost)}</p>}
+      {block.won.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0 text-status-success" aria-hidden /><span><b className="font-medium text-ink">Closed today:</b> {named(block.won)}</span></p>}
+      {block.lost.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden /><span><b className="font-medium text-ink">Lost today:</b> {named(block.lost)}</span></p>}
     </div>
   );
 }
@@ -262,13 +270,15 @@ export function HotClientsSection({ employeeId, forSomeone, reportDate, changes,
                 {late && <p className="mt-0.5 text-xs font-medium text-status-warning">Date passed, update it</p>}
                 {m.status !== "Active" ? (
                   <p className="mt-1 flex items-center gap-2 text-xs font-medium">
-                    <span className={m.status === "Closed-Won" ? "text-status-success" : "text-ink-muted"}>{m.status === "Closed-Won" ? "✅ Will be marked closed (won)" : "❌ Will be marked lost"}</span>
+                    <span className={cn("inline-flex items-center gap-1", m.status === "Closed-Won" ? "text-status-success" : "text-ink-muted")}>
+                      {m.status === "Closed-Won" ? <><CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Will be marked closed (won)</> : <><XCircle className="h-3.5 w-3.5" aria-hidden /> Will be marked lost</>}
+                    </span>
                     <button type="button" onClick={() => setStatus(c, "Active")} className="inline-flex items-center gap-0.5 text-brand underline"><Undo2 className="h-3 w-3" /> Undo</button>
                   </p>
                 ) : (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <RowBtn onClick={() => setEditing({ key: c.id, client: m })} label={`Edit ${c.name}`}><Pencil className="h-3.5 w-3.5" /> Edit</RowBtn>
-                    <RowBtn onClick={() => setStatus(c, "Closed-Won")} label={`Closed ${c.name}`} tone="ok"><Check className="h-3.5 w-3.5" /> Closed ✓</RowBtn>
+                    <RowBtn onClick={() => setStatus(c, "Closed-Won")} label={`Closed ${c.name}`} tone="ok"><Check className="h-3.5 w-3.5" /> Closed</RowBtn>
                     <RowBtn onClick={() => setStatus(c, "Lost")} label={`Lost ${c.name}`}><X className="h-3.5 w-3.5" /> Lost</RowBtn>
                     <RowBtn onClick={() => setTemp(c, m.temperature === "Warm" ? "Hot" : "Warm")} label={`Make ${c.name} ${m.temperature === "Warm" ? "hot" : "warm"}`}>{m.temperature === "Warm" ? "→ 🔥 Hot" : "→ 🌤 Warm"}</RowBtn>
                     {ch && Object.keys(ch).length > 1 && <span className="self-center text-xs text-ink-faint">Edited, saves with the report</span>}
@@ -386,7 +396,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
     try { await save({ id: c.id, temperature: t }, `${c.name} is now ${t === "Hot" ? "🔥 Hot" : "🌤 Warm"}.`); } catch (e) { toast(errorMessage(e), "error"); }
   };
   const mark = async (c: HotClient, status: HotStatus) => {
-    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked closed. 🎉` : status === "Lost" ? `${c.name} marked lost.` : `${c.name} is active again.`); }
+    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked closed.` : status === "Lost" ? `${c.name} marked lost.` : `${c.name} is active again.`); }
     catch (e) { toast(errorMessage(e), "error"); }
   };
   const exportXlsx = async () => {
@@ -495,7 +505,7 @@ function HotDetails({ c, isManager, onClose, onEdit, onMark, onSwitch }: {
       footer={c.status === "Active" ? (
         <div className="grid grid-cols-3 gap-2">
           <SecondaryButton onClick={onEdit} className="justify-center"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
-          <SecondaryButton onClick={() => onMark("Closed-Won")} className="justify-center text-status-success"><Check className="h-4 w-4" /> Closed ✓</SecondaryButton>
+          <SecondaryButton onClick={() => onMark("Closed-Won")} className="justify-center text-status-success"><Check className="h-4 w-4" /> Closed</SecondaryButton>
           <SecondaryButton onClick={() => onMark("Lost")} className="justify-center"><X className="h-4 w-4" /> Lost</SecondaryButton>
         </div>
       ) : <SecondaryButton onClick={() => onMark("Active")} className="w-full justify-center"><Undo2 className="h-4 w-4" /> Make active again</SecondaryButton>}>

@@ -21,10 +21,10 @@ export function ReportSummary({
 }: { report: SalesReportDetail; onClose: () => void; showHistory?: boolean; editHref?: string | null }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
-  const image = useReportImage(captureRef, report);
   const sole = report.type === "Sole Selling";
   const toast = useToast();
   const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
+  const image = useReportImage(captureRef, report, hot.data);
   const hotBlock = hotText(hot.data, report.date);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
@@ -82,7 +82,7 @@ export function ReportSummary({
   return (
     <>
       <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
-        <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
+        <div ref={captureRef} className="group/cap space-y-4 bg-white px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
             {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
@@ -137,7 +137,7 @@ const isPhone = () => typeof window !== "undefined" && window.matchMedia("(point
  * The image is drawn as soon as the popup opens: iPhones only allow the share
  * sheet straight after a tap, so there's no time to draw it then.
  */
-function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDetail) {
+function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDetail, extra?: unknown) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<Promise<File | null> | null>(null);
   const name = `${report.title.replace(/[^\w]+/g, "-")}-${report.employeeName.replace(/\s+/g, "-")}-${report.date}.png`;
@@ -147,8 +147,19 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
       fileRef.current = (async () => {
         if (!ref.current) return null;
         const { toBlob } = await import("html-to-image");
-        const blob = await toBlob(ref.current, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
-        return blob ? new File([blob], name, { type: "image/png" }) : null;
+        // Capture an off-screen copy marked data-capture: there, client names and
+        // remarks wrap in full (no "…"), so rows just grow taller.
+        const src = ref.current;
+        const copy = src.cloneNode(true) as HTMLElement;
+        copy.setAttribute("data-capture", "");
+        Object.assign(copy.style, { position: "fixed", left: "-10000px", top: "0", width: `${src.offsetWidth}px` });
+        document.body.appendChild(copy);
+        try {
+          const blob = await toBlob(copy, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
+          return blob ? new File([blob], name, { type: "image/png" }) : null;
+        } finally {
+          copy.remove();
+        }
       })().catch(() => null);
     }
     return fileRef.current;
@@ -161,7 +172,7 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
       return () => window.clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report]);
+  }, [report, extra]);
 
   const save = async () => {
     setBusy(true);

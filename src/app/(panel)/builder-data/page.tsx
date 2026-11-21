@@ -43,7 +43,7 @@ function messageFor(p: BuilderProject) {
     const box = us.map((u) => u.boxPrice).filter(Boolean) as number[];
     return `• ${t}${sizes.length ? ` · ${Math.min(...sizes)}${Math.max(...sizes) !== Math.min(...sizes) ? `–${Math.max(...sizes)}` : ""} ${us[0].sizeUnit}` : ""}${box.length ? ` · ${rs(Math.min(...box))}${Math.max(...box) !== Math.min(...box) ? ` – ${rs(Math.max(...box))}` : ""}` : ""}`;
   });
-  return [`🏢 *${p.name}*`, `📍 ${[p.subLocality, p.locality, p.city].filter(Boolean).join(", ")}`, "", ...lines, "",
+  return [`*${p.name}*`, `${[p.subLocality, p.locality, p.city].filter(Boolean).join(", ")}`, "", ...lines, "",
     `Status: ${p.status}${p.possession ? ` · Possession ${monYear(p.possession)}` : ""}${p.rera ? " · RERA approved" : ""}`, "",
     "Yes2Broker — https://yes2broker.in", "Instagram — https://www.instagram.com/yes2broker"].join("\n");
 }

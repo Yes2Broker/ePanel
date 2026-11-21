@@ -127,7 +127,7 @@ export default function EmployeeDashboardPage() {
 
   return (
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
-      <PageHeader title={`${greeting}, ${firstName} 👋`} subtitle="Welcome to your Yes2Broker panel."
+      <PageHeader title={`${greeting}, ${firstName}`} subtitle="Welcome to your Yes2Broker panel."
         actions={available.length > 0 && <CustomiseButton onClick={() => setCustomising(true)} />} />
       <InstallBanner />
       <ComingSoonCard />
