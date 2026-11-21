@@ -3,7 +3,9 @@
 import { FiledLate } from "@/components/reports/filed-late";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, History, Pencil } from "lucide-react";
+import { Copy, Download, History, Pencil } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
+import { hotText } from "@/components/reports/hot-clients";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Loading, Skeleton } from "@/components/ui/page";
 import { Modal } from "@/components/ui/modal";
@@ -21,6 +23,9 @@ export function ReportSummary({
   const captureRef = useRef<HTMLDivElement>(null);
   const image = useReportImage(captureRef, report);
   const sole = report.type === "Sole Selling";
+  const toast = useToast();
+  const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
+  const hotBlock = hotText(hot.data);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
     ["Calls Made", report.today.calls, report.mtd.calls],
@@ -33,12 +38,30 @@ export function ReportSummary({
     ["Closure Conversion%", report.today.closureConversion, report.mtd.closureConversion],
   ];
 
+  // Plain text for WhatsApp: the same table, lists and hot clients block (no phone numbers).
+  const copy = async () => {
+    const list = (title: string, items: string[]) => [`*${title}*`, ...(items.length ? items.map((t) => `• ${t}`) : ["-"])].join("\n");
+    const text = [
+      `*Daily Report – ${report.title}*`, `Name: ${report.employeeName}`, `Date: ${shortDate(report.date)}`,
+      ...(sole && report.projectName ? [`Project: ${report.projectName}`] : []), "",
+      ...rows.map(([label, t, m]) => `${label}: ${t} (MTD ${m})`), "",
+      list("Today's Visit Done", report.doneVisits.map((v) => `${v.client} – ${time12(v.time)}`)),
+      ...(sole ? ["", list("Today's Walk In Done", report.walkIns)] : []), "",
+      list("Site Visit Scheduled Details", report.scheduledDetails.map((v) => `${v.client} – ${shortDate(v.date)}${v.status === "Pending" && !v.rescheduleDate ? "" : ` · ${visitStatusLabel(v)}`}`)),
+      ...(hotBlock ? ["", hotBlock] : []),
+    ].join("\n");
+    try { await navigator.clipboard.writeText(text); toast("Copied. Paste it in WhatsApp."); } catch { toast("Couldn't copy on this device.", "error"); }
+  };
+
   const footer = (
     <div className="space-y-2">
-      <SecondaryButton onClick={image.save} disabled={image.busy} className="w-full justify-center py-2.5">
-        <Download className="h-4 w-4" />
-        {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
-      </SecondaryButton>
+      <div className="flex gap-2">
+        <SecondaryButton onClick={image.save} disabled={image.busy} className="flex-1 justify-center py-2.5">
+          <Download className="h-4 w-4" />
+          {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
+        </SecondaryButton>
+        <SecondaryButton onClick={copy} className="flex-1 justify-center py-2.5"><Copy className="h-4 w-4" /> Copy text</SecondaryButton>
+      </div>
       {(editHref || showHistory) && (
         <div className="flex gap-2">
           {editHref && (
@@ -89,6 +112,12 @@ export function ReportSummary({
             title="Site Visit Scheduled Details"
             items={report.scheduledDetails.map((v) => `${v.client} – ${shortDate(v.date)}${v.status === "Pending" && !v.rescheduleDate ? "" : ` · ${visitStatusLabel(v)}`}`)}
           />
+
+          {hotBlock && (
+            <div className="rounded-xl bg-orange-50 px-3 py-2.5 text-sm" aria-label="Hot clients summary">
+              {hotBlock.split("\n").map((l, i) => <p key={i} className={i === 0 ? "font-semibold text-ink" : "text-ink-muted"}>{l}</p>)}
+            </div>
+          )}
 
           {report.source === "import" && (
             <p className="rounded-xl bg-surface px-3 py-2 text-xs text-ink-faint">Imported from the old Google Sheet.</p>

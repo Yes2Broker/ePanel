@@ -7,6 +7,7 @@ import { EmptyState, Loading, PageHeader, Tabs } from "@/components/ui/page";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { ReportSummaryById } from "@/components/reports/report-summary";
 import { ReportsTable, NewReportButton } from "@/components/reports/reports-table";
+import { HotClientsTab } from "@/components/reports/hot-clients";
 import { TeamSummary } from "@/components/reports/team-reports";
 import { ProjectsPanel } from "@/components/reports/projects-panel";
 import { EmailSettings } from "@/components/reports/email-settings";
@@ -14,7 +15,7 @@ import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 
-type Tab = "reports" | "summary" | "projects" | "email";
+type Tab = "reports" | "summary" | "hot" | "projects" | "email";
 
 function ReportsInner() {
   const { user, isManager } = useSession();
@@ -24,11 +25,16 @@ function ReportsInner() {
   const isAdmin = user?.role === "Admin";
   const options = useApi(() => api.reportOptions());
 
+  const canFileAny = (options.data?.length ?? 0) > 0;
   const tabs: { value: Tab; label: string }[] = isManager ? [
     { value: "summary", label: "Summary" },
     { value: "reports", label: "Reports" },
+    { value: "hot", label: "🔥 Hot clients" },
     { value: "projects", label: "Projects" },
     ...(isAdmin ? [{ value: "email" as Tab, label: "Email" }] : []),
+  ] : canFileAny ? [
+    { value: "reports", label: "Reports" },
+    { value: "hot", label: "🔥 Hot clients" },
   ] : [];
   const requested = q.get("tab") as Tab | null;
   // HR/Admin open on the Summary; employees only have their reports.
@@ -40,6 +46,7 @@ function ReportsInner() {
   const subtitle = {
     reports: isManager ? "Everyone's reports. View, edit or check the history of any report." : "Your daily reports. You can edit a report for 24 hours after sending it.",
     summary: "Today and month-to-date totals per person and report.",
+    hot: isManager ? "Everyone's customers expected to close soon." : "Customers you expect to close soon. Changes show in that day's report.",
     projects: "Sole selling projects.",
     email: "Who gets the daily report email, and when.",
   }[tab];
@@ -61,6 +68,7 @@ function ReportsInner() {
         <EmptyState icon={FileText} title="No daily reports assigned to you" text="Ask HR or Admin to give you access to the Normal or Sole Selling report." />
       ) : <ReportsTable manager={isManager} />)}
       {tab === "summary" && isManager && <TeamSummary />}
+      {tab === "hot" && <HotClientsTab isManager={isManager} />}
       {tab === "projects" && isManager && <ProjectsPanel />}
       {tab === "email" && isAdmin && <EmailSettings />}
       {openId && <ReportSummaryById reportId={openId} onClose={() => router.replace(`${pathname}${requested ? `?tab=${requested}` : ""}`)} />}

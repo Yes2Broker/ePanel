@@ -226,6 +226,28 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    // Hot clients: an employee's own, everyone's for HR/Admin (the database decides).
+    // The contact number is never sent to the AI (dropped here and by sanitize).
+    name: "hot_clients",
+    description: "Hot clients (expected to close soon). when: all|week|overdue. person: name (HR/Admin).",
+    parameters: { type: "object", properties: { when: { type: "string" }, person: { type: "string" } } },
+    run: async (ctx, a, role) => {
+      const all = ((await call("hot_clients_list", { p_token: ctx.token, p_employee: null })) as Row[]).filter((c) => c.status === "Active");
+      const today = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+      const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + (7 - (d.getUTCDay() || 7)));
+      const weekEnd = d.toISOString().slice(0, 10);
+      const who = isManager(role) && a.person ? String(a.person).toLowerCase() : "";
+      const hits = all.filter((c) => (!who || String(c.employeeName).toLowerCase().includes(who))
+        && (a.when === "week" ? String(c.expectedDate) >= today && String(c.expectedDate) <= weekEnd : a.when === "overdue" ? String(c.expectedDate) < today : true))
+        .sort((x, y) => String(x.expectedDate).localeCompare(String(y.expectedDate)));
+      if (!hits.length) return { say: a.when === "week" ? "**No hot clients closing this week.**" : a.when === "overdue" ? "**No overdue hot clients.**" : "**No active hot clients.**" };
+      const many = isManager(role);
+      return { count: hits.length, list: table([...(many ? ["person"] : []), "client", "project", "close by", "remarks"], hits.map((c) => [
+        ...(many ? [c.employeeName] : []), c.name, c.project || "", md(c.expectedDate), short(c.remarks, 40) ?? "",
+      ]), 10) };
+    },
+  },
+  {
     // Builder Data (needs the "Builder Data" permission). Owner, contact phone, brokerage,
     // payout and sale deed are never included, whatever the person may see in the panel.
     name: "builder_projects",
@@ -264,7 +286,11 @@ const canBuilder = (perms: Perms) => !!(perms.builderData || perms.builderManage
 // The builder tool is only offered for property questions (keeps every other request small).
 const PROPERTY = /\b(\d(\.5)?\s*bhk|bhk|flats?|projects?|builders?|propert(y|ies)|possession|budget|crores?|cr|lakhs?|lacs?|shops?|showrooms?|plots?|bungalows?|penthouses?|offices?|rera|sq\.?\s?(ft|yrd)|inventory|units?)\b|\dbhk/i;
 export const isPropertyQuestion = (q: string) => PROPERTY.test(q);
+// Hot clients: only offered when the question is about them (keeps other requests small).
+const HOT = /\b(hot|closing|closure|close this|pipeline|clients?)\b/i;
+const canHot = (role: Role, perms: Perms) => isManager(role) || filesReports(perms);
 export const toolsFor = (role: Role, perms: Perms, question = ""): Tool[] => TOOLS.filter((t) => t.name === "builder_projects" ? canBuilder(perms) && isPropertyQuestion(question) :
+  t.name === "hot_clients" ? canHot(role, perms) && HOT.test(question) :
   (!t.managers || isManager(role)) && areasOf(role, perms)[AREA[t.name]] && (!OWN_REPORT_TOOLS.has(t.name) || filesReports(perms))).map((t) => ({
   name: t.name, description: t.description,
   parameters: isManager(role) && (t.name === "reports" || t.name === "attendance") ? { type: "object", properties: { person } } : t.parameters,
@@ -276,6 +302,7 @@ export async function runTool(role: Role, perms: Perms, ctx: Ctx, name: string, 
   if (!tool || (tool.managers && !isManager(role))) return NOT_YOURS;
   // Checked again here: a tool the person's permissions don't allow never runs.
   if (tool.name === "builder_projects") { if (!canBuilder(perms)) return { final: "Builder Data isn't turned on for you. Ask HR or Admin." }; }
+  else if (tool.name === "hot_clients") { if (!canHot(role, perms)) return { final: NO_OWN_REPORTS }; }
   else if (!areasOf(role, perms)[AREA[tool.name]]) return { final: noAccess(AREA[tool.name], role, perms) };
   if (OWN_REPORT_TOOLS.has(tool.name) && !filesReports(perms)) return { final: NO_OWN_REPORTS };
   let args: Record<string, string | undefined> = {};

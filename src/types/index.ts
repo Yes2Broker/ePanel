@@ -423,3 +423,21 @@ export interface BuilderList {
   projects: BuilderProject[];
   localities: { city: string; name: string }[];
 }
+
+// Hot clients (customers expected to close soon)
+export type HotStatus = "Active" | "Closed-Won" | "Lost";
+export interface HotClient {
+  id: string; employeeId: string; employeeName: string; name: string; phone: string;
+  projectId: string | null; project: string; expectedDate: string; remarks: string; status: HotStatus;
+  createdAt: string; updatedAt: string | null; closedOn: string | null;
+}
+/** Sent to save: a new client (no id) or the changed fields of an existing one. */
+export interface HotClientInput {
+  id?: string; employeeId?: string; name?: string; phone?: string; projectId?: string | null; project?: string;
+  expectedDate?: string; remarks?: string; status?: HotStatus;
+}
+export interface HotReportBlock {
+  active: { name: string; project: string; expectedDate: string; remarks: string }[];
+  won: { name: string; project: string }[]; lost: { name: string; project: string }[];
+}
+export interface HotChange { field: string; old: string | null; new: string | null; by: string | null; at: string }
