@@ -18,14 +18,20 @@ import type { HotClient, HotClientInput, HotReportBlock, HotStatus, HotTemp } fr
 export const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
 
 type HotRow = HotReportBlock["active"][number];
-const GROUPS = [["Hot", "HOT"], ["Warm", "WARM"]] as const;
+// The shared summary shows HOT clients only (warm ones stay in the panel).
+const GROUPS = [["Hot", "HOT"]] as const;
+/** "98765 43210" */
+export const fmtPhone = (p: string) => (/^\d{10}$/.test(p ?? "") ? `${p.slice(0, 5)} ${p.slice(5)}` : p ?? "");
 /** Active clients of one type, soonest close-by first. */
 const groupOf = (b: HotReportBlock, t: HotTemp): HotRow[] =>
   b.active.filter((c) => (c.temperature ?? "Hot") === t).sort((x, y) => x.expectedDate.localeCompare(y.expectedDate) || x.name.localeCompare(y.name));
-const named = (l: { name: string; project: string }[]) => l.map((c) => (c.project ? `${c.name} (${c.project})` : c.name)).join(", ");
-const hasHot = (b: HotReportBlock | null | undefined): b is HotReportBlock => !!b && (b.active.length > 0 || b.won.length > 0 || b.lost.length > 0);
+const named = (l: { name: string; phone?: string; project: string }[]) =>
+  l.map((c) => `${c.name} (${[fmtPhone(c.phone ?? ""), c.project].filter(Boolean).join(", ")})`.replace(" ()", "")).join(", ");
+const hotOnly = (b: HotReportBlock): HotReportBlock => ({ ...b, active: b.active.filter((c) => (c.temperature ?? "Hot") === "Hot") });
+const hasHot = (b: HotReportBlock | null | undefined): b is HotReportBlock =>
+  !!b && (hotOnly(b).active.length > 0 || b.won.length > 0 || b.lost.length > 0);
 
-/** The hot & warm block of the WhatsApp text: one client per line, no phone numbers, ever. */
+/** The hot clients block of the WhatsApp text: one client per line, with the phone number. */
 export function hotText(b: HotReportBlock | null | undefined, reportDate?: string) {
   if (!hasHot(b)) return "";
   const lines: string[] = [];
@@ -33,27 +39,29 @@ export function hotText(b: HotReportBlock | null | undefined, reportDate?: strin
     const group = groupOf(b, t);
     if (!group.length) continue;
     lines.push(`${head} CLIENTS (${group.length})`);
-    group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
+    group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, fmtPhone(c.phone) || "-", c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
   }
   if (b.won.length) lines.push(`Closed today: ${named(b.won)}`);
   if (b.lost.length) lines.push(`Lost today: ${named(b.lost)}`);
   return lines.join("\n");
 }
 
-/** The summary popup's hot & warm table (same look as the Particulars table; also in the image). */
+/** The summary popup's hot clients table (same look as the Particulars table; also in the image). */
 export function HotTable({ block, reportDate }: { block: HotReportBlock | null | undefined; reportDate: string }) {
   // Nothing is ever cut: names, projects and remarks wrap and the row grows taller.
   if (!hasHot(block)) return null;
   const groups = GROUPS.map(([t, head]) => ({ t, head, rows: groupOf(block, t) })).filter((g) => g.rows.length);
   return (
-    <div className="space-y-1.5" aria-label="Hot and warm clients summary">
+    <div className="space-y-1.5" aria-label="Hot clients summary">
       {groups.length > 0 && (
-        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-[13px] [hyphens:auto] sm:text-sm">
-          <colgroup><col className="w-6 sm:w-7" /><col className="w-[25%] sm:w-[28%]" /><col className="w-[21%] sm:w-[24%]" /><col className="w-[3.6rem] sm:w-[4.25rem]" /><col /></colgroup>
+        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-[12.5px] [hyphens:auto]">
+          {/* The popup is narrow on every screen: keep fixed columns small so Remarks always has room. */}
+          <colgroup><col className="w-6" /><col className="w-[20%] sm:w-[22%]" /><col className="w-[3.4rem] sm:w-[6rem]" /><col className="w-[16%]" /><col className="w-[3.3rem]" /><col /></colgroup>
           <thead>
             <tr className="bg-ink text-left text-xs text-white">
               <th className="py-2 pl-2.5 pr-1 font-medium">#</th>
               <th className="px-1.5 py-2 font-medium">Client</th>
+              <th className="px-1.5 py-2 font-medium">Phone</th>
               <th className="px-1.5 py-2 font-medium">Project</th>
               <th className="px-1.5 py-2 font-medium">Close by</th>
               <th className="px-1.5 py-2 pr-2.5 font-medium">Remarks</th>
@@ -62,7 +70,7 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
           {groups.map((g) => (
             <tbody key={g.t} aria-label={`${g.head} (${g.rows.length})`}>
               <tr className={cn("border-t border-surface-border", g.t === "Hot" ? "bg-orange-100" : "bg-amber-100")}>
-                <th colSpan={5} scope="colgroup" className={cn("px-2.5 py-1.5 text-left text-xs font-bold tracking-wide", g.t === "Hot" ? "text-orange-800" : "text-amber-800")}>
+                <th colSpan={6} scope="colgroup" className={cn("px-2.5 py-1.5 text-left text-xs font-bold tracking-wide", g.t === "Hot" ? "text-orange-800" : "text-amber-800")}>
                   <span className="inline-flex items-center gap-1"><TempIcon t={g.t} className="h-3.5 w-3.5" />{g.head} ({g.rows.length})</span>
                 </th>
               </tr>
@@ -72,6 +80,7 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
                   <tr key={i} aria-label={c.name} className="border-t border-surface-border align-top">
                     <td className="py-2 pl-2.5 pr-1 text-ink-muted">{i + 1}</td>
                     <td className="whitespace-normal break-words px-1.5 py-2 font-semibold text-ink">{c.name}</td>
+                    <td className="whitespace-normal px-1.5 py-2 tabular-nums text-ink sm:whitespace-nowrap">{fmtPhone(c.phone) || "-"}</td>
                     <td className="whitespace-normal break-words px-1.5 py-2 text-ink-muted">{c.project || "-"}</td>
                     <td className={cn("px-1.5 py-2 leading-tight", late ? "font-semibold text-status-danger" : "text-ink")}>
                       {dayMonth(c.expectedDate)}{late && <span className="block text-[10px] font-medium uppercase">Overdue</span>}

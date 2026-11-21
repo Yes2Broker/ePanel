@@ -81,7 +81,7 @@ export function ReportSummary({
 
   return (
     <>
-      <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
+      <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="md" footer={footer} bodyClassName="p-0">
         <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
