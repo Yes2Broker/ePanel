@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Copy, Download, History, Pencil } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
-import { hotText } from "@/components/reports/hot-clients";
+import { HotTable, hotText } from "@/components/reports/hot-clients";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { Loading, Skeleton } from "@/components/ui/page";
 import { Modal } from "@/components/ui/modal";
@@ -25,7 +25,7 @@ export function ReportSummary({
   const sole = report.type === "Sole Selling";
   const toast = useToast();
   const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
-  const hotBlock = hotText(hot.data);
+  const hotBlock = hotText(hot.data, report.date);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
     ["Calls Made", report.today.calls, report.mtd.calls],
@@ -113,11 +113,7 @@ export function ReportSummary({
             items={report.scheduledDetails.map((v) => `${v.client} – ${shortDate(v.date)}${v.status === "Pending" && !v.rescheduleDate ? "" : ` · ${visitStatusLabel(v)}`}`)}
           />
 
-          {hotBlock && (
-            <div className="rounded-xl bg-orange-50 px-3 py-2.5 text-sm" aria-label="Hot clients summary">
-              {hotBlock.split("\n").map((l, i) => <p key={i} className={i === 0 ? "font-semibold text-ink" : "text-ink-muted"}>{l}</p>)}
-            </div>
-          )}
+          <HotTable block={hot.data} reportDate={report.date} />
 
           {report.source === "import" && (
             <p className="rounded-xl bg-surface px-3 py-2 text-xs text-ink-faint">Imported from the old Google Sheet.</p>
