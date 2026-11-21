@@ -6,6 +6,7 @@ import {
   SalesReportDetail, SalesReportRow, ReportChange, TeamSummaryGroup, SalesReportType,
   LeaveOverview, LeavePreview, LeaveApplication, LeaveDashboard, NotificationList,
   PaidLeave, PaidLeaveInput, PaidLeaveDay, Asset, AssetInput, AssetKind, BuilderList, Leaderboard, LbBanner,
+  HotClient, HotClientInput, HotReportBlock, HotChange,
 } from "@/types";
 
 /**
@@ -168,11 +169,18 @@ export const api = {
       p_report_id: args.reportId ?? null, p_employee_id: args.employeeId ?? null, p_type: args.type ?? null,
       p_project: args.projectId ?? null, p_date: args.date ?? null,
     }),
-  saveSalesReport: (args: { reportId?: string | null; employeeId?: string | null; type?: SalesReportType | null; projectId?: string | null; date?: string | null; payload: ReportPayload }) =>
-    rpc<SalesReportDetail>("save_sales_report", {
+  // With hot client changes, the report and the changes save together (all or nothing).
+  saveSalesReport: (args: { reportId?: string | null; employeeId?: string | null; type?: SalesReportType | null; projectId?: string | null; date?: string | null; payload: ReportPayload; hot?: HotClientInput[] }) =>
+    rpc<SalesReportDetail>(args.hot?.length ? "save_sales_report_hot" : "save_sales_report", {
       p_report_id: args.reportId ?? null, p_employee_id: args.employeeId ?? null, p_type: args.type ?? null,
       p_project: args.projectId ?? null, p_date: args.date ?? null, p_payload: args.payload,
+      ...(args.hot?.length ? { p_hot: args.hot } : {}),
     }),
+  hotClients: (employeeId: string | null) => rpc<HotClient[]>("hot_clients_list", { p_employee: employeeId }),
+  hotClientSave: (data: HotClientInput) => rpc<HotClient>("hot_client_save", { p_data: data }),
+  hotClientHistory: (id: string) => rpc<HotChange[]>("hot_client_history", { p_id: id }),
+  hotClientProjects: () => rpc<{ id: string; name: string }[]>("hot_client_projects"),
+  hotForReport: (reportId: string) => rpc<HotReportBlock>("hot_clients_for_report", { p_report_id: reportId }),
   getReport: (id: string) => rpc<SalesReportDetail>("get_report", { p_report_id: id }),
   reportHistory: (id: string) => rpc<ReportChange[]>("report_history", { p_report_id: id }),
   mySalesReports: (month: string | null) => rpc<SalesReportRow[]>("my_sales_reports", { p_month: month }),
