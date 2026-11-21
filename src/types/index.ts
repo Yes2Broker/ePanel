@@ -426,18 +426,19 @@ export interface BuilderList {
 
 // Hot clients (customers expected to close soon)
 export type HotStatus = "Active" | "Closed-Won" | "Lost";
+export type HotTemp = "Hot" | "Warm";
 export interface HotClient {
   id: string; employeeId: string; employeeName: string; name: string; phone: string;
-  projectId: string | null; project: string; expectedDate: string; remarks: string; status: HotStatus;
+  projectId: string | null; project: string; expectedDate: string; remarks: string; status: HotStatus; temperature: HotTemp;
   createdAt: string; updatedAt: string | null; closedOn: string | null;
 }
 /** Sent to save: a new client (no id) or the changed fields of an existing one. */
 export interface HotClientInput {
   id?: string; employeeId?: string; name?: string; phone?: string; projectId?: string | null; project?: string;
-  expectedDate?: string; remarks?: string; status?: HotStatus;
+  expectedDate?: string; remarks?: string; status?: HotStatus; temperature?: HotTemp;
 }
 export interface HotReportBlock {
-  active: { name: string; project: string; expectedDate: string; remarks: string }[];
+  active: { name: string; project: string; expectedDate: string; remarks: string; temperature: HotTemp }[];
   won: { name: string; project: string }[]; lost: { name: string; project: string }[];
 }
 export interface HotChange { field: string; old: string | null; new: string | null; by: string | null; at: string }
