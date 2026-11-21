@@ -24,7 +24,7 @@ export function ReportSummary({
   const sole = report.type === "Sole Selling";
   const toast = useToast();
   const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
-  const image = useReportImage(captureRef, report, hot.data);
+  const image = useReportImage(captureRef, report, hot.loading ? undefined : (hot.data ?? "none"));
   const hotBlock = hotText(hot.data, report.date);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
@@ -56,7 +56,7 @@ export function ReportSummary({
   const footer = (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <SecondaryButton onClick={image.save} disabled={image.busy} className="flex-1 justify-center py-2.5">
+        <SecondaryButton onClick={image.save} disabled={image.busy || hot.loading} className="flex-1 justify-center py-2.5">
           <Download className="h-4 w-4" />
           {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
         </SecondaryButton>
@@ -82,7 +82,7 @@ export function ReportSummary({
   return (
     <>
       <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
-        <div ref={captureRef} className="group/cap space-y-4 bg-white px-5 py-4">
+        <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
             {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
@@ -147,19 +147,10 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
       fileRef.current = (async () => {
         if (!ref.current) return null;
         const { toBlob } = await import("html-to-image");
-        // Capture an off-screen copy marked data-capture: there, client names and
-        // remarks wrap in full (no "…"), so rows just grow taller.
-        const src = ref.current;
-        const copy = src.cloneNode(true) as HTMLElement;
-        copy.setAttribute("data-capture", "");
-        Object.assign(copy.style, { position: "fixed", left: "-10000px", top: "0", width: `${src.offsetWidth}px` });
-        document.body.appendChild(copy);
-        try {
-          const blob = await toBlob(copy, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
-          return blob ? new File([blob], name, { type: "image/png" }) : null;
-        } finally {
-          copy.remove();
-        }
+        // Wait for the web fonts, so text is drawn with the real font and nothing shifts.
+        await document.fonts?.ready;
+        const blob = await toBlob(ref.current, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
+        return blob ? new File([blob], name, { type: "image/png" }) : null;
       })().catch(() => null);
     }
     return fileRef.current;
@@ -167,7 +158,8 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
 
   useEffect(() => {
     fileRef.current = null;
-    if (isPhone()) {
+    // Phones make the image ahead (the share sheet needs it at once), once everything has loaded.
+    if (isPhone() && extra !== undefined) {
       const t = window.setTimeout(render, 300);
       return () => window.clearTimeout(t);
     }

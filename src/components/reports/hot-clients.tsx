@@ -42,18 +42,14 @@ export function hotText(b: HotReportBlock | null | undefined, reportDate?: strin
 
 /** The summary popup's hot & warm table (same look as the Particulars table; also in the image). */
 export function HotTable({ block, reportDate }: { block: HotReportBlock | null | undefined; reportDate: string }) {
-  // On screen, tap a row to see its full name / project / remarks. The saved image
-  // shows everything in full (the capture copy carries data-capture; see report-summary).
-  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  // Nothing is ever cut: names, projects and remarks wrap and the row grows taller.
   if (!hasHot(block)) return null;
-  const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const full = "group-data-[capture]/cap:whitespace-normal group-data-[capture]/cap:break-words";
   const groups = GROUPS.map(([t, head]) => ({ t, head, rows: groupOf(block, t) })).filter((g) => g.rows.length);
   return (
     <div className="space-y-1.5" aria-label="Hot and warm clients summary">
       {groups.length > 0 && (
-        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-sm">
-          <colgroup><col className="w-7" /><col className="w-[28%]" /><col className="w-[24%]" /><col className="w-[4.25rem]" /><col /></colgroup>
+        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-[13px] [hyphens:auto] sm:text-sm">
+          <colgroup><col className="w-6 sm:w-7" /><col className="w-[25%] sm:w-[28%]" /><col className="w-[21%] sm:w-[24%]" /><col className="w-[3.6rem] sm:w-[4.25rem]" /><col /></colgroup>
           <thead>
             <tr className="bg-ink text-left text-xs text-white">
               <th className="py-2 pl-2.5 pr-1 font-medium">#</th>
@@ -72,18 +68,15 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
               </tr>
               {g.rows.map((c, i) => {
                 const late = c.expectedDate < reportDate;
-                const k = `${g.t}-${i}`, wide = open.has(k);
                 return (
-                  <tr key={i} onClick={() => toggle(k)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(k); } }}
-                    tabIndex={0} aria-expanded={wide} aria-label={`${c.name}${wide ? "" : ", tap for full details"}`}
-                    className="cursor-pointer border-t border-surface-border align-top hover:bg-surface focus-visible:bg-surface focus-visible:outline-none">
+                  <tr key={i} aria-label={c.name} className="border-t border-surface-border align-top">
                     <td className="py-2 pl-2.5 pr-1 text-ink-muted">{i + 1}</td>
-                    <td className={cn("px-1.5 py-2 font-semibold text-ink", wide ? "whitespace-normal break-words" : "truncate", full)} title={c.name}>{c.name}</td>
-                    <td className={cn("px-1.5 py-2 text-ink-muted", wide ? "whitespace-normal break-words" : "truncate", full)} title={c.project}>{c.project || "-"}</td>
+                    <td className="whitespace-normal break-words px-1.5 py-2 font-semibold text-ink">{c.name}</td>
+                    <td className="whitespace-normal break-words px-1.5 py-2 text-ink-muted">{c.project || "-"}</td>
                     <td className={cn("px-1.5 py-2 leading-tight", late ? "font-semibold text-status-danger" : "text-ink")}>
                       {dayMonth(c.expectedDate)}{late && <span className="block text-[10px] font-medium uppercase">Overdue</span>}
                     </td>
-                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className={cn("break-words", !wide && "line-clamp-2", "group-data-[capture]/cap:line-clamp-none")} title={c.remarks}>{c.remarks || "-"}</span></td>
+                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className="whitespace-normal break-words">{c.remarks || "-"}</span></td>
                   </tr>
                 );
               })}
@@ -452,7 +445,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
                         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_CLS[c.status])}>{STATUS_LABEL[c.status]}</span>
                         {late && <span className="text-xs font-medium text-status-warning">Date passed, update it</span>}
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-ink-muted">
+                      <p className="mt-0.5 break-words text-xs text-ink-muted">
                         {[isManager && c.employeeName, c.project, c.remarks].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
