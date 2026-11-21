@@ -60,13 +60,13 @@ export function WinnerBanner() {
               )
             ))}
           </div>
-          <Link href={`/leaderboard?month=${champs.month}`} className="mt-3 inline-flex min-h-10 items-center gap-1 rounded-pill bg-amber-300 px-4 text-sm font-bold text-[#2a1f6e]">
+          <Link href={`/leaderboard?month=${champs.month}`} target="_blank" rel="noopener" className="mt-3 inline-flex min-h-10 items-center gap-1 rounded-pill bg-amber-300 px-4 text-sm font-bold text-[#2a1f6e]">
             See the leaderboard <ChevronRight className="h-4 w-4" aria-hidden />
           </Link>
         </section>
       )}
       {race && (
-        <Link href="/leaderboard" className="flex items-center gap-3 rounded-card border border-amber-200 bg-gradient-to-r from-amber-50 to-white px-4 py-3 text-sm shadow-card hover:border-amber-300">
+        <Link href="/leaderboard" target="_blank" rel="noopener" className="flex items-center gap-3 rounded-card border border-amber-200 bg-gradient-to-r from-amber-50 to-white px-4 py-3 text-sm shadow-card hover:border-amber-300">
           <Trophy className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
           <span className="min-w-0 flex-1 text-ink">
             <b>This month: {race.rankVisits ? `#${race.rankVisits} in visits` : "visits: your first one puts you on the board"}</b>

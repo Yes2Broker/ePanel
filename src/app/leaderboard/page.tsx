@@ -1,19 +1,23 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loading } from "@/components/ui/page";
+import { LogoIcon } from "@/components/ui/logo";
 import { MonthField } from "@/components/ui/pickers";
 import { Fireworks } from "@/components/leaderboard/fireworks";
 import { SlotNumber, SlotReel } from "@/components/leaderboard/slot";
+import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { cn } from "@/lib/utils";
 import type { LbPlayer, LbWinner } from "@/types";
 
 /*
- * This one page is a "game lobby": its own dark world, fonts and colours,
- * outside the panel's design system on purpose. Everything else stays panel-style.
+ * A standalone, full-screen "game lobby" (opened in a new tab from the panel):
+ * no sidebar, top bar or Assist, its own dark world, fonts and colours.
+ * TV mode (?tv=1) is for a screen in the office: no personal bits, fullscreen,
+ * Visits ↔ Closures every 20 s, fresh data every 2 minutes.
  */
 
 type Cat = "visits" | "closures";
@@ -32,21 +36,41 @@ const store = {
 };
 const MEDAL = ["gold", "silver", "bronze"] as const;
 const GOLD = ["#F5C542", "#FFE08A", "#FFB800", "#FFF3C4"];
+const SWITCH_MS = 20_000, REFRESH_MS = 120_000, IDLE_MS = 3000;
 
 export default function LeaderboardPage() {
-  return <Suspense fallback={<Loading />}><Lobby /></Suspense>;
+  return <Suspense fallback={<Shell />}><Gate /></Suspense>;
 }
 
-function Lobby() {
+/** Dark empty world while the session loads (no white flash). */
+function Shell() {
+  return <div className="lb-world fixed inset-0"><style>{CSS}</style></div>;
+}
+
+/** Same login as the panel; signed out → login → back here. */
+function Gate() {
+  const { user, loading } = useSession();
+  const router = useRouter();
+  useEffect(() => {
+    if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+  }, [loading, user, router]);
+  if (loading || !user) return <Shell />;
+  return <Lobby name={user.name} />;
+}
+
+function Lobby({ name }: { name: string }) {
   const q = useSearchParams();
   const router = useRouter();
   const [month, setMonth] = useState(q.get("month") || thisMonth());
   const [cat, setCat] = useState<Cat>(q.get("tab") === "closures" ? "closures" : "visits");
+  const [tv, setTv] = useState(q.get("tv") === "1");
   const { data, loading, error, reload } = useApi(() => api.leaderboard(month), [month]);
   const [spin, setSpin] = useState(0);
   const [fire, setFire] = useState(0);
   const [confetti, setConfetti] = useState(0);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [idle, setIdle] = useState(false);
+  const [wide, setWide] = useState(false);
 
   const val = (p: LbPlayer) => (cat === "visits" ? p.visits : p.closures);
   const rank = (p: LbPlayer) => (cat === "visits" ? p.rankVisits : p.rankClosures);
@@ -67,19 +91,57 @@ function Lobby() {
     return groups;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ranked.map((p) => p.id + rank(p)).join()]);
-  const me = rows.find((p) => p.me);
+  const me = tv ? undefined : rows.find((p) => p.me);
   const past = !!data && !data.live;
-  const isRevealed = (m: string) => revealed[m] ?? store.get(`y2b-lb-reveal-${m}`) === "1";
+  const isRevealed = (m: string) => tv || (revealed[m] ?? store.get(`y2b-lb-reveal-${m}`) === "1");
   const hidden = past && !!data?.winners.length && !isRevealed(data.month);
 
-  const pick = (m: string) => { setMonth(m); router.replace(`/leaderboard?month=${m}`); };
+  const url = (m: string, t: boolean) => `/leaderboard?${new URLSearchParams({ ...(m !== thisMonth() ? { month: m } : {}), ...(t ? { tv: "1" } : {}) })}`;
+  const pick = (m: string) => { setMonth(m); router.replace(url(m, tv)); };
   const reveal = (m: string) => {
     store.set(`y2b-lb-reveal-${m}`, "1"); setRevealed((r) => ({ ...r, [m]: true }));
     setFire((f) => f + 1);
     if (data?.month === m) setSpin((s) => s + 1);
   };
 
-  // Reels spin on load and on every tab switch; gold confetti once a day.
+  // TV mode: fullscreen (when the browser allows it), Esc / leaving fullscreen exits.
+  const enterTv = useCallback(() => {
+    setTv(true); router.replace(url(month, true));
+    document.documentElement.requestFullscreen?.().catch(() => { /* not allowed: the page is already full-window */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
+  const exitTv = useCallback(() => {
+    setTv(false); router.replace(url(month, false));
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
+  const wasFull = useRef(false);
+  useEffect(() => {
+    if (!tv) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitTv(); };
+    const onFull = () => { if (document.fullscreenElement) wasFull.current = true; else if (wasFull.current) { wasFull.current = false; exitTv(); } };
+    addEventListener("keydown", onKey); document.addEventListener("fullscreenchange", onFull);
+    const sw = setInterval(() => setCat((c) => (c === "visits" ? "closures" : "visits")), SWITCH_MS);
+    const rf = setInterval(() => reload(), REFRESH_MS);
+    return () => { removeEventListener("keydown", onKey); document.removeEventListener("fullscreenchange", onFull); clearInterval(sw); clearInterval(rf); };
+  }, [tv, exitTv, reload]);
+  // TV mode: hide the cursor after 3 s without moving the mouse.
+  useEffect(() => {
+    if (!tv) { setIdle(false); return; }
+    let t = setTimeout(() => setIdle(true), IDLE_MS);
+    const move = () => { setIdle(false); clearTimeout(t); t = setTimeout(() => setIdle(true), IDLE_MS); };
+    addEventListener("mousemove", move);
+    return () => { clearTimeout(t); removeEventListener("mousemove", move); };
+  }, [tv]);
+  // Big screens scale everything up (and TV mode a bit more).
+  useEffect(() => {
+    const mq = matchMedia("(min-width: 1600px)");
+    const on = () => setWide(mq.matches); on(); mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const zoom = tv ? (wide ? 1.45 : 1.15) : wide ? 1.2 : 1;
+
+  // Reels spin on load and on every category switch; gold confetti once a day.
   useEffect(() => { if (data) setSpin((s) => s + 1); }, [data?.month, cat]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!data || store.get("y2b-lb-confetti") === today()) return;
@@ -89,7 +151,7 @@ function Lobby() {
   }, [data]);
 
   return (
-    <div className="lb-world relative -mx-4 -mb-[calc(var(--nav-h)+1.5rem)] px-4 pb-[calc(var(--nav-h)+2.5rem)] pt-5 text-white [overflow-x:clip] md:-mb-8 md:pb-10 lg:-mx-8 lg:px-8 lg:pt-7">
+    <div className={cn("lb-world relative min-h-[100dvh] w-full text-white [overflow-x:clip]", tv && "lb-tv", idle && "cursor-none")} data-tv={tv || undefined}>
       <style>{CSS}</style>
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
@@ -97,44 +159,73 @@ function Lobby() {
       <Fireworks run={confetti} colors={GOLD} bursts={false} duration={2600} />
       <Backdrop />
 
-      {/* Hero */}
-      <header className="relative text-center">
-        <div className="mb-3 flex justify-end">
-          <div className="lb-month"><MonthField ariaLabel="Month" value={month} onChange={pick} min={data?.minMonth} max={thisMonth()} /></div>
-        </div>
-        <h1 className="lb-display lb-title text-[44px] leading-[0.95] sm:text-6xl lg:text-7xl">
-          {monthLong(month).toUpperCase()} CHAMPIONSHIP
-        </h1>
-        <div className="mt-3 flex justify-center">
-          {data?.live ? <Countdown endsAt={data.endsAt} /> : data ? <span className="lb-pill">🏁 Final results · {monthYear(data.month)}</span> : <span className="lb-pill">&nbsp;</span>}
-        </div>
-        <div role="tablist" aria-label="Category" className="mx-auto mt-5 grid max-w-md grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1.5 backdrop-blur">
-          {(["visits", "closures"] as Cat[]).map((c) => (
-            <button key={c} role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
-              className={cn("lb-display min-h-12 rounded-xl text-2xl tracking-wider transition", cat === c ? "lb-tab-on" : "text-white/60 hover:text-white")}>
-              {TAB[c]}
-            </button>
-          ))}
-        </div>
-      </header>
+      <div className={cn("relative mx-auto px-4 pb-6 sm:px-6 lg:px-10", me ? "pb-44 lg:pb-10" : "lg:pb-10")} style={{ zoom }}>
+        {/* Slim header */}
+        <header className="flex items-center gap-3 py-3 lg:grid lg:grid-cols-[1fr_auto_1fr]">
+          <div className="flex min-w-0 items-center gap-2">
+            <LogoIcon size={34} className="shrink-0 rounded-lg bg-white p-0.5" />
+            <span className="lb-display hidden text-xl tracking-wider text-white/80 sm:inline">Y2B Leaderboard</span>
+          </div>
+          <div className="hidden flex-col items-center gap-1.5 lg:flex">
+            <h1 className="lb-display lb-title text-5xl leading-none">{monthLong(month).toUpperCase()} CHAMPIONSHIP</h1>
+            {data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill">🏁 Final results</span>}
+          </div>
+          <div className="ml-auto flex items-center justify-end gap-2">
+            {!tv && (
+              <span className="flex items-center gap-2" aria-label={`Signed in as ${name}`}>
+                <Hex name={name} size={30} tone="plain" />
+                <span className="hidden max-w-[140px] truncate text-sm font-semibold xl:inline">{name}</span>
+              </span>
+            )}
+            {tv ? (
+              <>
+                {!idle && <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="lb-btn">⛶ Fullscreen</button>}
+                <button onClick={exitTv} className="lb-btn">Exit TV</button>
+              </>
+            ) : (
+              <>
+                <button onClick={enterTv} className="lb-btn">📺 TV mode</button>
+                <Link href="/dashboard" className="lb-btn whitespace-nowrap">← <span className="hidden sm:inline">Back to </span>ePanel</Link>
+              </>
+            )}
+          </div>
+        </header>
 
-      {error && (
-        <div className="lb-glass relative mx-auto mt-5 max-w-lg p-4 text-center text-sm">
-          {error} <button onClick={reload} className="ml-2 font-semibold text-[#22D3EE] underline">Try again</button>
+        {/* Phone/tablet title */}
+        <div className="mt-2 text-center lg:hidden">
+          <h1 className="lb-display lb-title text-[44px] leading-[0.95] sm:text-6xl">{monthLong(month).toUpperCase()} CHAMPIONSHIP</h1>
+          <div className="mt-2 flex justify-center">{data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill">🏁 Final results</span>}</div>
         </div>
-      )}
 
-      <div className="relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-w-0 space-y-5">
-          {/* Podium */}
-          <section aria-label="Podium" className="relative">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <div role="tablist" aria-label="Category" className="grid w-full max-w-md grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1.5 backdrop-blur">
+            {(["visits", "closures"] as Cat[]).map((c) => (
+              <button key={c} role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
+                className={cn("lb-display relative min-h-12 overflow-hidden rounded-xl text-2xl tracking-wider transition", cat === c ? "lb-tab-on" : "text-white/60 hover:text-white")}>
+                {TAB[c]}
+                {tv && cat === c && <span key={`${cat}-${spin}`} className="lb-timer" aria-hidden />}
+              </button>
+            ))}
+          </div>
+          {!tv && <div className="lb-month"><MonthField ariaLabel="Month" value={month} onChange={pick} min={data?.minMonth} max={thisMonth()} /></div>}
+        </div>
+
+        {error && (
+          <div className="lb-glass mx-auto mt-5 max-w-lg p-4 text-center text-sm">
+            {error} <button onClick={reload} className="ml-2 font-semibold text-[#22D3EE] underline">Try again</button>
+          </div>
+        )}
+
+        <div key={cat} className="lb-fade">
+          {/* Podium hero */}
+          <section aria-label="Podium" className="relative mx-auto mt-6 max-w-5xl">
             <div className="lb-rays" aria-hidden />
             {loading && !data ? (
               <div className="flex h-72 items-end justify-center gap-3">{[110, 150, 90].map((h, i) => <div key={i} className="lb-glass w-1/4 animate-pulse" style={{ height: h }} />)}</div>
             ) : hidden ? (
               <Lever month={data!.month} onPull={() => reveal(data!.month)} big />
             ) : (
-              <Podium groups={podium} cat={cat} val={val} rank={rank} spin={spin} pool={rows.map((p) => p.name)} />
+              <Podium groups={podium} cat={cat} val={val} rank={rank} spin={spin} pool={rows.map((p) => p.name)} tv={tv} />
             )}
             {!hidden && !loading && !podium.length && (
               <p className="relative mt-3 text-center text-base font-semibold text-[#F5C542]">
@@ -143,65 +234,69 @@ function Lobby() {
             )}
           </section>
 
-          <div className="text-center">
+          <div className="mt-5 text-center">
             <p className="lb-display text-3xl tracking-wide text-[#FF3B5C] sm:text-4xl">CLIMB THE BOARD. BE THE CHAMPION.</p>
-            <p className="mt-1 text-xs text-white/55">Visits = site visits done · Closures = tokens, from the daily reports · Champions are crowned on the 1st · Ties share the title</p>
+            {!tv && <p className="mt-1 text-xs text-white/55">Visits = site visits done · Closures = tokens, from the daily reports · Champions are crowned on the 1st · Ties share the title</p>}
           </div>
 
-          {me && data?.live && <YourSpot me={me} ranked={ranked} cat={cat} val={val} rank={rank} />}
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
+            {/* Live table */}
+            <section aria-label="Live competition" className="lb-glass min-w-0 self-start overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h2 className="lb-display text-2xl tracking-wide">{data?.live ? <><span className="lb-live" aria-hidden /> Live competition · {cat === "visits" ? "Visits" : "Closures"}</> : "Final standings"}</h2>
+                <span className="text-xs text-white/55">{rows.length} racing</span>
+              </div>
+              {loading && !data ? (
+                <div className="space-y-2 p-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-white/5" />)}</div>
+              ) : !rows.length ? (
+                <p className="p-6 text-center text-sm text-white/60">No one from Sales is racing yet.</p>
+              ) : (
+                <ol aria-label={`${cat === "visits" ? "Visits" : "Closures"} ranking`}>
+                  {rows.map((p) => {
+                    const r = rank(p), was = prev(p), moved = r == null || was == null ? 0 : was - r;
+                    const mine = p.me && !tv;
+                    return (
+                      <li key={p.id} className={cn("lb-row flex items-center gap-3 px-4 py-3", mine && "lb-row-me")}>
+                        <RankChip rank={r} />
+                        <Hex name={p.name} size={40} tone={r != null && r <= 3 ? MEDAL[Math.min(r, 3) - 1] : "plain"} />
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 text-[15px] font-semibold">
+                            <span className="truncate">{p.name}</span>
+                            {mine && <span className="shrink-0 rounded-full bg-[#F5C542] px-1.5 text-[10px] font-bold text-[#2a1650]">YOU</span>}
+                            {p.streak && <span className="lb-flame shrink-0" title="Reported every working day this week" aria-label="Reported every working day this week">🔥</span>}
+                            {p.titles > 0 && <span className="shrink-0 text-xs" title={`${p.titles} monthly ${p.titles === 1 ? "title" : "titles"}`}>🏆{p.titles > 1 ? `×${p.titles}` : ""}</span>}
+                          </p>
+                          <p className="truncate text-xs text-white/50">{p.designation || "Sales"}</p>
+                        </div>
+                        {moved !== 0 && (
+                          <span className={cn("shrink-0 text-xs font-bold", moved > 0 ? "text-[#34D399]" : "text-[#FBBF24]")}
+                            aria-label={moved > 0 ? `Up ${moved} since yesterday` : `Down ${-moved} since yesterday`}>
+                            {moved > 0 ? "▲" : "▼"}{Math.abs(moved)}
+                          </span>
+                        )}
+                        <span className="lb-num w-12 shrink-0 text-right text-xl font-bold">{val(p) > 0 ? val(p) : <span className="text-white/35">—</span>}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
 
-          {/* Live table */}
-          <section aria-label="Live competition" className="lb-glass overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <h2 className="lb-display text-2xl tracking-wide">{data?.live ? <><span className="lb-live" aria-hidden /> Live competition</> : "Final standings"}</h2>
-              <span className="text-xs text-white/55">{rows.length} racing</span>
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+              {me && data?.live && <YourSpot me={me} ranked={ranked} cat={cat} val={val} rank={rank} />}
+              {/* Hall of fame */}
+              <aside aria-label="Hall of fame" className="space-y-3">
+                <h2 className="lb-display text-3xl tracking-wide text-[#F5C542]">🏛️ Hall of fame</h2>
+                {!data?.hall.length ? (
+                  <div className="lb-glass p-4 text-sm text-white/60">The first champions are crowned on the 1st. Could it be you?</div>
+                ) : data.hall.slice(0, tv ? 3 : 12).map((h) => (
+                  <HallCard key={h.month} month={h.month} winners={h.winners} revealed={isRevealed(h.month)}
+                    onPull={() => reveal(h.month)} onOpen={tv ? undefined : () => pick(h.month)} />
+                ))}
+              </aside>
             </div>
-            {loading && !data ? (
-              <div className="space-y-2 p-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-white/5" />)}</div>
-            ) : !rows.length ? (
-              <p className="p-6 text-center text-sm text-white/60">No one from Sales is racing yet.</p>
-            ) : (
-              <ol aria-label={`${cat === "visits" ? "Visits" : "Closures"} ranking`}>
-                {rows.map((p) => {
-                  const r = rank(p), was = prev(p), moved = r == null || was == null ? 0 : was - r;
-                  return (
-                    <li key={p.id} className={cn("lb-row flex items-center gap-3 px-4 py-3", p.me && "lb-row-me")}>
-                      <RankChip rank={r} />
-                      <Hex name={p.name} size={40} tone={r != null && r <= 3 ? MEDAL[Math.min(r, 3) - 1] : "plain"} />
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 text-[15px] font-semibold">
-                          <span className="truncate">{p.name}</span>
-                          {p.me && <span className="shrink-0 rounded-full bg-[#F5C542] px-1.5 text-[10px] font-bold text-[#2a1650]">YOU</span>}
-                          {p.streak && <span className="lb-flame shrink-0" title="Reported every working day this week" aria-label="Reported every working day this week">🔥</span>}
-                          {p.titles > 0 && <span className="shrink-0 text-xs" title={`${p.titles} monthly ${p.titles === 1 ? "title" : "titles"}`}>🏆{p.titles > 1 ? `×${p.titles}` : ""}</span>}
-                        </p>
-                        <p className="truncate text-xs text-white/50">{p.designation || "Sales"}</p>
-                      </div>
-                      {moved !== 0 && (
-                        <span className={cn("shrink-0 text-xs font-bold", moved > 0 ? "text-[#34D399]" : "text-[#FBBF24]")}
-                          aria-label={moved > 0 ? `Up ${moved} since yesterday` : `Down ${-moved} since yesterday`}>
-                          {moved > 0 ? "▲" : "▼"}{Math.abs(moved)}
-                        </span>
-                      )}
-                      <span className="lb-num w-12 shrink-0 text-right text-xl font-bold">{val(p) > 0 ? val(p) : <span className="text-white/35">—</span>}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </section>
+          </div>
         </div>
-
-        {/* Hall of fame */}
-        <aside aria-label="Hall of fame" className="space-y-3 lg:sticky lg:top-4 lg:self-start">
-          <h2 className="lb-display text-3xl tracking-wide text-[#F5C542]">🏛️ Hall of fame</h2>
-          {!data?.hall.length ? (
-            <div className="lb-glass p-4 text-sm text-white/60">The first champions are crowned on the 1st. Could it be you?</div>
-          ) : data.hall.map((h) => (
-            <HallCard key={h.month} month={h.month} winners={h.winners} revealed={isRevealed(h.month)}
-              onPull={() => reveal(h.month)} onOpen={() => pick(h.month)} />
-          ))}
-        </aside>
       </div>
     </div>
   );
@@ -220,8 +315,8 @@ function Countdown({ endsAt }: { endsAt: string }) {
   );
 }
 
-function Podium({ groups, cat, val, rank, spin, pool }: {
-  groups: LbPlayer[][]; cat: Cat; val: (p: LbPlayer) => number; rank: (p: LbPlayer) => number | null; spin: number; pool: string[];
+function Podium({ groups, cat, val, rank, spin, pool, tv }: {
+  groups: LbPlayer[][]; cat: Cat; val: (p: LbPlayer) => number; rank: (p: LbPlayer) => number | null; spin: number; pool: string[]; tv?: boolean;
 }) {
   // Left #2, centre #1, right #3.
   const spots = [1, 0, 2];
@@ -236,7 +331,7 @@ function Podium({ groups, cat, val, rank, spin, pool }: {
             {g ? (
               <>
                 <div className="flex -space-x-3">{g.slice(0, 3).map((p) => <Hex key={p.id} name={p.name} size={i === 0 ? 76 : 60} tone={tone} stars />)}</div>
-                <div className={cn("lb-reel mt-2 w-full max-w-[220px] text-sm sm:text-base", g.some((p) => p.me) && "lb-reel-me")}>
+                <div className={cn("lb-reel mt-2 w-full max-w-[220px] text-sm sm:text-base", !tv && g.some((p) => p.me) && "lb-reel-me")}>
                   <SlotReel name={g.map((p) => first(p.name)).join(" & ")} pool={pool.map(first)} spin={spin} delay={[300, 0, 600][i]} />
                 </div>
                 <SlotNumber value={val(g[0])} spin={spin} delay={[300, 0, 600][i]}
@@ -271,7 +366,7 @@ function YourSpot({ me, ranked, cat, val, rank }: {
   const lead = behind ? mine - val(behind) : 0;
   const pct = ahead ? Math.round((mine / val(ahead)) * 100) : 100;
   return (
-    <section aria-label="Your spot" key={`${cat}-${mine}`} className="lb-glass lb-spot sticky top-[68px] z-20 p-4 md:top-3">
+    <section aria-label="Your spot" key={`${cat}-${mine}`} className="lb-glass lb-spot fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-30 p-4 lg:static">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <span className="lb-display text-4xl text-[#F5C542]">{r ? `You're #${r}` : "You're up next"}</span>
         <span className="text-sm font-semibold text-white/85">
@@ -293,14 +388,14 @@ function YourSpot({ me, ranked, cat, val, rank }: {
 }
 
 function HallCard({ month, winners, revealed, onPull, onOpen }: {
-  month: string; winners: LbWinner[]; revealed: boolean; onPull: () => void; onOpen: () => void;
+  month: string; winners: LbWinner[]; revealed: boolean; onPull: () => void; onOpen?: () => void;
 }) {
   const by = (c: Cat) => winners.filter((w) => w.category === c);
   return (
     <div className="lb-glass lb-hall p-4">
       <div className="flex items-center justify-between">
         <p className="lb-display text-2xl tracking-wide">🏆 {monthYear(month)}</p>
-        <button onClick={onOpen} className="text-xs font-semibold text-[#22D3EE] hover:underline">View</button>
+        {onOpen && <button onClick={onOpen} className="text-xs font-semibold text-[#22D3EE] hover:underline">View</button>}
       </div>
       {!revealed ? (
         <Lever month={month} onPull={onPull} />
@@ -311,7 +406,7 @@ function HallCard({ month, winners, revealed, onPull, onOpen }: {
               <Hex name={by(c)[0].name} size={34} tone="gold" />
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] uppercase tracking-wider text-white/50">Top {c}</p>
-                <p className="truncate text-sm font-semibold">{by(c).map((w) => w.name).join(" & ")}{by(c).some((w) => w.me) && " ⭐"}</p>
+                <p className="truncate text-sm font-semibold">{by(c).map((w) => w.name).join(" & ")}</p>
               </div>
               <span className="lb-num font-bold text-[#F5C542]">{by(c)[0].value}</span>
             </div>
@@ -367,7 +462,7 @@ function Backdrop() {
 }
 
 const CSS = `
-.lb-world{min-height:calc(100vh - 80px);background:radial-gradient(120% 80% at 50% 0%,#24124f 0%,#130a35 45%,#0a0a24 100%);font-variant-numeric:tabular-nums;isolation:isolate}
+.lb-world{background:radial-gradient(120% 80% at 50% 0%,#24124f 0%,#130a35 45%,#0a0a24 100%);font-variant-numeric:tabular-nums;isolation:isolate}
 .lb-display{font-family:"Bebas Neue","Oswald",Impact,"Arial Narrow",sans-serif;font-weight:400;letter-spacing:.02em}
 .lb-num{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums}
 .lb-title{background:linear-gradient(180deg,#fff 0%,#FFE7A3 55%,#F5C542 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 18px rgba(245,197,66,.45)) drop-shadow(0 0 40px rgba(168,85,247,.35))}
@@ -414,6 +509,15 @@ const CSS = `
 .lb-hall{border-color:rgba(245,197,66,.3)}
 .lb-lever{border-radius:999px;color:#2a1650;background:linear-gradient(180deg,#FFE08A,#F5C542 50%,#d99a00);box-shadow:0 5px 0 #8a5a00,0 0 24px rgba(245,197,66,.6);transition:transform .1s,box-shadow .1s}
 .lb-lever:active{transform:translateY(5px);box-shadow:0 0 0 #8a5a00,0 0 24px rgba(245,197,66,.6)}
+.lb-btn{display:inline-flex;align-items:center;gap:.3rem;min-height:40px;padding:0 .9rem;border-radius:999px;font-size:.85rem;font-weight:700;background:rgba(255,255,255,.08);border:1px solid rgba(160,140,255,.35);color:#fff;transition:background .2s,box-shadow .2s}
+.lb-btn:hover{background:rgba(124,58,237,.3);box-shadow:0 0 16px rgba(124,58,237,.45)}
+.lb-fade{animation:lbFade .6s ease-out}
+.lb-timer{position:absolute;left:0;bottom:0;height:3px;width:100%;background:rgba(255,255,255,.85);transform-origin:left;animation:lbTimer 20s linear forwards}
+.lb-tv .lb-row{padding-top:1rem;padding-bottom:1rem}
+.lb-tv .lb-row .text-\[15px\]{font-size:1.25rem}
+.lb-tv .lb-row .text-xl{font-size:1.75rem}
+@keyframes lbFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes lbTimer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @keyframes lbSpin{to{transform:rotate(360deg)}}
 @keyframes lbFloat{0%{opacity:0;transform:translateY(10px) scale(.6)}50%{opacity:.9}100%{opacity:0;transform:translateY(-40px) scale(1)}}
 @keyframes lbSweep{0%,55%{left:-60%}100%{left:130%}}

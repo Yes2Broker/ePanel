@@ -16,9 +16,15 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // ?next=/leaderboard (a page outside the panel) → back there after signing in.
+  const nextPath = (fallback: string) => {
+    const n = new URLSearchParams(window.location.search).get("next");
+    return n && n.startsWith("/") && !n.startsWith("//") && !n.startsWith("/login") ? n : fallback;
+  };
+
   // Already signed in — skip the form.
   useEffect(() => {
-    if (!loading && user) router.replace(homePathFor(user));
+    if (!loading && user) router.replace(nextPath(homePathFor(user)));
   }, [loading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,7 +33,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const employee = await login(email, password);
-      router.replace(homePathFor(employee));
+      router.replace(nextPath(homePathFor(employee)));
     } catch (err) {
       setError(errorMessage(err));
       setSubmitting(false);
