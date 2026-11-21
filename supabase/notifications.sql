@@ -187,7 +187,8 @@ begin
   for e in select * from employees where status = 'Active' loop
     if private.day_off(e, v_today) is not null then continue; end if;
     select array_agg(client_name order by created_at, client_name) into v_names
-    from site_visits where employee_id = e.id and status = 'Pending' and coalesce(reschedule_date, visit_date) = v_today;
+    from site_visits sv where sv.employee_id = e.id and sv.status = 'Pending' and coalesce(sv.reschedule_date, sv.visit_date) = v_today
+      and private.visit_live(sv);
     if v_names is null then continue; end if;
     perform private.notify(e.id, 'visit_today', 'Today''s visits',
       format('You have %s site visit%s today: %s%s.', cardinality(v_names), case when cardinality(v_names) = 1 then '' else 's' end,
