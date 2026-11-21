@@ -230,6 +230,7 @@ export function ReportsTable({ manager }: { manager: boolean }) {
           <p className="text-sm text-ink-muted">
             <b className="font-medium text-ink">{deleting.employeeName}</b> · {deleting.title} · {formatDate(deleting.date, { weekday: true })}.
             It disappears from every list, total and the daily email, but stays in the database and its history.
+            This also removes the visits booked and actions done in this report (and its walk-ins and hot client changes). To bring it back, file that day again.
           </p>
         )}
       </Modal>

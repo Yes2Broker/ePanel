@@ -195,10 +195,17 @@ $$;
 
 -- The same rule for the form's "Today's Visits Action" list and the save
 -- check: needs an action on p_date, and wasn't booked in a deleted report.
+-- The one rule for "does this visit still count?": not booked in a deleted
+-- report. Every place that lists visits (form, save check, reminders, Assist,
+-- leave hand-over) uses it.
+create or replace function private.visit_live(v public.site_visits) returns boolean
+language sql stable set search_path = public as $$
+  select not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
+$$;
+
 create or replace function private.visit_due(v public.site_visits, p_date date) returns boolean
 language sql stable set search_path = public, private as $$
-  select private.visit_needs_action(v, p_date)
-     and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
+  select private.visit_needs_action(v, p_date) and private.visit_live(v)
 $$;
 
 -- Why someone isn't expected to file on a day ('On leave', 'Weekly off',
@@ -546,7 +553,7 @@ begin
                'date', coalesce(v.reschedule_date, v.visit_date)) order by coalesce(v.reschedule_date, v.visit_date), v.created_at)
       from site_visits v
       where v.employee_id = v_emp.id and v.report_type = v_type and v.project_id is not distinct from v_project
-        and not exists (select 1 from sales_reports d where d.id = v.booked_report_id and d.deleted_at is not null)
+        and private.visit_live(v)
         and ((v.status = 'Pending' and coalesce(v.reschedule_date, v.visit_date) > v_date
               and (r.id is null or v.booked_report_id is distinct from r.id))
              or (r.id is not null and exists (select 1 from visit_actions a where a.visit_id = v.id and a.report_id = r.id and a.kind = 'future')))
@@ -1220,6 +1227,38 @@ end $$;
 -- Delete (Admin only): a soft delete. The report disappears from every list,
 -- total and the 10 PM email, but stays in the database with its history.
 -- ===========================================================================
+-- Undo everything a report created, so a deleted report never blocks or
+-- confuses later ones: actions done in it are undone (newest first; the visit
+-- goes back to how it was before), visits booked in it are cancelled
+-- ('Report deleted'), its walk-ins are removed, and hot-client changes saved
+-- with it are undone (hot_clients.sql). Safe to run twice.
+create or replace function private.report_cleanup(p_report uuid) returns void
+language plpgsql volatile set search_path = public, private as $$
+declare
+  a visit_actions;
+  v_next uuid;
+begin
+  for a in select * from visit_actions where report_id = p_report order by created_at desc, id desc loop
+    -- Acted on again in a later report: that one now starts from the state before this action.
+    select b.id into v_next from visit_actions b
+    where b.visit_id = a.visit_id and b.id <> a.id and b.created_at > a.created_at and b.report_id is distinct from p_report
+    order by b.created_at limit 1;
+    if v_next is not null then
+      update visit_actions set prev_status = a.prev_status, prev_reschedule_date = a.prev_reschedule_date,
+        prev_cancel_reason = a.prev_cancel_reason where id = v_next;
+      delete from visit_actions where id = a.id;
+    else
+      perform private.revert_action(a);
+    end if;
+  end loop;
+  update site_visits set status = 'Cancelled', cancel_reason = 'Report deleted'
+  where booked_report_id = p_report and (status <> 'Cancelled' or cancel_reason is distinct from 'Report deleted');
+  delete from walk_ins where report_id = p_report;
+  if to_regprocedure('private.hc_undo_report(uuid)') is not null then
+    execute 'select private.hc_undo_report($1)' using p_report;
+  end if;
+end $$;
+
 create or replace function public.delete_sales_report(p_token text, p_report_id uuid) returns void
 language plpgsql volatile security definer set search_path = public, private as $$
 declare
@@ -1234,6 +1273,7 @@ begin
     raise exception 'Report not found.' using errcode = 'P0002';
   end if;
   update sales_reports set deleted_at = now(), deleted_by = v_me.id where id = p_report_id;
+  perform private.report_cleanup(p_report_id);
   if r.employee_id <> v_me.id then
     perform private.notify(r.employee_id, 'report_changed', 'Report deleted',
       format('%s deleted your %s for %s. You can file that day again.', v_me.name, private.report_title(r.report_type, r.project_id),
@@ -1241,6 +1281,21 @@ begin
   end if;
   insert into report_changes (report_id, changed_by, field, old_value, new_value)
   values (p_report_id, v_me.id, 'Report', 'Submitted', 'Deleted');
+end $$;
+
+-- Reports deleted before cleanup existed: clean them up now (only ones with
+-- something left to undo, so re-running changes nothing).
+do $$
+declare
+  d record;
+begin
+  for d in select r.id from sales_reports r where r.deleted_at is not null
+             and (exists (select 1 from visit_actions a where a.report_id = r.id)
+                  or exists (select 1 from site_visits v where v.booked_report_id = r.id and v.cancel_reason is distinct from 'Report deleted')
+                  or exists (select 1 from walk_ins w where w.report_id = r.id))
+           order by r.deleted_at loop
+    perform private.report_cleanup(d.id);
+  end loop;
 end $$;
 
 -- Keep stored counts in line with the rules above (e.g. walk-ins no longer in

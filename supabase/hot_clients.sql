@@ -47,6 +47,17 @@ create table if not exists hot_client_changes (
 );
 create index if not exists hot_client_changes_idx on hot_client_changes (client_id, changed_at);
 
+-- What each hot client looked like before a daily report changed it (null =
+-- added in that report), so deleting the report can undo those changes.
+create table if not exists hot_client_report_snaps (
+  report_id uuid not null references sales_reports(id) on delete cascade,
+  client_id uuid not null references hot_clients(id) on delete cascade,
+  before jsonb,
+  primary key (report_id, client_id)
+);
+alter table hot_client_report_snaps enable row level security;
+revoke all on hot_client_report_snaps from anon, authenticated;
+
 alter table hot_clients enable row level security;
 alter table hot_client_changes enable row level security;
 revoke all on hot_clients, hot_client_changes from anon, authenticated;
@@ -208,13 +219,46 @@ language plpgsql volatile security definer set search_path = public, private as 
 declare
   v_me employees := private.session_employee(p_token);
   v_saved jsonb := public.save_sales_report(p_token, p_report_id, p_employee_id, p_type, p_project, p_date, p_payload);
+  v_report uuid := (v_saved ->> 'id')::uuid;
   v_item jsonb;
+  v_id uuid;
 begin
   for v_item in select * from jsonb_array_elements(coalesce(p_hot, '[]'::jsonb)) loop
+    v_id := nullif(v_item ->> 'id', '')::uuid;
+    -- Remember how it was before this report first changed it.
+    if v_id is not null then
+      insert into hot_client_report_snaps (report_id, client_id, before)
+      select v_report, h.id, to_jsonb(h) from hot_clients h where h.id = v_id
+      on conflict do nothing;
+    end if;
     -- New clients belong to the report's person (HR/Admin filing for someone).
-    perform private.hc_apply(v_me, v_item || jsonb_build_object('employeeId', v_saved ->> 'employeeId'));
+    v_id := private.hc_apply(v_me, v_item || jsonb_build_object('employeeId', v_saved ->> 'employeeId'));
+    insert into hot_client_report_snaps (report_id, client_id, before) values (v_report, v_id, null) on conflict do nothing;
   end loop;
   return v_saved;
+end $$;
+
+-- A daily report was deleted: undo the hot-client changes saved with it
+-- (clients added in it are removed; changed ones go back to how they were).
+create or replace function private.hc_undo_report(p_report uuid) returns void
+language plpgsql volatile set search_path = public, private as $$
+declare
+  sn hot_client_report_snaps;
+  b hot_clients;
+begin
+  for sn in select * from hot_client_report_snaps where report_id = p_report loop
+    if sn.before is null then
+      delete from hot_clients where id = sn.client_id;
+    else
+      b := jsonb_populate_record(null::hot_clients, sn.before);
+      update hot_clients set customer_name = b.customer_name, customer_phone = b.customer_phone, project_id = b.project_id,
+        project_name = b.project_name, expected_closure_date = b.expected_closure_date, remarks = b.remarks, status = b.status,
+        temperature = b.temperature, closed_at = b.closed_at, updated_at = now()
+      where id = sn.client_id;
+      insert into hot_client_changes (client_id, field, new_value) values (sn.client_id, 'Undone', 'Daily report deleted');
+    end if;
+  end loop;
+  delete from hot_client_report_snaps where report_id = p_report;
 end $$;
 
 -- The "🔥 Hot clients" block of a report: active that day, closed / lost that day.

@@ -46,7 +46,7 @@ begin
              'report', private.report_title(v.report_type, v.project_id),
              'overdue', coalesce(v.reschedule_date, v.visit_date) < private.today())
            order by coalesce(v.reschedule_date, v.visit_date), v.client_name)
-    from (select * from site_visits where employee_id = me.id and status = 'Pending'
+    from (select * from site_visits sv where sv.employee_id = me.id and sv.status = 'Pending' and private.visit_live(sv)
           and coalesce(reschedule_date, visit_date) >= private.today() - 7
           order by coalesce(reschedule_date, visit_date) limit 60) v), '[]'::jsonb);
 end $$;
