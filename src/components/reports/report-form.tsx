@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ChevronRight, Flame, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -11,7 +11,6 @@ import { ReportFormData, ReportPayload, SalesReportDetail, VisitActionType } fro
 import { addDays, cn } from "@/lib/utils";
 import { longDate, nowHHMM, shortDate, time12 } from "@/lib/report-format";
 import { todayISO } from "@/lib/utils";
-import Link from "next/link";
 
 const inputCls =
   "min-h-11 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
@@ -235,10 +234,6 @@ export function ReportForm({
         </div>
       </Card>
 
-      {/* Hot & warm clients are managed only in their tab; the summary shows them. */}
-      <Link href="/reports?tab=hot" className="inline-flex min-h-10 items-center gap-1.5 px-1 text-sm font-medium text-brand hover:underline">
-        <Flame className="h-4 w-4 text-orange-500" aria-hidden /> Manage hot &amp; warm clients <ChevronRight className="h-4 w-4" aria-hidden />
-      </Link>
 
       {!imported && (
         <>
