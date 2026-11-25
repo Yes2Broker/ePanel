@@ -229,21 +229,31 @@ export const TOOLS: ToolDef[] = [
     // Hot clients: an employee's own, everyone's for HR/Admin (the database decides).
     // The contact number is never sent to the AI (dropped here and by sanitize).
     name: "hot_clients",
-    description: "Hot/warm clients (leads expected to close). type: hot|warm|all. when: all|week|overdue. person: name (HR/Admin).",
-    parameters: { type: "object", properties: { type: { type: "string" }, when: { type: "string" }, person: { type: "string" } } },
+    description: "Hot/warm clients. type: hot|warm|all. status: active|booked|not_interested. when: all|week|overdue|month. person: name (HR/Admin).",
+    parameters: { type: "object", properties: { type: { type: "string" }, status: { type: "string" }, when: { type: "string" }, person: { type: "string" } } },
     run: async (ctx, a, role) => {
-      const all = ((await call("hot_clients_list", { p_token: ctx.token, p_employee: null })) as Row[]).filter((c) => c.status === "Active");
+      // Stored Closed-Won / Lost are shown as Booked / Not interested.
+      const st = /book/i.test(String(a.status ?? "")) ? "Closed-Won" : /not|lost/i.test(String(a.status ?? "")) ? "Lost" : "Active";
+      const all = ((await call("hot_clients_list", { p_token: ctx.token, p_employee: null })) as Row[]).filter((c) => c.status === st);
       const today = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
       const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + (7 - (d.getUTCDay() || 7)));
       const weekEnd = d.toISOString().slice(0, 10);
       const who = isManager(role) && a.person ? String(a.person).toLowerCase() : "";
       const temp = /^warm/i.test(String(a.type ?? "")) ? "Warm" : /^hot/i.test(String(a.type ?? "")) ? "Hot" : "";
       const hits = all.filter((c) => (!who || String(c.employeeName).toLowerCase().includes(who)) && (!temp || (c.temperature ?? "Hot") === temp)
-        && (a.when === "week" ? String(c.expectedDate) >= today && String(c.expectedDate) <= weekEnd : a.when === "overdue" ? String(c.expectedDate) < today : true))
+        && (st !== "Active" ? (a.when === "month" || a.when === "week" ? String(c.closedOn ?? "").slice(0, 7) === today.slice(0, 7) : true)
+          : a.when === "week" ? String(c.expectedDate) >= today && String(c.expectedDate) <= weekEnd : a.when === "overdue" ? String(c.expectedDate) < today : true))
         .sort((x, y) => (x.temperature === "Warm" ? 1 : 0) - (y.temperature === "Warm" ? 1 : 0) || String(x.expectedDate).localeCompare(String(y.expectedDate)));
       const kind = temp ? `${temp.toLowerCase()} clients` : "hot or warm clients";
-      if (!hits.length) return { say: a.when === "week" ? `**No ${kind} closing this week.**` : a.when === "overdue" ? `**No overdue ${kind}.**` : `**No active ${kind}.**` };
       const many = isManager(role);
+      if (st !== "Active") {
+        const word = st === "Closed-Won" ? "booked" : "not interested";
+        if (!hits.length) return { say: `**No ${word} clients${a.when === "month" || a.when === "week" ? " this month" : ""}.**` };
+        return { count: hits.length, status: word, list: table([...(many ? ["person"] : []), "client", "project", "on"], hits.map((c) => [
+          ...(many ? [c.employeeName] : []), c.name, c.project || "", md(c.closedOn),
+        ]), 10) };
+      }
+      if (!hits.length) return { say: a.when === "week" ? `**No ${kind} closing this week.**` : a.when === "overdue" ? `**No overdue ${kind}.**` : `**No active ${kind}.**` };
       return { count: hits.length, list: table([...(many ? ["person"] : []), "type", "client", "project", "close by", "remarks"], hits.map((c) => [
         ...(many ? [c.employeeName] : []), c.temperature ?? "Hot", c.name, c.project || "", md(c.expectedDate), short(c.remarks, 40) ?? "",
       ]), 10) };
@@ -289,7 +299,7 @@ const canBuilder = (perms: Perms) => !!(perms.builderData || perms.builderManage
 const PROPERTY = /\b(\d(\.5)?\s*bhk|bhk|flats?|projects?|builders?|propert(y|ies)|possession|budget|crores?|cr|lakhs?|lacs?|shops?|showrooms?|plots?|bungalows?|penthouses?|offices?|rera|sq\.?\s?(ft|yrd)|inventory|units?)\b|\dbhk/i;
 export const isPropertyQuestion = (q: string) => PROPERTY.test(q);
 // Hot clients: only offered when the question is about them (keeps other requests small).
-const HOT = /\b(hot|warm|leads?|closing|closure|close this|pipeline|clients?)\b/i;
+const HOT = /\b(hot|warm|leads?|closing|closure|close this|pipeline|clients?|booked|bookings?|not interested)\b/i;
 const canHot = (role: Role, perms: Perms) => isManager(role) || filesReports(perms);
 export const toolsFor = (role: Role, perms: Perms, question = ""): Tool[] => TOOLS.filter((t) => t.name === "builder_projects" ? canBuilder(perms) && isPropertyQuestion(question) :
   t.name === "hot_clients" ? canHot(role, perms) && HOT.test(question) :

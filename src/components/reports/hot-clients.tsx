@@ -9,6 +9,7 @@ import { DatePicker, Select } from "@/components/ui/pickers";
 import { Modal, inputCls } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { SuggestInput } from "@/components/employees/suggest-input";
+import { HelpTip, InfoTip } from "@/components/ui/help-tip";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { addDays, cn, formatDateTime, todayISO } from "@/lib/utils";
@@ -40,8 +41,8 @@ export function hotText(b: HotReportBlock | null | undefined, reportDate?: strin
     lines.push(`${head} CLIENTS (${group.length})`);
     group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
   }
-  if (b.won.length) lines.push(`Closed today: ${named(b.won)}`);
-  if (b.lost.length) lines.push(`Lost today: ${named(b.lost)}`);
+  if (b.won.length) lines.push(`Booked today: ${named(b.won)}`);
+  if (b.lost.length) lines.push(`Not interested today: ${named(b.lost)}`);
   return lines.join("\n");
 }
 
@@ -90,8 +91,8 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
           ))}
         </table>
       )}
-      {block.won.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0 text-status-success" aria-hidden /><span><b className="font-medium text-ink">Closed today:</b> {named(block.won)}</span></p>}
-      {block.lost.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden /><span><b className="font-medium text-ink">Lost today:</b> {named(block.lost)}</span></p>}
+      {block.won.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0 text-status-success" aria-hidden /><span><b className="font-medium text-ink">Booked today:</b> {named(block.won)}</span></p>}
+      {block.lost.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden /><span><b className="font-medium text-ink">Not interested today:</b> {named(block.lost)}</span></p>}
     </div>
   );
 }
@@ -102,17 +103,29 @@ export function TempIcon({ t, className }: { t: HotTemp; className?: string }) {
     ? <CloudSun className={cn("h-[1em] w-[1em] shrink-0 text-amber-500", className)} aria-hidden />
     : <Flame className={cn("h-[1em] w-[1em] shrink-0 text-orange-500", className)} aria-hidden />;
 }
-/** Hot / Warm chip. */
+/** What the words mean (tooltips: hover on desktop, long-press on phones, or the (i) button). */
+export const HELP = {
+  Hot: "Very likely to book soon.",
+  Warm: "Interested, but needs more time.",
+  Booked: "Client has booked the property. Deal done.",
+  NotInterested: "Client will not buy now. Removes them from your active list.",
+} as const;
+/** Hot / Warm chip (with its help text). */
 export function TempChip({ t }: { t: HotTemp }) {
-  return t === "Warm"
-    ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><TempIcon t="Warm" className="h-3 w-3" />Warm</span>
-    : <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700"><TempIcon t="Hot" className="h-3 w-3" />Hot</span>;
+  return (
+    <HelpTip text={t === "Warm" ? HELP.Warm : HELP.Hot}>
+      {t === "Warm"
+        ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><TempIcon t="Warm" className="h-3 w-3" />Warm</span>
+        : <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700"><TempIcon t="Hot" className="h-3 w-3" />Hot</span>}
+    </HelpTip>
+  );
 }
 /** Hot first, then by expected date, then name. */
 const byTemp = (a: { temperature?: HotTemp; expectedDate: string; name: string }, b: typeof a) =>
   (a.temperature === "Warm" ? 1 : 0) - (b.temperature === "Warm" ? 1 : 0) || a.expectedDate.localeCompare(b.expectedDate) || a.name.localeCompare(b.name);
 
-const STATUS_LABEL: Record<HotStatus, string> = { Active: "Active", "Closed-Won": "Won", Lost: "Lost" };
+// Stored values stay Closed-Won / Lost; people see Booked / Not interested.
+export const STATUS_LABEL: Record<HotStatus, string> = { Active: "Active", "Closed-Won": "Booked", Lost: "Not interested" };
 const STATUS_CLS: Record<HotStatus, string> = {
   Active: "bg-brand-soft text-brand", "Closed-Won": "bg-status-successBg text-status-success", Lost: "bg-status-neutralBg text-ink-muted",
 };
@@ -176,14 +189,14 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
       footer={<PrimaryButton onClick={save} disabled={busy} className="w-full justify-center py-2.5">{busy ? "Saving…" : client ? "Save" : "Add client"}</PrimaryButton>}>
       <div className="space-y-3">
         {error && <p role="alert" className="rounded-xl bg-status-dangerBg px-3 py-2 text-sm text-status-danger">{error}</p>}
-        <Field label="Lead type">
+        <Field label={<span className="inline-flex items-center gap-0.5">Lead type <InfoTip label="What do Hot and Warm mean?" text={<>Hot: {HELP.Hot}<br />Warm: {HELP.Warm}</>} /></span>}>
           <div role="radiogroup" aria-label="Lead type" className="grid grid-cols-2 gap-2">
             {(["Hot", "Warm"] as HotTemp[]).map((t) => (
-              <button key={t} type="button" role="radio" aria-checked={d.temperature === t} onClick={() => setD((x) => ({ ...x, temperature: t }))}
+              <HelpTip key={t} text={HELP[t]} className="block"><button type="button" role="radio" aria-checked={d.temperature === t} onClick={() => setD((x) => ({ ...x, temperature: t }))}
                 className={cn("min-h-11 rounded-xl border text-sm font-semibold transition",
                   d.temperature === t ? (t === "Hot" ? "border-orange-400 bg-orange-50 text-orange-700" : "border-amber-400 bg-amber-50 text-amber-700") : "border-surface-border text-ink-muted hover:bg-surface")}>
                 <span className="inline-flex items-center justify-center gap-1.5"><TempIcon t={t} className="h-4 w-4" />{t}</span>
-              </button>
+              </button></HelpTip>
             ))}
           </div>
         </Field>
@@ -213,10 +226,10 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
   );
 }
 
-function Field({ label, optional, children }: { label: string; optional?: boolean; children: React.ReactNode }) {
+function Field({ label, optional, children }: { label: React.ReactNode; optional?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-xs font-medium text-ink-muted">{label}{!optional && <span className="text-status-danger"> *</span>}</p>
+      <div className="mb-1 flex items-center text-xs font-medium text-ink-muted">{label}{!optional && <span className="ml-0.5 text-status-danger">*</span>}</div>
       {children}
     </div>
   );
@@ -273,14 +286,14 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
     if (open?.id === saved.id) setOpen(saved);
   };
   const mark = async (c: HotClient, status: HotStatus) => {
-    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked closed.` : status === "Lost" ? `${c.name} marked lost.` : `${c.name} is active again.`); }
+    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked Booked.` : status === "Lost" ? `${c.name} marked Not interested.` : `${c.name} is active again.`); }
     catch (e) { toast(errorMessage(e), "error"); }
   };
   const exportXlsx = async () => {
     const XLSX = await import("xlsx");
     const sheet = XLSX.utils.json_to_sheet(rows.map((c) => ({
       ...(isManager ? { Employee: c.employeeName } : {}), Type: c.temperature ?? "Hot", Customer: c.name, Contact: c.phone, Project: c.project,
-      "Expected closure": c.expectedDate, Remarks: c.remarks, Status: STATUS_LABEL[c.status], Added: c.createdAt.slice(0, 10), Closed: c.closedOn ?? "",
+      "Expected closure": c.expectedDate, Remarks: c.remarks, Status: STATUS_LABEL[c.status], Added: c.createdAt.slice(0, 10), "Booked / not interested on": c.closedOn ?? "",
     })));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, sheet, "Hot clients");
     XLSX.writeFile(wb, `Y2B_Hot_Warm_Clients_${today}.xlsx`);
@@ -293,7 +306,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
         <Count label={<><TempIcon t="Warm" />Warm</>} n={counts.warm} onClick={() => { setShow("Active"); setWhen("all"); setType("Warm"); }} />
         <Count label="Closing this week" n={counts.week} onClick={() => { setShow("Active"); setWhen("week"); }} />
         <Count label="Overdue" n={counts.overdue} tone={counts.overdue ? "warn" : undefined} onClick={() => { setShow("Active"); setWhen("overdue"); }} />
-        <Count label="Won this month" n={counts.won} tone="ok" onClick={() => { setShow("Closed-Won"); setWhen("all"); }} />
+        <Count label="Booked this month" n={counts.won} tone="ok" onClick={() => { setShow("Closed-Won"); setWhen("all"); }} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -306,7 +319,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
         <Select ariaLabel="Type" value={type} onChange={(v) => setType(v as TypeF)}
           options={[{ value: "all", label: "Type: All" }, { value: "Hot", label: "Hot" }, { value: "Warm", label: "Warm" }]} />
         <Select ariaLabel="Status" value={show} onChange={(v) => setShow(v as Show)}
-          options={[{ value: "Active", label: "Active" }, { value: "Closed-Won", label: "Won" }, { value: "Lost", label: "Lost" }, { value: "all", label: "All statuses" }]} />
+          options={[{ value: "Active", label: "Active" }, { value: "Closed-Won", label: "Booked" }, { value: "Lost", label: "Not interested" }, { value: "all", label: "All statuses" }]} />
         <div className="ml-auto flex gap-2">
           <SecondaryButton onClick={exportXlsx} disabled={!rows.length}><Download className="h-4 w-4" /> Excel</SecondaryButton>
           <PrimaryButton onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add client</PrimaryButton>
@@ -371,13 +384,16 @@ function HotDetails({ c, isManager, onClose, onEdit, onMark }: {
 }) {
   const history = useApi(() => api.hotClientHistory(c.id), [c.id, c.updatedAt]);
   const late = c.status === "Active" && c.expectedDate < todayISO();
+  const [confirm, setConfirm] = useState<HotStatus | null>(null);
+  const word = (v: string | null) => (v && v in STATUS_LABEL ? STATUS_LABEL[v as HotStatus] : v);
   return (
     <Modal open onClose={onClose} title={c.name} subtitle={isManager ? c.employeeName : undefined} size="sm" largeTitle
       footer={c.status === "Active" ? (
-        <div className="grid grid-cols-3 gap-2">
-          <SecondaryButton onClick={onEdit} className="justify-center"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
-          <SecondaryButton onClick={() => onMark("Closed-Won")} className="justify-center text-status-success"><Check className="h-4 w-4" /> Closed</SecondaryButton>
-          <SecondaryButton onClick={() => onMark("Lost")} className="justify-center"><X className="h-4 w-4" /> Lost</SecondaryButton>
+        <div className="flex items-stretch gap-2">
+          <SecondaryButton onClick={onEdit} className="flex-1 justify-center px-2"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
+          <HelpTip text={HELP.Booked} className="flex-1"><SecondaryButton onClick={() => setConfirm("Closed-Won")} className="w-full justify-center px-2 text-status-success"><Check className="h-4 w-4" /> Booked</SecondaryButton></HelpTip>
+          <HelpTip text={HELP.NotInterested} className="flex-[1.4]"><SecondaryButton onClick={() => setConfirm("Lost")} className="w-full justify-center whitespace-nowrap px-2"><X className="h-4 w-4" /> Not interested</SecondaryButton></HelpTip>
+          <InfoTip label="What do Booked and Not interested mean?" text={<>Booked: {HELP.Booked}<br />Not interested: {HELP.NotInterested}</>} />
         </div>
       ) : <SecondaryButton onClick={() => onMark("Active")} className="w-full justify-center"><Undo2 className="h-4 w-4" /> Make active again</SecondaryButton>}>
       <dl className="space-y-2 text-sm">
@@ -395,12 +411,23 @@ function HotDetails({ c, isManager, onClose, onEdit, onMark }: {
             {(history.data ?? []).map((h, i) => (
               <li key={i} className="border-l-2 border-brand pl-3 text-sm">
                 <p className="text-xs text-ink-faint">{formatDateTime(h.at)} · {h.by ?? "—"}</p>
-                <p className="text-ink">{h.field === "Added" ? "Added" : <>{h.field}: <span className="text-ink-muted line-through">{h.old ?? "—"}</span> → {h.new ?? "—"}</>}</p>
+                <p className="text-ink">{h.field === "Added" ? "Added" : h.field === "Status"
+                  ? <>{h.field}: <span className="text-ink-muted line-through">{word(h.old) ?? "—"}</span> → {word(h.new) ?? "—"}</>
+                  : <>{h.field}: <span className="text-ink-muted line-through">{h.old ?? "—"}</span> → {h.new ?? "—"}</>}</p>
               </li>
             ))}
           </ul>
         )}
       </div>
+      <Modal open={!!confirm} onClose={() => setConfirm(null)} title={`Mark ${c.name} as ${confirm === "Lost" ? "Not interested" : "Booked"}?`} size="sm"
+        footer={<div className="grid grid-cols-2 gap-2">
+          <SecondaryButton onClick={() => setConfirm(null)} className="justify-center">Cancel</SecondaryButton>
+          <PrimaryButton onClick={() => { const s = confirm!; setConfirm(null); onMark(s); }} className="justify-center">
+            {confirm === "Lost" ? "Not interested" : "Booked"}
+          </PrimaryButton>
+        </div>}>
+        <p className="text-sm text-ink-muted">{confirm === "Lost" ? HELP.NotInterested : HELP.Booked}</p>
+      </Modal>
     </Modal>
   );
 }
