@@ -316,6 +316,8 @@ begin
   if p_cron then
     perform private.make_report_reminders();
     perform private.make_visit_reminders();
+    -- Freeze the hot & warm list of reports whose day has ended (hot_clients.sql; skipped until it's run).
+    if to_regprocedure('private.hc_snapshot_due()') is not null then execute 'select private.hc_snapshot_due()'; end if;
     delete from push_subscriptions where last_seen < now() - interval '90 days';
   end if;
   update notifications set push_batch = '00000000-0000-0000-0000-000000000000', pushed_at = now()
