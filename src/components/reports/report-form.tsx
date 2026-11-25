@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton } from "@/components/ui/button";
@@ -11,6 +11,16 @@ import { ReportFormData, ReportPayload, SalesReportDetail, VisitActionType } fro
 import { addDays, cn } from "@/lib/utils";
 import { longDate, nowHHMM, shortDate, time12 } from "@/lib/report-format";
 import { todayISO } from "@/lib/utils";
+import { useSession } from "@/context/session-context";
+import { getCarry, loadDraft, purgeOldDrafts, removeDraft, reportDraftKey, saveDraft, setCarry } from "@/lib/report-draft";
+
+/** Everything typed in the form (what a draft keeps). */
+interface Typed {
+  num: { leads: string; calls: string; positive: string; tokens: string; scheduledCount: string; doneCount: string; walkInCount: string };
+  sched: SchedRow[]; schedCount: string; actions: Record<string, ActionState>;
+  future: FutureRow[]; futureCount: string; walkIns: string[]; walkInCount: string;
+}
+const LEAVE_MSG = "Your report is saved as a draft. You can come back and finish it.";
 
 const inputCls =
   "min-h-11 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
@@ -45,33 +55,101 @@ export function ReportForm({
   const date = form.date;
   const errorRef = useRef<HTMLDivElement>(null);
 
-  const [num, setNum] = useState({
-    leads: report ? String(report.leads) : "",
-    calls: report ? String(report.calls) : "",
-    positive: report ? String(report.positive) : "",
-    tokens: report ? String(report.tokens) : "",
-    scheduledCount: report ? String(report.scheduled) : "",
-    doneCount: report ? String(report.done) : "",
-    walkInCount: report ? String(report.walkIn) : "",
+  const { user } = useSession();
+  const draftKey = reportDraftKey({ filer: user?.id, employee: form.employee.id, type: form.type, project: form.project?.id, date, reportId: report?.id });
+  // What the server gave us (new: empty; edit: the saved report).
+  const baseline = useMemo<Typed>(() => ({
+    num: {
+      leads: report ? String(report.leads) : "", calls: report ? String(report.calls) : "", positive: report ? String(report.positive) : "",
+      tokens: report ? String(report.tokens) : "", scheduledCount: report ? String(report.scheduled) : "",
+      doneCount: report ? String(report.done) : "", walkInCount: report ? String(report.walkIn) : "",
+    },
+    sched: form.scheduled.map((s) => ({ key: s.id, id: s.id, client: s.client, date: s.date, locked: s.locked })),
+    schedCount: report && !imported ? String(form.scheduled.length) : "",
+    actions: Object.fromEntries(form.todayVisits.filter((v) => v.action).map((v) => [v.id, {
+      action: v.action!.action, time: v.action!.time ?? "", date: v.action!.date ?? "", reason: v.action!.reason ?? "",
+    }])),
+    future: form.futureDone.map((f) => ({ ...f })),
+    futureCount: form.futureDone.length ? String(form.futureDone.length) : "",
+    walkIns: form.walkIns, walkInCount: form.walkIns.length ? String(form.walkIns.length) : "",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [form]);
+  // A saved draft for this report wins over the baseline (rows / visits no longer valid are dropped).
+  const [draft] = useState<Typed | null>(() => {
+    purgeOldDrafts();
+    const d = loadDraft<Typed>(draftKey);
+    if (!d) return null;
+    const futureIds = new Set(form.futureVisits.map((v) => v.id));
+    return { ...baseline, ...d, future: (d.future ?? []).filter((f) => !f.visitId || futureIds.has(f.visitId)).map((f) => ({ ...f, frozen: false })),
+      futureCount: String((d.future ?? []).filter((f) => !f.visitId || futureIds.has(f.visitId)).length || "") };
   });
-  const [sched, setSched] = useState<SchedRow[]>(
-    form.scheduled.map((s) => ({ key: s.id, id: s.id, client: s.client, date: s.date, locked: s.locked }))
-  );
-  const [schedCount, setSchedCount] = useState(report && !imported ? String(form.scheduled.length) : "");
+  const start = draft ?? baseline;
+  // "Draft restored" bar, except when the values just came along with a date change.
+  const [restored, setRestored] = useState(() => {
+    const c = getCarry();
+    if (c && c.toKey === draftKey) { setCarry(null); return false; }
+    return !!draft;
+  });
+
+  const [num, setNum] = useState(start.num);
+  const [sched, setSched] = useState<SchedRow[]>(start.sched);
+  const [schedCount, setSchedCount] = useState(start.schedCount);
   // The count only decides how many rows are SHOWN (and saved); typed rows are kept when it's
   // cleared or lowered, so going back up restores them. Rows acted on later always show.
   const schedN = isCount(schedCount) ? Math.min(Number(schedCount), 50) : 0;
   const shownSched = sched.filter((r, i) => i < schedN || r.locked);
   const filledSched = sched.filter((r) => r.client.trim() || r.date).length;
-  const [actions, setActions] = useState<Record<string, ActionState>>(() =>
-    Object.fromEntries(form.todayVisits.filter((v) => v.action).map((v) => [v.id, {
-      action: v.action!.action, time: v.action!.time ?? "", date: v.action!.date ?? "", reason: v.action!.reason ?? "",
-    }]))
-  );
-  const [future, setFuture] = useState<FutureRow[]>(form.futureDone.map((f) => ({ ...f })));
-  const [futureCount, setFutureCount] = useState(form.futureDone.length ? String(form.futureDone.length) : "");
-  const [walkIns, setWalkIns] = useState<string[]>(form.walkIns);
-  const [walkInCount, setWalkInCount] = useState(form.walkIns.length ? String(form.walkIns.length) : "");
+  const [actions, setActions] = useState<Record<string, ActionState>>(start.actions);
+  const [future, setFuture] = useState<FutureRow[]>(start.future);
+  const [futureCount, setFutureCount] = useState(start.futureCount);
+  const [walkIns, setWalkIns] = useState<string[]>(start.walkIns);
+  const [walkInCount, setWalkInCount] = useState(start.walkInCount);
+
+  // ---- Drafts: auto-save while typing, save on leaving, never lose anything ----
+  const typed: Typed = { num, sched, schedCount, actions, future, futureCount, walkIns, walkInCount };
+  const dirty = JSON.stringify(typed) !== JSON.stringify(baseline);
+  const latest = useRef({ typed, dirty, key: draftKey });
+  latest.current = { typed, dirty, key: draftKey };
+  const done = useRef(false); // submitted, or moved to another date
+  const flush = useCallback(() => {
+    const l = latest.current;
+    if (done.current) return;
+    if (l.dirty) saveDraft(l.key, l.typed); else removeDraft(l.key);
+  }, []);
+  useEffect(() => {
+    const t = window.setTimeout(flush, 1500);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(typed)]);
+  useEffect(() => {
+    const onHide = () => flush();
+    window.addEventListener("beforeunload", onHide);
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("beforeunload", onHide);
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+      // Leaving the form (another page, Back): keep what was typed and say so.
+      if (!done.current && latest.current.dirty) { flush(); toast(LEAVE_MSG); }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const discard = () => {
+    removeDraft(draftKey); setRestored(false);
+    setNum(baseline.num); setSched(baseline.sched); setSchedCount(baseline.schedCount); setActions(baseline.actions);
+    setFuture(baseline.future); setFutureCount(baseline.futureCount); setWalkIns(baseline.walkIns); setWalkInCount(baseline.walkInCount);
+  };
+  // New report date: everything typed comes along; only the visit lists reload for that day.
+  const changeDate = (d: string) => {
+    if (!onDateChange || d === date) return;
+    const toKey = reportDraftKey({ filer: user?.id, employee: form.employee.id, type: form.type, project: form.project?.id, date: d });
+    if (dirty) { saveDraft(toKey, typed); setCarry({ fromKey: draftKey, toKey, fromDate: date }); }
+    removeDraft(draftKey);
+    done.current = true;
+    onDateChange(d);
+  };
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -185,6 +263,8 @@ export function ReportForm({
         employeeId: report ? null : form.employee.id,
         type: form.type, projectId: form.project?.id ?? null, date, payload,
       });
+      done.current = true;
+      removeDraft(draftKey);
       toast(report ? "Report updated." : "Report submitted.");
       onSaved(saved);
     } catch (err) {
@@ -203,7 +283,7 @@ export function ReportForm({
           {!report && onDateChange ? (
             // Past days of this month can be filed too (employees: 1st → today, from joining).
             <div><p className="mb-1 text-xs text-ink-faint">Report date</p>
-              <DatePicker variant="field" ariaLabel="Report date" value={date} onChange={(d) => d !== date && onDateChange(d)}
+              <DatePicker variant="field" ariaLabel="Report date" value={date} onChange={changeDate}
                 min={form.minDate ?? undefined} max={todayISO()} blocked={{ dates: form.filledDates ?? [], why: "Already filled, use Edit" }} />
             </div>
           ) : <div><p className="text-xs text-ink-faint">Date</p><p className="font-medium text-ink">{longDate(date)}</p></div>}
@@ -211,6 +291,13 @@ export function ReportForm({
         </div>
         {imported && <p className="mt-3 rounded-xl bg-surface px-3 py-2 text-xs text-ink-muted">Imported from the old sheet — only the numbers can be edited.</p>}
       </Card>
+
+      {restored && (
+        <div role="status" className="flex items-center justify-between gap-2 rounded-xl bg-brand-soft px-4 py-2.5 text-sm text-brand">
+          <span>Draft restored</span>
+          <button type="button" onClick={discard} className="font-medium underline underline-offset-2">Discard</button>
+        </div>
+      )}
 
       <div ref={errorRef}>
         {error && <div className="rounded-xl bg-status-dangerBg px-4 py-3 text-sm text-status-danger" role="alert">{error}</div>}
