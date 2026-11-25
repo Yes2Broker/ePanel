@@ -11,9 +11,10 @@ export interface Suggestion { value: string; note: string }
  * datalist/autofill): filters as you type, ↑/↓/Enter, click outside closes.
  * Any other value can still be typed.
  */
-export function SuggestInput({ value, onChange, suggestions, placeholder, type = "text", inputMode, empty, label }: {
+export function SuggestInput({ value, onChange, suggestions, placeholder, type = "text", inputMode, empty, label, pinned = [] }: {
   value: string; onChange: (v: string) => void; suggestions: Suggestion[]; placeholder?: string;
   type?: "text" | "email" | "tel"; inputMode?: "text" | "email" | "tel"; empty: string; label: string;
+  /** Always listed first, whatever is typed (e.g. "Resale property"). */ pinned?: Suggestion[];
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -23,7 +24,8 @@ export function SuggestInput({ value, onChange, suggestions, placeholder, type =
   const [fieldId] = useState(() => `f-${Math.random().toString(36).slice(2, 10)}`);
   const q = value.trim().toLowerCase().replace(/\s/g, "");
   // Spaces ignored on both sides ("98765 43210", "Pavan G").
-  const shown = suggestions.filter((s) => !q || s.value.toLowerCase().replace(/\s/g, "").includes(q) || s.note.toLowerCase().replace(/\s/g, "").includes(q));
+  const matched = suggestions.filter((s) => !q || s.value.toLowerCase().replace(/\s/g, "").includes(q) || s.note.toLowerCase().replace(/\s/g, "").includes(q));
+  const shown = [...pinned, ...matched];
 
   useEffect(() => {
     if (!open) return;
@@ -55,13 +57,13 @@ export function SuggestInput({ value, onChange, suggestions, placeholder, type =
       {open && (
         <ul id={`${id}-list`} role="listbox" aria-label={`${label} suggestions`}
           className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-surface-border bg-white p-1 shadow-lg">
-          {!suggestions.length ? <li className="px-3 py-2.5 text-sm text-ink-faint">{empty}</li>
+          {!suggestions.length && !pinned.length ? <li className="px-3 py-2.5 text-sm text-ink-faint">{empty}</li>
             : !shown.length ? <li className="px-3 py-2.5 text-sm text-ink-faint">No match. Your typed value will be saved as it is.</li>
             : shown.map((s, i) => (
               <li key={`${s.value}|${s.note}`} role="option" aria-selected={i === active}>
                 <button type="button" onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(s.value)}
                   className={cn("flex w-full items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-left", i === active ? "bg-surface" : "")}>
-                  <span className="truncate text-sm font-semibold text-ink">{s.value}</span>
+                  <span className="break-words text-sm font-semibold text-ink">{s.value}</span>
                   <span className="shrink-0 text-xs text-ink-faint">{s.note}</span>
                 </button>
               </li>

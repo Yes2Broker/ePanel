@@ -18,20 +18,19 @@ import type { HotClient, HotClientInput, HotReportBlock, HotStatus, HotTemp } fr
 export const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
 
 type HotRow = HotReportBlock["active"][number];
-// The shared summary shows HOT clients only (warm ones stay in the panel).
-const GROUPS = [["Hot", "HOT"]] as const;
-/** "98765 43210" */
-export const fmtPhone = (p: string) => (/^\d{10}$/.test(p ?? "") ? `${p.slice(0, 5)} ${p.slice(5)}` : p ?? "");
+// The shared summary: HOT then WARM. No phone numbers (those stay in the panel).
+const GROUPS = [["Hot", "HOT"], ["Warm", "WARM"]] as const;
+
 /** Active clients of one type, soonest close-by first. */
 const groupOf = (b: HotReportBlock, t: HotTemp): HotRow[] =>
   b.active.filter((c) => (c.temperature ?? "Hot") === t).sort((x, y) => x.expectedDate.localeCompare(y.expectedDate) || x.name.localeCompare(y.name));
-const named = (l: { name: string; phone?: string; project: string }[]) =>
-  l.map((c) => `${c.name} (${[fmtPhone(c.phone ?? ""), c.project].filter(Boolean).join(", ")})`.replace(" ()", "")).join(", ");
-const hotOnly = (b: HotReportBlock): HotReportBlock => ({ ...b, active: b.active.filter((c) => (c.temperature ?? "Hot") === "Hot") });
-const hasHot = (b: HotReportBlock | null | undefined): b is HotReportBlock =>
-  !!b && (hotOnly(b).active.length > 0 || b.won.length > 0 || b.lost.length > 0);
+const named = (l: { name: string; project: string }[]) => l.map((c) => (c.project ? `${c.name} (${c.project})` : c.name)).join(", ");
+const hasHot = (b: HotReportBlock | null | undefined): b is HotReportBlock => !!b && (b.active.length > 0 || b.won.length > 0 || b.lost.length > 0);
+/** "Resale property" (pinned project choice) and "Resale – 3BHK, Chandkheda". */
+export const RESALE = "Resale property";
+export const isResale = (p: string | null | undefined) => !!p && (p === RESALE || p.startsWith("Resale – "));
 
-/** The hot clients block of the WhatsApp text: one client per line, with the phone number. */
+/** The hot & warm block of the WhatsApp text: one client per line, no phone numbers. */
 export function hotText(b: HotReportBlock | null | undefined, reportDate?: string) {
   if (!hasHot(b)) return "";
   const lines: string[] = [];
@@ -39,29 +38,28 @@ export function hotText(b: HotReportBlock | null | undefined, reportDate?: strin
     const group = groupOf(b, t);
     if (!group.length) continue;
     lines.push(`${head} CLIENTS (${group.length})`);
-    group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, fmtPhone(c.phone) || "-", c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
+    group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
   }
   if (b.won.length) lines.push(`Closed today: ${named(b.won)}`);
   if (b.lost.length) lines.push(`Lost today: ${named(b.lost)}`);
   return lines.join("\n");
 }
 
-/** The summary popup's hot clients table (same look as the Particulars table; also in the image). */
+/** The summary popup's hot & warm table (same look as the Particulars table; also in the image). */
 export function HotTable({ block, reportDate }: { block: HotReportBlock | null | undefined; reportDate: string }) {
   // Nothing is ever cut: names, projects and remarks wrap and the row grows taller.
   if (!hasHot(block)) return null;
   const groups = GROUPS.map(([t, head]) => ({ t, head, rows: groupOf(block, t) })).filter((g) => g.rows.length);
   return (
-    <div className="space-y-1.5" aria-label="Hot clients summary">
+    <div className="space-y-1.5" aria-label="Hot and warm clients summary">
       {groups.length > 0 && (
         <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-[12.5px] [hyphens:auto]">
           {/* The popup is narrow on every screen: keep fixed columns small so Remarks always has room. */}
-          <colgroup><col className="w-6" /><col className="w-[20%] sm:w-[22%]" /><col className="w-[3.4rem] sm:w-[6rem]" /><col className="w-[16%]" /><col className="w-[3.3rem]" /><col /></colgroup>
+          <colgroup><col className="w-6" /><col className="w-[27%]" /><col className="w-[22%]" /><col className="w-[3.6rem]" /><col /></colgroup>
           <thead>
             <tr className="bg-ink text-left text-xs text-white">
               <th className="py-2 pl-2.5 pr-1 font-medium">#</th>
               <th className="px-1.5 py-2 font-medium">Client</th>
-              <th className="px-1.5 py-2 font-medium">Phone</th>
               <th className="px-1.5 py-2 font-medium">Project</th>
               <th className="px-1.5 py-2 font-medium">Close by</th>
               <th className="px-1.5 py-2 pr-2.5 font-medium">Remarks</th>
@@ -70,7 +68,7 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
           {groups.map((g) => (
             <tbody key={g.t} aria-label={`${g.head} (${g.rows.length})`}>
               <tr className={cn("border-t border-surface-border", g.t === "Hot" ? "bg-orange-100" : "bg-amber-100")}>
-                <th colSpan={6} scope="colgroup" className={cn("px-2.5 py-1.5 text-left text-xs font-bold tracking-wide", g.t === "Hot" ? "text-orange-800" : "text-amber-800")}>
+                <th colSpan={5} scope="colgroup" className={cn("px-2.5 py-1.5 text-left text-xs font-bold tracking-wide", g.t === "Hot" ? "text-orange-800" : "text-amber-800")}>
                   <span className="inline-flex items-center gap-1"><TempIcon t={g.t} className="h-3.5 w-3.5" />{g.head} ({g.rows.length})</span>
                 </th>
               </tr>
@@ -80,7 +78,6 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
                   <tr key={i} aria-label={c.name} className="border-t border-surface-border align-top">
                     <td className="py-2 pl-2.5 pr-1 text-ink-muted">{i + 1}</td>
                     <td className="whitespace-normal break-words px-1.5 py-2 font-semibold text-ink">{c.name}</td>
-                    <td className="whitespace-normal px-1.5 py-2 tabular-nums text-ink sm:whitespace-nowrap">{fmtPhone(c.phone) || "-"}</td>
                     <td className="whitespace-normal break-words px-1.5 py-2 text-ink-muted">{c.project || "-"}</td>
                     <td className={cn("px-1.5 py-2 leading-tight", late ? "font-semibold text-status-danger" : "text-ink")}>
                       {dayMonth(c.expectedDate)}{late && <span className="block text-[10px] font-medium uppercase">Overdue</span>}
@@ -123,7 +120,7 @@ const STATUS_CLS: Record<HotStatus, string> = {
 // ===========================================================================
 // Add / edit dialog
 // ===========================================================================
-type Draft = { name: string; phone: string; project: string; expectedDate: string; remarks: string; employeeId: string; temperature: HotTemp };
+type Draft = { name: string; phone: string; project: string; resaleNote: string; expectedDate: string; remarks: string; employeeId: string; temperature: HotTemp };
 
 export function HotClientDialog({ open, client, people, onClose, onDone, title }: {
   open: boolean; client: HotClient | null; onClose: () => void;
@@ -132,14 +129,15 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
   title?: string;
 }) {
   const projects = useApi(() => (open ? api.hotClientProjects() : Promise.resolve([])), [open]);
-  const blank: Draft = { name: "", phone: "", project: "", expectedDate: "", remarks: "", employeeId: "", temperature: "Hot" };
+  const blank: Draft = { name: "", phone: "", project: "", resaleNote: "", expectedDate: "", remarks: "", employeeId: "", temperature: "Hot" };
   const [d, setD] = useState<Draft>(blank);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setError("");
-    setD(client ? { name: client.name, phone: client.phone, project: client.project, expectedDate: client.expectedDate, remarks: client.remarks, employeeId: client.employeeId, temperature: client.temperature ?? "Hot" } : blank);
+    setD(client ? { name: client.name, phone: client.phone, project: isResale(client.project) ? RESALE : client.project,
+      resaleNote: client.project?.startsWith("Resale – ") ? client.project.slice("Resale – ".length) : "", expectedDate: client.expectedDate, remarks: client.remarks, employeeId: client.employeeId, temperature: client.temperature ?? "Hot" } : blank);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, client]);
   const set = (k: keyof Draft, v: string) => setD((x) => ({ ...x, [k]: v }));
@@ -152,9 +150,11 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
     if (!/^\d{10}$/.test(phone)) return setError("Enter a 10-digit contact number.");
     if (!d.expectedDate) return setError("Pick the expected closure date.");
     if (d.expectedDate < today && (!client || d.expectedDate !== client.expectedDate)) return setError("Expected closure date must be today or later.");
-    const match = (projects.data ?? []).find((p) => p.name.toLowerCase() === d.project.trim().toLowerCase());
+    const resale = d.project.trim() === RESALE;
+    const match = resale ? undefined : (projects.data ?? []).find((p) => p.name.toLowerCase() === d.project.trim().toLowerCase());
+    const projectText = resale ? (d.resaleNote.trim() ? `Resale – ${d.resaleNote.trim()}` : RESALE) : d.project.trim();
     const full: HotClientInput = {
-      name: d.name.trim(), phone, projectId: match?.id ?? null, project: match ? match.name : d.project.trim(),
+      name: d.name.trim(), phone, projectId: match?.id ?? null, project: match ? match.name : projectText,
       expectedDate: d.expectedDate, remarks: d.remarks.trim(), temperature: d.temperature,
     };
     let input: HotClientInput = full;
@@ -197,7 +197,12 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
         <Field label="Contact number"><input aria-label="Contact number" type="tel" inputMode="tel" value={d.phone} onChange={(e) => set("phone", e.target.value)} className={inputCls} placeholder="10-digit mobile" /></Field>
         <Field label="Project" optional>
           <SuggestInput label="Project" value={d.project} onChange={(v) => set("project", v)} placeholder="Search Builder Data or type any"
-            suggestions={(projects.data ?? []).map((p) => ({ value: p.name, note: "" }))} empty="No match. Your text will be saved as is." />
+            suggestions={(projects.data ?? []).map((p) => ({ value: p.name, note: "" }))} empty="No match. Your text will be saved as is."
+            pinned={[{ value: RESALE, note: "Not a builder project" }]} />
+          {d.project.trim() === RESALE && (
+            <input aria-label="Property / location (optional)" value={d.resaleNote} onChange={(e) => set("resaleNote", e.target.value)}
+              className={cn(inputCls, "mt-2")} placeholder="Property / location (optional), e.g. 3BHK, Chandkheda" />
+          )}
         </Field>
         <Field label="Expected closure date">
           <DatePicker variant="field" ariaLabel="Expected closure date" value={d.expectedDate} onChange={(v) => set("expectedDate", v)} min={today} />
@@ -378,13 +383,13 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
   const rows = useMemo(() => mine
     .filter((c) => show === "all" || c.status === show)
     .filter((c) => type === "all" || (c.temperature ?? "Hot") === type)
-    .filter((c) => !project || c.project === project)
+    .filter((c) => !project || (project === RESALE ? isResale(c.project) : c.project === project))
     .filter((c) => when === "all" || (when === "week" ? c.expectedDate >= today && c.expectedDate <= weekEnd
       : when === "overdue" ? c.status === "Active" && c.expectedDate < today : c.expectedDate.slice(0, 7) === today.slice(0, 7)))
     .sort(byTemp),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, person, project, when, show, type]);
-  const projects = Array.from(new Set(all.map((c) => c.project).filter(Boolean))).sort();
+  const projects = Array.from(new Set(all.map((c) => c.project).filter((p) => p && !isResale(p)))).sort();
   const peopleList = (people.data ?? []).filter((p) => p.status === "Active").map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
 
   const save = async (input: HotClientInput, msg: string) => {
@@ -421,7 +426,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
         {isManager && <Select ariaLabel="Person" value={person} onChange={setPerson} placeholder="Everyone"
           options={[{ value: "", label: "Everyone" }, ...peopleList.map((p) => ({ value: p.id, label: p.name }))]} />}
         <Select ariaLabel="Project" value={project} onChange={setProject} placeholder="All projects"
-          options={[{ value: "", label: "All projects" }, ...projects.map((p) => ({ value: p, label: p }))]} />
+          options={[{ value: "", label: "All projects" }, { value: RESALE, label: RESALE }, ...projects.map((p) => ({ value: p, label: p }))]} />
         <Select ariaLabel="When" value={when} onChange={(v) => setWhen(v as When)}
           options={[{ value: "all", label: "Any date" }, { value: "week", label: "Closing this week" }, { value: "overdue", label: "Overdue" }, { value: "month", label: "This month" }]} />
         <Select ariaLabel="Type" value={type} onChange={(v) => setType(v as TypeF)}

@@ -261,8 +261,8 @@ begin
   delete from hot_client_report_snaps where report_id = p_report;
 end $$;
 
--- The hot clients block of a report: HOT clients active that day (warm ones stay
--- in the panel only), and clients closed / lost that day, with phone numbers.
+-- The hot & warm block of a report: clients active that day, and clients closed /
+-- lost that day. No phone numbers (the summary is shared; phones stay in the panel).
 -- Only the report's owner and HR/Admin can call this.
 create or replace function public.hot_clients_for_report(p_token text, p_report_id uuid) returns jsonb
 language plpgsql stable security definer set search_path = public, private as $$
@@ -279,16 +279,16 @@ begin
   v_start := r.report_date::timestamp at time zone private.tz();
   v_end := (r.report_date + 1)::timestamp at time zone private.tz();
   return jsonb_build_object(
-    'active', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name, 'phone', h.customer_phone,
+    'active', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
         'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, ''),
         'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'temperature', h.temperature)
         order by h.temperature <> 'Hot', h.expected_closure_date, h.customer_name)
-      from hot_clients h where h.employee_id = r.employee_id and h.created_at < v_end and h.temperature = 'Hot'
+      from hot_clients h where h.employee_id = r.employee_id and h.created_at < v_end
         and (h.status = 'Active' or h.closed_at >= v_end)), '[]'::jsonb),
-    'won', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name, 'phone', h.customer_phone,
+    'won', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
         'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
       from hot_clients h where h.employee_id = r.employee_id and h.status = 'Closed-Won' and h.closed_at >= v_start and h.closed_at < v_end), '[]'::jsonb),
-    'lost', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name, 'phone', h.customer_phone,
+    'lost', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
         'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
       from hot_clients h where h.employee_id = r.employee_id and h.status = 'Lost' and h.closed_at >= v_start and h.closed_at < v_end), '[]'::jsonb)
   );

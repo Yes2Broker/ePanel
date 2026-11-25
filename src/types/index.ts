@@ -438,7 +438,7 @@ export interface HotClientInput {
   expectedDate?: string; remarks?: string; status?: HotStatus; temperature?: HotTemp;
 }
 export interface HotReportBlock {
-  active: { name: string; phone: string; project: string; expectedDate: string; remarks: string; temperature: HotTemp }[];
-  won: { name: string; phone: string; project: string }[]; lost: { name: string; phone: string; project: string }[];
+  active: { name: string; project: string; expectedDate: string; remarks: string; temperature: HotTemp }[];
+  won: { name: string; project: string }[]; lost: { name: string; project: string }[];
 }
 export interface HotChange { field: string; old: string | null; new: string | null; by: string | null; at: string }
