@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Lock } from "lucide-react";
+import { ChevronRight, Flame, Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -11,7 +11,7 @@ import { ReportFormData, ReportPayload, SalesReportDetail, VisitActionType } fro
 import { addDays, cn } from "@/lib/utils";
 import { longDate, nowHHMM, shortDate, time12 } from "@/lib/report-format";
 import { todayISO } from "@/lib/utils";
-import { HotChanges, HotClientsSection, hotPayload } from "@/components/reports/hot-clients";
+import Link from "next/link";
 
 const inputCls =
   "min-h-11 w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-base text-ink placeholder:text-ink-faint focus:border-brand-dark focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm disabled:bg-surface disabled:text-ink-muted";
@@ -75,10 +75,6 @@ export function ReportForm({
   const [walkInCount, setWalkInCount] = useState(form.walkIns.length ? String(form.walkIns.length) : "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  // Hot clients: changes save together with the report.
-  const [hot, setHot] = useState<HotChanges>({});
-  const [overdue, setOverdue] = useState(0);
-  const [overdueAck, setOverdueAck] = useState(false);
 
   const frozenIds = new Set(form.todayVisits.filter((v) => v.action?.frozen).map((v) => v.id));
 
@@ -168,14 +164,6 @@ export function ReportForm({
     e.preventDefault();
     setError("");
     if (!validate()) return;
-    // Soft warning (once): hot clients whose expected date has passed.
-    if (overdue > 0 && !overdueAck) {
-      setOverdueAck(true);
-      const msg = `${overdue} hot ${overdue === 1 ? "client has" : "clients have"} a passed closure date. Update ${overdue === 1 ? "it" : "them"}, or submit anyway.`;
-      setError(msg); toast(msg, "error");
-      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
     const payload: ReportPayload = {
       leads: Number(num.leads), calls: Number(num.calls), positive: Number(num.positive), tokens: Number(num.tokens),
       ...(imported ? { scheduledCount: Number(num.scheduledCount), doneCount: Number(num.doneCount), walkInCount: Number(num.walkInCount || 0) } : {}),
@@ -196,7 +184,7 @@ export function ReportForm({
       const saved = await api.saveSalesReport({
         reportId: report?.id ?? null,
         employeeId: report ? null : form.employee.id,
-        type: form.type, projectId: form.project?.id ?? null, date, payload, hot: hotPayload(hot),
+        type: form.type, projectId: form.project?.id ?? null, date, payload,
       });
       toast(report ? "Report updated." : "Report submitted.");
       onSaved(saved);
@@ -226,7 +214,7 @@ export function ReportForm({
       </Card>
 
       <div ref={errorRef}>
-        {error && <div className={cn("rounded-xl px-4 py-3 text-sm", overdueAck && overdue > 0 && error.includes("passed closure date") ? "bg-status-warningBg text-status-warning" : "bg-status-dangerBg text-status-danger")} role="alert">{error}</div>}
+        {error && <div className="rounded-xl bg-status-dangerBg px-4 py-3 text-sm text-status-danger" role="alert">{error}</div>}
       </div>
 
       <Card className="p-4 sm:p-5">
@@ -247,8 +235,10 @@ export function ReportForm({
         </div>
       </Card>
 
-      <HotClientsSection employeeId={form.employee.id} forSomeone={isManager} reportDate={date}
-        changes={hot} setChanges={setHot} onOverdue={setOverdue} />
+      {/* Hot & warm clients are managed only in their tab; the summary shows them. */}
+      <Link href="/reports?tab=hot" className="inline-flex min-h-10 items-center gap-1.5 px-1 text-sm font-medium text-brand hover:underline">
+        <Flame className="h-4 w-4 text-orange-500" aria-hidden /> Manage hot &amp; warm clients <ChevronRight className="h-4 w-4" aria-hidden />
+      </Link>
 
       {!imported && (
         <>
@@ -348,7 +338,7 @@ export function ReportForm({
       <div className="sticky bottom-[var(--nav-h)] z-30 -mx-4 border-t border-surface-border bg-white/95 px-4 pb-[max(0.75rem,calc(env(safe-area-inset-bottom)-var(--nav-h)+0.75rem))] pt-3 backdrop-blur sm:mx-0 sm:rounded-t-card lg:static lg:border-0 lg:bg-transparent lg:p-0">
         <div className="mx-auto max-w-xl">
           <PrimaryButton type="submit" disabled={saving} className="w-full justify-center py-3 text-base">
-            {saving ? (report ? "Saving…" : "Submitting…") : overdueAck && overdue > 0 ? (report ? "Save anyway" : "Submit anyway") : report ? "Save changes" : "Submit Report"}
+            {saving ? (report ? "Saving…" : "Submitting…") : report ? "Save changes" : "Submit Report"}
           </PrimaryButton>
           {report && !isManager && (
             <p className="mt-1.5 text-center text-xs text-ink-faint">You can edit this report until {new Date(report.editableUntil).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}.</p>
