@@ -142,7 +142,10 @@ begin
     'racing', v_me.department = 'Sales',
     -- Hall of fame: the last 12 announced months.
     'hall', coalesce((select jsonb_agg(jsonb_build_object('month', to_char(m.month, 'YYYY-MM'), 'winners', private.lb_winners_json(m.month, v_me.id)) order by m.month desc)
-                      from (select month from leaderboard_months order by month desc limit 12) m), '[]'::jsonb)
+                      -- Only months that crowned someone (a month with no winners is skipped).
+                      from (select lm.month from leaderboard_months lm
+                            where exists (select 1 from leaderboard_winners w where w.month = lm.month)
+                            order by lm.month desc limit 12) m), '[]'::jsonb)
   );
 end $$;
 

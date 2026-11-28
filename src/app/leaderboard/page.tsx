@@ -98,6 +98,9 @@ function Lobby({ name }: { name: string }) {
   }, [ranked.map((p) => p.id + rank(p)).join()]);
   const me = tv ? undefined : rows.find((p) => p.me);
   const past = !!data && !data.live;
+  // Hall of fame: only months that crowned someone (a skipped month has nothing to reveal).
+  const hall = (data?.hall ?? []).filter((h) => h.winners.length > 0);
+  const nextFirst = (() => { const d = new Date(); d.setMonth(d.getMonth() + 1, 1); return d.toLocaleDateString("en-IN", { day: "numeric", month: "long" }); })();
   const isRevealed = (m: string) => tv || (revealed[m] ?? store.get(`y2b-lb-reveal-${m}`) === "1");
   const hidden = past && !!data?.winners.length && !isRevealed(data.month);
 
@@ -292,9 +295,9 @@ function Lobby({ name }: { name: string }) {
               {/* Hall of fame */}
               <aside aria-label="Hall of fame" className="space-y-3">
                 <h2 className="lb-display flex items-center gap-2 text-3xl tracking-wide text-[#F5C542]"><Landmark className="h-7 w-7" aria-hidden /> Hall of fame</h2>
-                {!data?.hall.length ? (
-                  <div className="lb-glass p-4 text-sm text-white/60">The first champions are crowned on the 1st. Could it be you?</div>
-                ) : data.hall.slice(0, tv ? 3 : 12).map((h) => (
+                {!hall.length ? (
+                  <div className="lb-glass p-4 text-sm text-white/60">First champions crowned on {nextFirst}. Could it be you?</div>
+                ) : hall.slice(0, tv ? 3 : 12).map((h) => (
                   <HallCard key={h.month} month={h.month} winners={h.winners} revealed={isRevealed(h.month)}
                     onPull={() => reveal(h.month)} onOpen={tv ? undefined : () => pick(h.month)} />
                 ))}
