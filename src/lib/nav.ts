@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, CalendarCheck, FileText, User, Settings,
-  Users, ShieldCheck, Building2, BarChart3, CalendarOff, Smartphone, Trophy, LucideIcon,
+  Users, ShieldCheck, Building2, BarChart3, CalendarOff, Smartphone, LucideIcon,
 } from "lucide-react";
 import { Employee, Permissions } from "@/types";
 import { FEATURES, FeatureKey, featureForPath, isFeatureEnabled, pageAccess } from "@/lib/features";
@@ -34,8 +34,6 @@ function itemsFor(user: Employee, permissions: Permissions | null) {
     attendance: feature("attendance", { href: "/attendance", label: "Attendance", icon: CalendarCheck }, pages.attendance),
     reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, pages.reports),
     leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, pages.leave),
-    // Its own full-screen page, opened in a new tab (like Analytics).
-    leaderboard: { href: "/leaderboard", label: "Leaderboard", short: "Leaders", icon: Trophy, external: true } as NavItem,
     builderData: (can("builderData") || can("builderManage")) && ({ href: "/builder-data", label: "Builder Data", short: "Builder", icon: Building2 } as NavItem),
     analytics: user.role === "Admin" && can("analytics") && ({ href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true } as NavItem),
     permissions: isManager && ({ href: "/admin/permissions", label: "Permissions", icon: ShieldCheck } as NavItem),
@@ -49,7 +47,7 @@ const present = (items: (NavItem | false)[]) => items.filter((i): i is NavItem =
 /** Desktop / tablet sidebar. */
 export function navFor(user: Employee, permissions: Permissions | null): NavItem[] {
   const i = itemsFor(user, permissions);
-  return present([i.dashboard, i.employees, i.assets, i.attendance, i.reports, i.leave, i.leaderboard, i.builderData, i.analytics, i.permissions, i.profile, i.settings]);
+  return present([i.dashboard, i.employees, i.assets, i.attendance, i.reports, i.leave, i.builderData, i.analytics, i.permissions, i.profile, i.settings]);
 }
 
 /** Desktop sidebar, grouped. Sections the person has no pages in are left out. */
@@ -58,7 +56,7 @@ export function navSectionsFor(user: Employee, permissions: Permissions | null) 
   return {
     sections: [
       { label: "Main", items: present([i.dashboard]) },
-      { label: "Work", items: present([i.attendance, i.reports, i.leave, i.leaderboard]) },
+      { label: "Work", items: present([i.attendance, i.reports, i.leave]) },
       { label: "People", items: present([i.employees, i.assets, i.permissions]) },
       { label: "Tools", items: present([i.builderData, i.analytics]) },
     ].filter((s) => s.items.length),
@@ -77,7 +75,7 @@ export function bottomNavFor(user: Employee, permissions: Permissions | null): {
   const bar = present([i.dashboard, live(i.reports), live(i.attendance), live(i.leave)]);
   if (bar.length < 3) bar.push(i.profile);
   const inBar = new Set(bar.map((b) => b.href));
-  const more = present([i.employees, i.assets, i.reports, i.leave, i.attendance, i.leaderboard, i.builderData, i.analytics, i.permissions])
+  const more = present([i.employees, i.assets, i.reports, i.leave, i.attendance, i.builderData, i.analytics, i.permissions])
     .filter((m) => !inBar.has(m.href));
   return { bar, more };
 }

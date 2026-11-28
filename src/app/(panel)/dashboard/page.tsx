@@ -9,7 +9,6 @@ import { CustomiseButton, CustomisePanel, DashboardEmpty, useDashboardLayout } f
 import { AttUpdateBanner } from "@/components/attendance/att-update-banner";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
-import { WinnerBanner } from "@/components/leaderboard/winner-banner";
 import { Card } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/pills";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
@@ -131,7 +130,6 @@ export default function EmployeeDashboardPage() {
       <PageHeader title={`${greeting}, ${firstName}`} subtitle="Welcome to your Yes2Broker panel."
         actions={available.length > 0 && <CustomiseButton onClick={() => setCustomising(true)} />} />
       <InstallBanner />
-      <WinnerBanner />
       <ComingSoonCard />
       <ErrorBanner message={error} onRetry={reload} />
 

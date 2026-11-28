@@ -424,22 +424,6 @@ export interface BuilderList {
   localities: { city: string; name: string }[];
 }
 
-// Leaderboard (monthly race: site visits done + closures)
-export interface LbPlayer {
-  id: string; name: string; designation: string; visits: number; closures: number;
-  rankVisits: number | null; rankClosures: number | null; prevVisits: number | null; prevClosures: number | null;
-  titles: number; streak: boolean; me: boolean;
-}
-export interface LbWinner { category: "visits" | "closures"; id: string; name: string; designation: string; value: number; me: boolean }
-export interface Leaderboard {
-  month: string; live: boolean; daysLeft: number; endsAt: string; minMonth: string; racing: boolean;
-  players: LbPlayer[]; winners: LbWinner[]; hall: { month: string; winners: LbWinner[] }[];
-}
-export interface LbBanner {
-  champions: { month: string; winners: LbWinner[] } | null;
-  race: { visits: number; closures: number; rankVisits: number | null; rankClosures: number | null; players: number;
-    visitsToNext: number | null; closuresToNext: number | null; daysLeft: number } | null;
-}
 // Hot clients (customers expected to close soon)
 export type HotStatus = "Active" | "Closed-Won" | "Lost";
 export type HotTemp = "Hot" | "Warm";
