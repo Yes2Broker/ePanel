@@ -4,7 +4,7 @@
  */
 export function loginDetailsText(e: { name: string; id: string; email?: string | null }, password: string) {
   return [
-    `Hi ${e.name} 👋`,
+    `Hi ${e.name},`,
     "",
     "Your ePanel login is ready.",
     "",
@@ -16,7 +16,7 @@ export function loginDetailsText(e: { name: string; id: string; email?: string |
     "Login: https://epanel.yes2broker.in",
     "Guide video: https://drive.google.com/file/d/14-41c2ryNT7VuapClt3Ue-KAqMBEfnJj/view",
     "",
-    "📱 Put ePanel on your phone:",
+    "Put ePanel on your phone:",
     "Android: open the link in Chrome → ⋮ → Install app",
     "iPhone: open in Safari → Share → Add to Home Screen",
     "",

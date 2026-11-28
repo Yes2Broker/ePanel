@@ -282,7 +282,7 @@ export default function ImportPage() {
                   <Select ariaLabel={`Employee for ${raw}`} value={value} invalid={!value} placeholder="Choose…"
                     onChange={(v) => setNames((n) => ({ ...n, [key]: v === "__create" ? { mode: "create", id: suggestId(emps, n) } : v === "__skip" ? { mode: "skip" } : v ? { mode: "employee", employeeId: v } : { mode: "none" } }))}
                     options={[{ value: "", label: "Choose…" }, ...emps.map((e) => ({ value: e.id, label: `${e.name} (${e.id})${e.status === "Inactive" ? " · inactive" : ""}` })),
-                      { value: "__create", label: "➕ Create as inactive employee" }, { value: "__skip", label: "Skip this person's rows" }]} />
+                      { value: "__create", label: "+ Create as inactive employee" }, { value: "__skip", label: "Skip this person's rows" }]} />
                   {c.mode === "create" && (
                     <input aria-label={`New employee code for ${raw}`} value={c.id} placeholder="Code, e.g. EMP022"
                       onChange={(e) => setNames((n) => ({ ...n, [key]: { mode: "create", id: e.target.value } }))}

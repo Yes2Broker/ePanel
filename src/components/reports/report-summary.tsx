@@ -21,10 +21,10 @@ export function ReportSummary({
 }: { report: SalesReportDetail; onClose: () => void; showHistory?: boolean; editHref?: string | null }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
-  const image = useReportImage(captureRef, report);
   const sole = report.type === "Sole Selling";
   const toast = useToast();
   const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
+  const image = useReportImage(captureRef, report, hot.loading ? undefined : (hot.data ?? "none"));
   const hotBlock = hotText(hot.data, report.date);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
@@ -56,7 +56,7 @@ export function ReportSummary({
   const footer = (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <SecondaryButton onClick={image.save} disabled={image.busy} className="flex-1 justify-center py-2.5">
+        <SecondaryButton onClick={image.save} disabled={image.busy || hot.loading} className="flex-1 justify-center py-2.5">
           <Download className="h-4 w-4" />
           {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
         </SecondaryButton>
@@ -81,7 +81,7 @@ export function ReportSummary({
 
   return (
     <>
-      <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="sm" footer={footer} bodyClassName="p-0">
+      <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="md" footer={footer} bodyClassName="p-0">
         <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
@@ -137,7 +137,7 @@ const isPhone = () => typeof window !== "undefined" && window.matchMedia("(point
  * The image is drawn as soon as the popup opens: iPhones only allow the share
  * sheet straight after a tap, so there's no time to draw it then.
  */
-function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDetail) {
+function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDetail, extra?: unknown) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<Promise<File | null> | null>(null);
   const name = `${report.title.replace(/[^\w]+/g, "-")}-${report.employeeName.replace(/\s+/g, "-")}-${report.date}.png`;
@@ -147,6 +147,8 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
       fileRef.current = (async () => {
         if (!ref.current) return null;
         const { toBlob } = await import("html-to-image");
+        // Wait for the web fonts, so text is drawn with the real font and nothing shifts.
+        await document.fonts?.ready;
         const blob = await toBlob(ref.current, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true });
         return blob ? new File([blob], name, { type: "image/png" }) : null;
       })().catch(() => null);
@@ -156,12 +158,13 @@ function useReportImage(ref: React.RefObject<HTMLElement>, report: SalesReportDe
 
   useEffect(() => {
     fileRef.current = null;
-    if (isPhone()) {
+    // Phones make the image ahead (the share sheet needs it at once), once everything has loaded.
+    if (isPhone() && extra !== undefined) {
       const t = window.setTimeout(render, 300);
       return () => window.clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report]);
+  }, [report, extra]);
 
   const save = async () => {
     setBusy(true);

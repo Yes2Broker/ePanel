@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronRight, Trophy, X } from "lucide-react";
+import { ChevronRight, Crown, PartyPopper, Trophy, X } from "lucide-react";
 import { Fireworks } from "@/components/leaderboard/fireworks";
 import { useSession } from "@/context/session-context";
 import { api } from "@/lib/api";
@@ -47,8 +47,8 @@ export function WinnerBanner() {
           className="relative overflow-hidden rounded-card border-2 border-amber-300 bg-gradient-to-br from-[#1D2B73] via-[#2a1f6e] to-[#4a1b6b] p-4 text-white shadow-lg sm:p-5">
           <button aria-label="Hide champions" onClick={() => { store.set(`${key}-hide`, "1"); setHidden(true); }}
             className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10"><X className="h-4 w-4" /></button>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">🏆 {monthOf(champs.month)} champions</p>
-          {iWon && <p className="mt-1 text-lg font-extrabold">🎉 Congratulations, that&apos;s you!</p>}
+          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.2em] text-amber-300"><Trophy className="h-4 w-4" aria-hidden /> {monthOf(champs.month)} champions</p>
+          {iWon && <p className="mt-1 flex items-center gap-2 text-lg font-extrabold"><PartyPopper className="h-5 w-5 text-amber-300" aria-hidden /> Congratulations, that&apos;s you!</p>}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {[["Top site visits", visits, "visits"], ["Top closures", closures, "closures"]].map(([label, ws, u]) => (
               (ws as typeof visits).length > 0 && (
@@ -70,9 +70,9 @@ export function WinnerBanner() {
           <Trophy className="h-5 w-5 shrink-0 text-amber-500" aria-hidden />
           <span className="min-w-0 flex-1 text-ink">
             <b>This month: {race.rankVisits ? `#${race.rankVisits} in visits` : "visits: your first one puts you on the board"}</b>
-            {race.rankVisits ? (race.visitsToNext != null ? ` (${race.visitsToNext} to move up)` : " 👑") : ""}
+            {race.rankVisits ? (race.visitsToNext != null ? ` (${race.visitsToNext} to move up)` : <> <Crown className="inline h-4 w-4 align-[-3px] text-amber-500" aria-label="leading" /></>) : ""}
             {" · "}<b>{race.rankClosures ? `#${race.rankClosures} in closures` : "no closures yet"}</b>
-            {race.rankClosures ? (race.closuresToNext != null ? ` (${race.closuresToNext} to move up)` : " 👑") : ""}
+            {race.rankClosures ? (race.closuresToNext != null ? ` (${race.closuresToNext} to move up)` : <> <Crown className="inline h-4 w-4 align-[-3px] text-amber-500" aria-label="leading" /></>) : ""}
             <span className="text-ink-muted"> · {race.daysLeft} {race.daysLeft === 1 ? "day" : "days"} left</span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />

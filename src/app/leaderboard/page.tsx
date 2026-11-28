@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Maximize, Rocket, Sparkles, Star, Trophy, Tv } from "lucide-react";
 import { LogoIcon } from "@/components/ui/logo";
 import { MonthField } from "@/components/ui/pickers";
 import { Fireworks } from "@/components/leaderboard/fireworks";
@@ -21,7 +22,8 @@ import type { LbPlayer, LbWinner } from "@/types";
  */
 
 type Cat = "visits" | "closures";
-const TAB: Record<Cat, string> = { visits: "🚶 Visits", closures: "🏆 Closures" };
+const TAB: Record<Cat, string> = { visits: "Visits", closures: "Closures" };
+const TAB_ICON: Record<Cat, typeof Trophy> = { visits: Footprints, closures: Trophy };
 const UNIT: Record<Cat, [string, string]> = { visits: ["visit", "visits"], closures: ["closure", "closures"] };
 const unit = (c: Cat, n: number) => `${n} ${UNIT[c][n === 1 ? 0 : 1]}`;
 const monthLong = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long" });
@@ -171,7 +173,7 @@ function Lobby({ name }: { name: string }) {
           </div>
           <div className="hidden flex-col items-center gap-1.5 lg:flex">
             <h1 className="lb-display lb-title text-5xl leading-none">{monthLong(month).toUpperCase()} CHAMPIONSHIP</h1>
-            {data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill">🏁 Final results</span>}
+            {data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill"><Flag className="h-4 w-4" aria-hidden /> Final results</span>}
           </div>
           <div className="ml-auto flex items-center justify-end gap-2">
             {!tv && (
@@ -182,12 +184,12 @@ function Lobby({ name }: { name: string }) {
             )}
             {tv ? (
               <>
-                {!idle && <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="lb-btn">⛶ Fullscreen</button>}
+                {!idle && <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="lb-btn"><Maximize className="h-4 w-4" aria-hidden /> Fullscreen</button>}
                 <button onClick={exitTv} className="lb-btn">Exit TV</button>
               </>
             ) : (
               <>
-                <button onClick={enterTv} className="lb-btn">📺 TV mode</button>
+                <button onClick={enterTv} className="lb-btn"><Tv className="h-4 w-4" aria-hidden /> TV mode</button>
                 <Link href="/dashboard" className="lb-btn whitespace-nowrap">← <span className="hidden sm:inline">Back to </span>ePanel</Link>
               </>
             )}
@@ -197,7 +199,7 @@ function Lobby({ name }: { name: string }) {
         {/* Phone/tablet title */}
         <div className="mt-2 text-center lg:hidden">
           <h1 className="lb-display lb-title text-[44px] leading-[0.95] sm:text-6xl">{monthLong(month).toUpperCase()} CHAMPIONSHIP</h1>
-          <div className="mt-2 flex justify-center">{data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill">🏁 Final results</span>}</div>
+          <div className="mt-2 flex justify-center">{data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill"><Flag className="h-4 w-4" aria-hidden /> Final results</span>}</div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
@@ -205,7 +207,7 @@ function Lobby({ name }: { name: string }) {
             {(["visits", "closures"] as Cat[]).map((c) => (
               <button key={c} role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
                 className={cn("lb-display relative min-h-12 overflow-hidden rounded-xl text-2xl tracking-wider transition", cat === c ? "lb-tab-on" : "text-white/60 hover:text-white")}>
-                {TAB[c]}
+                {(() => { const I = TAB_ICON[c]; return <span className="inline-flex items-center justify-center gap-2"><I className="h-5 w-5" aria-hidden />{TAB[c]}</span>; })()}
                 {tv && cat === c && <span key={`${cat}-${spin}`} className="lb-timer" aria-hidden />}
               </button>
             ))}
@@ -232,7 +234,7 @@ function Lobby({ name }: { name: string }) {
             )}
             {!hidden && !loading && !podium.length && (
               <p className="relative mt-3 text-center text-base font-semibold text-[#F5C542]">
-                {past ? `No ${UNIT[cat][1]} that month.` : `No ${UNIT[cat][1]} yet — the first one takes the crown 👑`}
+                {past ? `No ${UNIT[cat][1]} that month.` : <>No {UNIT[cat][1]} yet — the first one takes the crown <Crown className="inline h-5 w-5 align-[-3px]" aria-hidden /></>}
               </p>
             )}
           </section>
@@ -266,15 +268,15 @@ function Lobby({ name }: { name: string }) {
                           <p className="flex items-center gap-1.5 text-[15px] font-semibold">
                             <span className="truncate">{p.name}</span>
                             {mine && <span className="shrink-0 rounded-full bg-[#F5C542] px-1.5 text-[10px] font-bold text-[#2a1650]">YOU</span>}
-                            {p.streak && <span className="lb-flame shrink-0" title="Reported every working day this week" aria-label="Reported every working day this week">🔥</span>}
-                            {p.titles > 0 && <span className="shrink-0 text-xs" title={`${p.titles} monthly ${p.titles === 1 ? "title" : "titles"}`}>🏆{p.titles > 1 ? `×${p.titles}` : ""}</span>}
+                            {p.streak && <span className="lb-flame shrink-0 text-orange-400" title="Reported every working day this week" aria-label="Reported every working day this week"><Flame className="h-4 w-4" aria-hidden /></span>}
+                            {p.titles > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-[#F5C542]" title={`${p.titles} monthly ${p.titles === 1 ? "title" : "titles"}`}><Trophy className="h-3.5 w-3.5" aria-hidden />{p.titles > 1 ? `×${p.titles}` : ""}</span>}
                           </p>
                           <p className="truncate text-xs text-white/50">{p.designation || "Sales"}</p>
                         </div>
                         {moved !== 0 && (
                           <span className={cn("shrink-0 text-xs font-bold", moved > 0 ? "text-[#34D399]" : "text-[#FBBF24]")}
                             aria-label={moved > 0 ? `Up ${moved} since yesterday` : `Down ${-moved} since yesterday`}>
-                            {moved > 0 ? "▲" : "▼"}{Math.abs(moved)}
+                            {moved > 0 ? <ArrowUp className="h-3.5 w-3.5" aria-hidden /> : <ArrowDown className="h-3.5 w-3.5" aria-hidden />}{Math.abs(moved)}
                           </span>
                         )}
                         <span className="lb-num w-12 shrink-0 text-right text-xl font-bold">{val(p) > 0 ? val(p) : <span className="text-white/35">—</span>}</span>
@@ -289,7 +291,7 @@ function Lobby({ name }: { name: string }) {
               {me && data?.live && <YourSpot me={me} ranked={ranked} cat={cat} val={val} rank={rank} />}
               {/* Hall of fame */}
               <aside aria-label="Hall of fame" className="space-y-3">
-                <h2 className="lb-display text-3xl tracking-wide text-[#F5C542]">🏛️ Hall of fame</h2>
+                <h2 className="lb-display flex items-center gap-2 text-3xl tracking-wide text-[#F5C542]"><Landmark className="h-7 w-7" aria-hidden /> Hall of fame</h2>
                 {!data?.hall.length ? (
                   <div className="lb-glass p-4 text-sm text-white/60">The first champions are crowned on the 1st. Could it be you?</div>
                 ) : data.hall.slice(0, tv ? 3 : 12).map((h) => (
@@ -373,8 +375,8 @@ function YourSpot({ me, ranked, cat, val, rank }: {
       <div className="flex flex-wrap items-baseline gap-x-3">
         <span className="lb-display text-4xl text-[#F5C542]">{r ? `You're #${r}` : "You're up next"}</span>
         <span className="text-sm font-semibold text-white/85">
-          {r == null ? `Your first ${UNIT[cat][0]} puts you on the board 🚀`
-            : !ahead ? `👑 Leading${behind ? ` by ${unit(cat, lead)}` : ""} — hold the crown!`
+          {r == null ? <>Your first {UNIT[cat][0]} puts you on the board <Rocket className="inline h-4 w-4 align-[-2px]" aria-hidden /></>
+            : !ahead ? <><Crown className="inline h-4 w-4 align-[-2px] text-[#F5C542]" aria-hidden /> Leading{behind ? ` by ${unit(cat, lead)}` : ""} — hold the crown!</>
             : `${unit(cat, gap)} to pass ${first(ahead.name)}`}
         </span>
       </div>
@@ -384,7 +386,7 @@ function YourSpot({ me, ranked, cat, val, rank }: {
         </div>
       )}
       {r != null && behind && lead <= 2 && (
-        <p className="mt-2 text-sm font-medium text-[#FBBF24]">⚠️ {first(behind.name)} is {unit(cat, lead)} behind you</p>
+        <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-[#FBBF24]"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden /> {first(behind.name)} is {unit(cat, lead)} behind you</p>
       )}
     </section>
   );
@@ -397,7 +399,7 @@ function HallCard({ month, winners, revealed, onPull, onOpen }: {
   return (
     <div className="lb-glass lb-hall p-4">
       <div className="flex items-center justify-between">
-        <p className="lb-display text-2xl tracking-wide">🏆 {monthYear(month)}</p>
+        <p className="lb-display flex items-center gap-2 text-2xl tracking-wide"><Trophy className="h-5 w-5 text-[#F5C542]" aria-hidden /> {monthYear(month)}</p>
         {onOpen && <button onClick={onOpen} className="text-xs font-semibold text-[#22D3EE] hover:underline">View</button>}
       </div>
       {!revealed ? (
@@ -426,7 +428,7 @@ function Lever({ month, onPull, big }: { month: string; onPull: () => void; big?
       {big && <p className="lb-display text-3xl tracking-wide sm:text-4xl">Who ruled {monthLong(month)}?</p>}
       <div className={cn("lb-reel flex w-full max-w-xs items-center justify-center text-white/50", big ? "h-12 text-2xl" : "h-10")}>? ? ?</div>
       <button onClick={onPull} className={cn("lb-lever lb-display tracking-wider", big ? "min-h-14 px-10 text-2xl" : "min-h-11 px-6 text-xl")}>
-        Pull to reveal 🎰
+        <span className="inline-flex items-center gap-2">Pull to reveal <Sparkles className="h-5 w-5" aria-hidden /></span>
       </button>
     </div>
   );
@@ -442,7 +444,7 @@ function RankChip({ rank }: { rank: number | null }) {
 function Hex({ name, size, tone, stars }: { name: string; size: number; tone: "gold" | "silver" | "bronze" | "plain" | "empty"; stars?: boolean }) {
   return (
     <div className="relative flex flex-col items-center" aria-hidden>
-      {stars && <span className={cn("lb-stars", `lb-stars-${tone}`)} style={{ fontSize: size / 5 }}>★★★</span>}
+      {stars && <span className={cn("lb-stars inline-flex gap-0.5", `lb-stars-${tone}`)}>{[0, 1, 2].map((i) => <Star key={i} style={{ width: size / 5, height: size / 5 }} fill="currentColor" strokeWidth={0} />)}</span>}
       <div className={cn("lb-hex", `lb-hex-${tone}`)} style={{ width: size, height: size * 1.1 }}>
         <div className="lb-hex-in lb-display" style={{ fontSize: size * 0.4 }}>{name === "?" ? "?" : initials(name)}</div>
       </div>
@@ -500,6 +502,7 @@ const CSS = `
 .lb-hex-plain{background:linear-gradient(160deg,#22D3EE,#7c3aed);filter:drop-shadow(0 0 6px rgba(34,211,238,.35))}
 .lb-hex-empty{background:repeating-linear-gradient(45deg,rgba(245,197,66,.7) 0 4px,rgba(245,197,66,.2) 4px 8px);filter:drop-shadow(0 0 12px rgba(245,197,66,.5))}
 .lb-stars{letter-spacing:.1em;line-height:1;margin-bottom:2px}
+.lb-stars svg{filter:drop-shadow(0 0 4px currentColor)}
 .lb-stars-gold{color:#F5C542;text-shadow:0 0 8px rgba(245,197,66,.9)}.lb-stars-silver{color:#e2e8f0;text-shadow:0 0 6px rgba(226,232,240,.8)}.lb-stars-bronze{color:#e8a274;text-shadow:0 0 6px rgba(217,140,90,.8)}
 .lb-row{border-bottom:1px solid rgba(255,255,255,.07);transition:background .2s,box-shadow .2s}
 .lb-row:last-child{border-bottom:0}

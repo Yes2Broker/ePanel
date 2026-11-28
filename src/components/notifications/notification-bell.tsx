@@ -20,7 +20,7 @@ function ago(iso: string) {
 }
 
 /**
- * 🔔 in the header: unread count, and the latest 30 in a dropdown (a bottom
+ * The bell in the header: unread count, and the latest 30 in a dropdown (a bottom
  * sheet on phones). Tapping one marks it read and opens its page.
  */
 export function NotificationBell() {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Download, Users } from "lucide-react";
+import { ChevronRight, Download, Users, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SecondaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Loading, tableHeadCls } from "@/components/ui/page";
@@ -109,7 +109,7 @@ function ChecksCard({ month, emp }: { month: string; emp: string }) {
   if (!data?.length) return null;
   const done = data.filter((c) => c.checkedAt).length;
   const badge = (checkedAt: string | null) => checkedAt
-    ? <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-status-successBg px-2 py-0.5 text-xs font-medium text-status-success">✓ Checked {formatDate(checkedAt.slice(0, 10))}</span>
+    ? <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-status-successBg px-2 py-0.5 text-xs font-medium text-status-success"><Check className="h-3 w-3" aria-hidden /> Checked {formatDate(checkedAt.slice(0, 10))}</span>
     : <span className="whitespace-nowrap rounded-full bg-status-warningBg px-2 py-0.5 text-xs font-medium text-status-warning">Not checked yet</span>;
   if (emp) {
     const c = data.find((x) => x.employee.id === emp);

@@ -29,12 +29,12 @@ function ReportsInner() {
   const tabs: { value: Tab; label: string }[] = isManager ? [
     { value: "summary", label: "Summary" },
     { value: "reports", label: "Reports" },
-    { value: "hot", label: "🔥 Hot & warm clients" },
+    { value: "hot", label: "Hot & warm clients" },
     { value: "projects", label: "Projects" },
     ...(isAdmin ? [{ value: "email" as Tab, label: "Email" }] : []),
   ] : canFileAny ? [
     { value: "reports", label: "Reports" },
-    { value: "hot", label: "🔥 Hot & warm clients" },
+    { value: "hot", label: "Hot & warm clients" },
   ] : [];
   const requested = q.get("tab") as Tab | null;
   // HR/Admin open on the Summary; employees only have their reports.

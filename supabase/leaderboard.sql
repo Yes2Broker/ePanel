@@ -92,9 +92,9 @@ begin
 
   for e in select * from employees where status = 'Active' loop
     if exists (select 1 from leaderboard_winners where month = v_month and employee_id = e.id) then
-      perform private.notify(e.id, 'lb_winner', '🏆 You''re the ' || v_label || ' champion!', v_body, '/leaderboard?month=' || to_char(v_month, 'YYYY-MM'));
+      perform private.notify(e.id, 'lb_winner', 'You''re the ' || v_label || ' champion!', v_body, '/leaderboard?month=' || to_char(v_month, 'YYYY-MM'));
     else
-      perform private.notify(e.id, 'lb_winner', '🏆 ' || v_label || ' champions are here', v_body, '/leaderboard?month=' || to_char(v_month, 'YYYY-MM'));
+      perform private.notify(e.id, 'lb_winner', v_label || ' champions are here', v_body, '/leaderboard?month=' || to_char(v_month, 'YYYY-MM'));
     end if;
   end loop;
 end $$;
@@ -130,7 +130,7 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id', r.id, 'name', r.name, 'designation', r.designation,
         'visits', r.visits, 'closures', r.closures, 'rankVisits', r.rank_visits, 'rankClosures', r.rank_closures,
-        -- Yesterday's rank, for the ▲▼ arrows (this month only, from the 2nd).
+        -- Yesterday's rank, for the up / down arrows (this month only, from the 2nd).
         'prevVisits', y.rank_visits, 'prevClosures', y.rank_closures,
         'titles', (select count(*) from leaderboard_winners w where w.employee_id = r.id),
         'streak', v_live and private.lb_streak(r.id, e.week_off, v_today),

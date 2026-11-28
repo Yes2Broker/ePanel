@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Download, Flame, History, Pencil, Phone, Plus, Undo2, X } from "lucide-react";
+import { Check, CheckCircle2, CloudSun, Download, Flame, History, Pencil, Phone, Plus, Undo2, X, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/button";
 import { EmptyState, ErrorBanner, Skeleton } from "@/components/ui/page";
@@ -9,6 +9,7 @@ import { DatePicker, Select } from "@/components/ui/pickers";
 import { Modal, inputCls } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { SuggestInput } from "@/components/employees/suggest-input";
+import { HelpTip, InfoTip } from "@/components/ui/help-tip";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { addDays, cn, formatDateTime, todayISO } from "@/lib/utils";
@@ -18,37 +19,44 @@ import type { HotClient, HotClientInput, HotReportBlock, HotStatus, HotTemp } fr
 export const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
 
 type HotRow = HotReportBlock["active"][number];
-const GROUPS = [["Hot", "🔥 HOT"], ["Warm", "🌤 WARM"]] as const;
+// The shared summary: HOT then WARM. No phone numbers (those stay in the panel).
+const GROUPS = [["Hot", "HOT"], ["Warm", "WARM"]] as const;
+
 /** Active clients of one type, soonest close-by first. */
 const groupOf = (b: HotReportBlock, t: HotTemp): HotRow[] =>
   b.active.filter((c) => (c.temperature ?? "Hot") === t).sort((x, y) => x.expectedDate.localeCompare(y.expectedDate) || x.name.localeCompare(y.name));
 const named = (l: { name: string; project: string }[]) => l.map((c) => (c.project ? `${c.name} (${c.project})` : c.name)).join(", ");
 const hasHot = (b: HotReportBlock | null | undefined): b is HotReportBlock => !!b && (b.active.length > 0 || b.won.length > 0 || b.lost.length > 0);
+/** "Resale property" (pinned project choice) and "Resale – 3BHK, Chandkheda". */
+export const RESALE = "Resale property";
+export const isResale = (p: string | null | undefined) => !!p && (p === RESALE || p.startsWith("Resale – "));
 
-/** The hot & warm block of the WhatsApp text: one client per line, no phone numbers, ever. */
+/** The hot & warm block of the WhatsApp text: one client per line, no phone numbers. */
 export function hotText(b: HotReportBlock | null | undefined, reportDate?: string) {
   if (!hasHot(b)) return "";
   const lines: string[] = [];
   for (const [t, head] of GROUPS) {
     const group = groupOf(b, t);
     if (!group.length) continue;
-    lines.push(`${head} (${group.length})`);
+    lines.push(`${head} CLIENTS (${group.length})`);
     group.forEach((c, i) => lines.push(`${i + 1}. ${[c.name, c.project || "-", `${dayMonth(c.expectedDate)}${reportDate && c.expectedDate < reportDate ? " (overdue)" : ""}`, c.remarks].filter(Boolean).join(" | ")}`));
   }
-  if (b.won.length) lines.push(`✅ Closed today: ${named(b.won)}`);
-  if (b.lost.length) lines.push(`❌ Lost today: ${named(b.lost)}`);
+  if (b.won.length) lines.push(`Booked today: ${named(b.won)}`);
+  if (b.lost.length) lines.push(`Not interested today: ${named(b.lost)}`);
   return lines.join("\n");
 }
 
 /** The summary popup's hot & warm table (same look as the Particulars table; also in the image). */
 export function HotTable({ block, reportDate }: { block: HotReportBlock | null | undefined; reportDate: string }) {
+  // Nothing is ever cut: names, projects and remarks wrap and the row grows taller.
   if (!hasHot(block)) return null;
   const groups = GROUPS.map(([t, head]) => ({ t, head, rows: groupOf(block, t) })).filter((g) => g.rows.length);
   return (
     <div className="space-y-1.5" aria-label="Hot and warm clients summary">
       {groups.length > 0 && (
-        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-sm">
-          <colgroup><col className="w-7" /><col className="w-[28%]" /><col className="w-[24%]" /><col className="w-[4.25rem]" /><col /></colgroup>
+        <table className="w-full table-fixed overflow-hidden rounded-xl border border-surface-border text-[12.5px] [hyphens:auto]">
+          {/* The popup is narrow on every screen: keep fixed columns small so Remarks always has room. */}
+          <colgroup><col className="w-6" /><col className="w-[27%]" /><col className="w-[22%]" /><col className="w-[3.6rem]" /><col /></colgroup>
           <thead>
             <tr className="bg-ink text-left text-xs text-white">
               <th className="py-2 pl-2.5 pr-1 font-medium">#</th>
@@ -62,20 +70,20 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
             <tbody key={g.t} aria-label={`${g.head} (${g.rows.length})`}>
               <tr className={cn("border-t border-surface-border", g.t === "Hot" ? "bg-orange-100" : "bg-amber-100")}>
                 <th colSpan={5} scope="colgroup" className={cn("px-2.5 py-1.5 text-left text-xs font-bold tracking-wide", g.t === "Hot" ? "text-orange-800" : "text-amber-800")}>
-                  {g.head} ({g.rows.length})
+                  <span className="inline-flex items-center gap-1"><TempIcon t={g.t} className="h-3.5 w-3.5" />{g.head} ({g.rows.length})</span>
                 </th>
               </tr>
               {g.rows.map((c, i) => {
                 const late = c.expectedDate < reportDate;
                 return (
-                  <tr key={i} className="border-t border-surface-border align-top">
+                  <tr key={i} aria-label={c.name} className="border-t border-surface-border align-top">
                     <td className="py-2 pl-2.5 pr-1 text-ink-muted">{i + 1}</td>
-                    <td className="truncate px-1.5 py-2 font-semibold text-ink" title={c.name}>{c.name}</td>
-                    <td className="truncate px-1.5 py-2 text-ink-muted" title={c.project}>{c.project || "-"}</td>
+                    <td className="whitespace-normal break-words px-1.5 py-2 font-semibold text-ink">{c.name}</td>
+                    <td className="whitespace-normal break-words px-1.5 py-2 text-ink-muted">{c.project || "-"}</td>
                     <td className={cn("px-1.5 py-2 leading-tight", late ? "font-semibold text-status-danger" : "text-ink")}>
                       {dayMonth(c.expectedDate)}{late && <span className="block text-[10px] font-medium uppercase">Overdue</span>}
                     </td>
-                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className="line-clamp-2 break-words" title={c.remarks}>{c.remarks || "-"}</span></td>
+                    <td className="px-1.5 py-2 pr-2.5 text-ink-muted"><span className="whitespace-normal break-words">{c.remarks || "-"}</span></td>
                   </tr>
                 );
               })}
@@ -83,23 +91,41 @@ export function HotTable({ block, reportDate }: { block: HotReportBlock | null |
           ))}
         </table>
       )}
-      {block.won.length > 0 && <p className="text-xs text-ink-muted">✅ <b className="font-medium text-ink">Closed today:</b> {named(block.won)}</p>}
-      {block.lost.length > 0 && <p className="text-xs text-ink-muted">❌ <b className="font-medium text-ink">Lost today:</b> {named(block.lost)}</p>}
+      {block.won.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0 text-status-success" aria-hidden /><span><b className="font-medium text-ink">Booked today:</b> {named(block.won)}</span></p>}
+      {block.lost.length > 0 && <p className="flex items-start gap-1 text-xs text-ink-muted"><XCircle className="mt-px h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden /><span><b className="font-medium text-ink">Not interested today:</b> {named(block.lost)}</span></p>}
     </div>
   );
 }
 
-/** 🔥 Hot / 🌤 Warm chip. */
-export function TempChip({ t }: { t: HotTemp }) {
+/** Hot = orange flame, Warm = amber cloud-sun (lucide icons, sized like the text). */
+export function TempIcon({ t, className }: { t: HotTemp; className?: string }) {
   return t === "Warm"
-    ? <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">🌤 Warm</span>
-    : <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">🔥 Hot</span>;
+    ? <CloudSun className={cn("h-[1em] w-[1em] shrink-0 text-amber-500", className)} aria-hidden />
+    : <Flame className={cn("h-[1em] w-[1em] shrink-0 text-orange-500", className)} aria-hidden />;
+}
+/** What the words mean (tooltips: hover on desktop, long-press on phones, or the (i) button). */
+export const HELP = {
+  Hot: "Very likely to book soon.",
+  Warm: "Interested, but needs more time.",
+  Booked: "Client has booked the property. Deal done.",
+  NotInterested: "Client will not buy now. Removes them from your active list.",
+} as const;
+/** Hot / Warm chip (with its help text). */
+export function TempChip({ t }: { t: HotTemp }) {
+  return (
+    <HelpTip text={t === "Warm" ? HELP.Warm : HELP.Hot}>
+      {t === "Warm"
+        ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700"><TempIcon t="Warm" className="h-3 w-3" />Warm</span>
+        : <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700"><TempIcon t="Hot" className="h-3 w-3" />Hot</span>}
+    </HelpTip>
+  );
 }
 /** Hot first, then by expected date, then name. */
 const byTemp = (a: { temperature?: HotTemp; expectedDate: string; name: string }, b: typeof a) =>
   (a.temperature === "Warm" ? 1 : 0) - (b.temperature === "Warm" ? 1 : 0) || a.expectedDate.localeCompare(b.expectedDate) || a.name.localeCompare(b.name);
 
-const STATUS_LABEL: Record<HotStatus, string> = { Active: "Active", "Closed-Won": "Won", Lost: "Lost" };
+// Stored values stay Closed-Won / Lost; people see Booked / Not interested.
+export const STATUS_LABEL: Record<HotStatus, string> = { Active: "Active", "Closed-Won": "Booked", Lost: "Not interested" };
 const STATUS_CLS: Record<HotStatus, string> = {
   Active: "bg-brand-soft text-brand", "Closed-Won": "bg-status-successBg text-status-success", Lost: "bg-status-neutralBg text-ink-muted",
 };
@@ -107,7 +133,7 @@ const STATUS_CLS: Record<HotStatus, string> = {
 // ===========================================================================
 // Add / edit dialog
 // ===========================================================================
-type Draft = { name: string; phone: string; project: string; expectedDate: string; remarks: string; employeeId: string; temperature: HotTemp };
+type Draft = { name: string; phone: string; project: string; resaleNote: string; expectedDate: string; remarks: string; employeeId: string; temperature: HotTemp };
 
 export function HotClientDialog({ open, client, people, onClose, onDone, title }: {
   open: boolean; client: HotClient | null; onClose: () => void;
@@ -116,14 +142,15 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
   title?: string;
 }) {
   const projects = useApi(() => (open ? api.hotClientProjects() : Promise.resolve([])), [open]);
-  const blank: Draft = { name: "", phone: "", project: "", expectedDate: "", remarks: "", employeeId: "", temperature: "Hot" };
+  const blank: Draft = { name: "", phone: "", project: "", resaleNote: "", expectedDate: "", remarks: "", employeeId: "", temperature: "Hot" };
   const [d, setD] = useState<Draft>(blank);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setError("");
-    setD(client ? { name: client.name, phone: client.phone, project: client.project, expectedDate: client.expectedDate, remarks: client.remarks, employeeId: client.employeeId, temperature: client.temperature ?? "Hot" } : blank);
+    setD(client ? { name: client.name, phone: client.phone, project: isResale(client.project) ? RESALE : client.project,
+      resaleNote: client.project?.startsWith("Resale – ") ? client.project.slice("Resale – ".length) : "", expectedDate: client.expectedDate, remarks: client.remarks, employeeId: client.employeeId, temperature: client.temperature ?? "Hot" } : blank);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, client]);
   const set = (k: keyof Draft, v: string) => setD((x) => ({ ...x, [k]: v }));
@@ -136,9 +163,11 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
     if (!/^\d{10}$/.test(phone)) return setError("Enter a 10-digit contact number.");
     if (!d.expectedDate) return setError("Pick the expected closure date.");
     if (d.expectedDate < today && (!client || d.expectedDate !== client.expectedDate)) return setError("Expected closure date must be today or later.");
-    const match = (projects.data ?? []).find((p) => p.name.toLowerCase() === d.project.trim().toLowerCase());
+    const resale = d.project.trim() === RESALE;
+    const match = resale ? undefined : (projects.data ?? []).find((p) => p.name.toLowerCase() === d.project.trim().toLowerCase());
+    const projectText = resale ? (d.resaleNote.trim() ? `Resale – ${d.resaleNote.trim()}` : RESALE) : d.project.trim();
     const full: HotClientInput = {
-      name: d.name.trim(), phone, projectId: match?.id ?? null, project: match ? match.name : d.project.trim(),
+      name: d.name.trim(), phone, projectId: match?.id ?? null, project: match ? match.name : projectText,
       expectedDate: d.expectedDate, remarks: d.remarks.trim(), temperature: d.temperature,
     };
     let input: HotClientInput = full;
@@ -160,14 +189,14 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
       footer={<PrimaryButton onClick={save} disabled={busy} className="w-full justify-center py-2.5">{busy ? "Saving…" : client ? "Save" : "Add client"}</PrimaryButton>}>
       <div className="space-y-3">
         {error && <p role="alert" className="rounded-xl bg-status-dangerBg px-3 py-2 text-sm text-status-danger">{error}</p>}
-        <Field label="Lead type">
+        <Field label={<span className="inline-flex items-center gap-0.5">Lead type <InfoTip label="What do Hot and Warm mean?" text={<>Hot: {HELP.Hot}<br />Warm: {HELP.Warm}</>} /></span>}>
           <div role="radiogroup" aria-label="Lead type" className="grid grid-cols-2 gap-2">
             {(["Hot", "Warm"] as HotTemp[]).map((t) => (
-              <button key={t} type="button" role="radio" aria-checked={d.temperature === t} onClick={() => setD((x) => ({ ...x, temperature: t }))}
+              <HelpTip key={t} text={HELP[t]} className="block"><button type="button" role="radio" aria-checked={d.temperature === t} onClick={() => setD((x) => ({ ...x, temperature: t }))}
                 className={cn("min-h-11 rounded-xl border text-sm font-semibold transition",
                   d.temperature === t ? (t === "Hot" ? "border-orange-400 bg-orange-50 text-orange-700" : "border-amber-400 bg-amber-50 text-amber-700") : "border-surface-border text-ink-muted hover:bg-surface")}>
-                {t === "Hot" ? "🔥 Hot" : "🌤 Warm"}
-              </button>
+                <span className="inline-flex items-center justify-center gap-1.5"><TempIcon t={t} className="h-4 w-4" />{t}</span>
+              </button></HelpTip>
             ))}
           </div>
         </Field>
@@ -181,7 +210,12 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
         <Field label="Contact number"><input aria-label="Contact number" type="tel" inputMode="tel" value={d.phone} onChange={(e) => set("phone", e.target.value)} className={inputCls} placeholder="10-digit mobile" /></Field>
         <Field label="Project" optional>
           <SuggestInput label="Project" value={d.project} onChange={(v) => set("project", v)} placeholder="Search Builder Data or type any"
-            suggestions={(projects.data ?? []).map((p) => ({ value: p.name, note: "" }))} empty="No match. Your text will be saved as is." />
+            suggestions={(projects.data ?? []).map((p) => ({ value: p.name, note: "" }))} empty="No match. Your text will be saved as is."
+            pinned={[{ value: RESALE, note: "Not a builder project" }]} />
+          {d.project.trim() === RESALE && (
+            <input aria-label="Property / location (optional)" value={d.resaleNote} onChange={(e) => set("resaleNote", e.target.value)}
+              className={cn(inputCls, "mt-2")} placeholder="Property / location (optional), e.g. 3BHK, Chandkheda" />
+          )}
         </Field>
         <Field label="Expected closure date">
           <DatePicker variant="field" ariaLabel="Expected closure date" value={d.expectedDate} onChange={(v) => set("expectedDate", v)} min={today} />
@@ -192,142 +226,12 @@ export function HotClientDialog({ open, client, people, onClose, onDone, title }
   );
 }
 
-function Field({ label, optional, children }: { label: string; optional?: boolean; children: React.ReactNode }) {
+function Field({ label, optional, children }: { label: React.ReactNode; optional?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-xs font-medium text-ink-muted">{label}{!optional && <span className="text-status-danger"> *</span>}</p>
+      <div className="mb-1 flex items-center text-xs font-medium text-ink-muted">{label}{!optional && <span className="ml-0.5 text-status-danger">*</span>}</div>
       {children}
     </div>
-  );
-}
-
-// ===========================================================================
-// Daily report form section (changes are saved together with the report)
-// ===========================================================================
-export type HotChanges = Record<string, HotClientInput>; // key = client id, or "new-…" for new ones
-
-let seq = 0;
-/** Applies pending changes to a client for display. */
-const merged = (c: HotClient, ch?: HotClientInput): HotClient => (ch ? { ...c, ...ch, project: ch.project ?? c.project } as HotClient : c);
-
-export function HotClientsSection({ employeeId, forSomeone, reportDate, changes, setChanges, onOverdue }: {
-  employeeId: string; forSomeone: boolean; reportDate: string;
-  changes: HotChanges; setChanges: (f: (c: HotChanges) => HotChanges) => void;
-  /** How many active clients still have a date before the report date. */ onOverdue: (n: number) => void;
-}) {
-  const { data, loading, error } = useApi(() => api.hotClients(forSomeone ? employeeId : null), [employeeId, forSomeone]);
-  const [editing, setEditing] = useState<{ key: string; client: HotClient | null } | null>(null);
-  const active = (data ?? []).filter((c) => c.status === "Active").sort((a, b) => byTemp(merged(a, changes[a.id]), merged(b, changes[b.id])));
-  const added = Object.entries(changes).filter(([k]) => k.startsWith("new-"));
-  const overdue = active.filter((c) => {
-    const m = merged(c, changes[c.id]);
-    return m.status === "Active" && m.expectedDate < reportDate;
-  }).length;
-  useEffect(() => onOverdue(overdue), [overdue, onOverdue]);
-
-  const put = (key: string, patch: HotClientInput | null) =>
-    setChanges((all) => { const next = { ...all }; if (patch) next[key] = { ...(next[key] ?? {}), ...patch }; else delete next[key]; return next; });
-  const setStatus = (c: HotClient, status: HotStatus) => {
-    const ch = { ...(changes[c.id] ?? { id: c.id }) };
-    if (status === "Active") delete ch.status; else ch.status = status;
-    setChanges((all) => { const next = { ...all }; if (Object.keys(ch).length > 1) next[c.id] = ch; else delete next[c.id]; return next; });
-  };
-  const setTemp = (c: HotClient, t: HotTemp) => {
-    const ch = { ...(changes[c.id] ?? { id: c.id }) };
-    if (t === (c.temperature ?? "Hot")) delete ch.temperature; else ch.temperature = t;
-    setChanges((all) => { const next = { ...all }; if (Object.keys(ch).length > 1) next[c.id] = ch; else delete next[c.id]; return next; });
-  };
-
-  return (
-    <Card className="space-y-3 p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Flame className="h-4 w-4 text-orange-500" aria-hidden /> Hot &amp; warm clients</h2>
-        <button type="button" onClick={() => setEditing({ key: `new-${++seq}`, client: null })}
-          className="inline-flex min-h-9 items-center gap-1 rounded-pill px-2.5 text-sm font-medium text-brand hover:bg-brand-soft">
-          <Plus className="h-4 w-4" /> Add client
-        </button>
-      </div>
-      <ErrorBanner message={error} />
-      {loading && !data ? <Skeleton className="h-14" /> : !active.length && !added.length ? (
-        <p className="text-sm text-ink-faint">No active hot or warm clients. Add customers you expect to close soon.</p>
-      ) : (
-        <ul className="divide-y divide-surface-border">
-          {active.map((c) => {
-            const ch = changes[c.id];
-            const m = merged(c, ch);
-            const late = m.status === "Active" && m.expectedDate < reportDate;
-            return (
-              <li key={c.id} className={cn("py-2.5 first:pt-0", late && "-mx-2 rounded-xl bg-status-warningBg px-2 first:pt-2.5")} data-hot={c.name}>
-                <HotLine c={m} />
-                {late && <p className="mt-0.5 text-xs font-medium text-status-warning">Date passed, update it</p>}
-                {m.status !== "Active" ? (
-                  <p className="mt-1 flex items-center gap-2 text-xs font-medium">
-                    <span className={m.status === "Closed-Won" ? "text-status-success" : "text-ink-muted"}>{m.status === "Closed-Won" ? "✅ Will be marked closed (won)" : "❌ Will be marked lost"}</span>
-                    <button type="button" onClick={() => setStatus(c, "Active")} className="inline-flex items-center gap-0.5 text-brand underline"><Undo2 className="h-3 w-3" /> Undo</button>
-                  </p>
-                ) : (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <RowBtn onClick={() => setEditing({ key: c.id, client: m })} label={`Edit ${c.name}`}><Pencil className="h-3.5 w-3.5" /> Edit</RowBtn>
-                    <RowBtn onClick={() => setStatus(c, "Closed-Won")} label={`Closed ${c.name}`} tone="ok"><Check className="h-3.5 w-3.5" /> Closed ✓</RowBtn>
-                    <RowBtn onClick={() => setStatus(c, "Lost")} label={`Lost ${c.name}`}><X className="h-3.5 w-3.5" /> Lost</RowBtn>
-                    <RowBtn onClick={() => setTemp(c, m.temperature === "Warm" ? "Hot" : "Warm")} label={`Make ${c.name} ${m.temperature === "Warm" ? "hot" : "warm"}`}>{m.temperature === "Warm" ? "→ 🔥 Hot" : "→ 🌤 Warm"}</RowBtn>
-                    {ch && Object.keys(ch).length > 1 && <span className="self-center text-xs text-ink-faint">Edited, saves with the report</span>}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-          {added.map(([k, n]) => (
-            <li key={k} className="py-2.5 first:pt-0" data-hot={n.name}>
-              <HotLine c={{ name: n.name ?? "", project: n.project ?? "", expectedDate: n.expectedDate ?? "", remarks: n.remarks ?? "", temperature: n.temperature ?? "Hot" }} />
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-medium text-brand">New</span>
-                <RowBtn onClick={() => setEditing({ key: k, client: draftClient(n) })} label={`Edit ${n.name}`}><Pencil className="h-3.5 w-3.5" /> Edit</RowBtn>
-                <RowBtn onClick={() => put(k, null)} label={`Remove ${n.name}`}><X className="h-3.5 w-3.5" /> Remove</RowBtn>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <HotClientDialog open={!!editing} client={editing?.client ?? null} onClose={() => setEditing(null)}
-        title={editing && editing.key.startsWith("new-") && !editing.client ? "Add hot / warm client" : undefined}
-        onDone={(input) => {
-          if (!editing) return;
-          if (editing.key.startsWith("new-")) put(editing.key, { ...(changes[editing.key] ?? {}), ...input, id: undefined });
-          else put(editing.key, { ...input, id: editing.key });
-        }} />
-    </Card>
-  );
-}
-
-const draftClient = (n: HotClientInput): HotClient => ({
-  id: "", employeeId: "", employeeName: "", name: n.name ?? "", phone: n.phone ?? "", projectId: n.projectId ?? null, project: n.project ?? "",
-  expectedDate: n.expectedDate ?? "", remarks: n.remarks ?? "", status: "Active", temperature: n.temperature ?? "Hot", createdAt: "", updatedAt: null, closedOn: null,
-});
-
-/** Pending changes → what the report save sends. */
-export const hotPayload = (changes: HotChanges): HotClientInput[] =>
-  Object.entries(changes).map(([k, v]) => (k.startsWith("new-") ? { ...v, id: undefined } : { ...v, id: k }));
-
-function HotLine({ c }: { c: { name: string; project: string; expectedDate: string; remarks: string; temperature?: HotTemp } }) {
-  return (
-    <p className="text-sm text-ink">
-      <span className="mr-1.5"><TempChip t={c.temperature ?? "Hot"} /></span>
-      <span className="font-semibold">{c.name}</span>
-      {c.project && <span className="text-ink-muted"> · {c.project}</span>}
-      {c.expectedDate && <span className="text-ink-muted"> · Close by {dayMonth(c.expectedDate)}</span>}
-      {c.remarks && <span className="text-ink-faint"> · {c.remarks}</span>}
-    </p>
-  );
-}
-
-function RowBtn({ onClick, label, tone, children }: { onClick: () => void; label: string; tone?: "ok"; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} aria-label={label}
-      className={cn("inline-flex min-h-8 items-center gap-1 rounded-pill border px-2.5 text-xs font-medium",
-        tone === "ok" ? "border-status-success/40 text-status-success hover:bg-status-successBg" : "border-surface-border text-ink hover:bg-surface")}>
-      {children}
-    </button>
   );
 }
 
@@ -366,13 +270,13 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
   const rows = useMemo(() => mine
     .filter((c) => show === "all" || c.status === show)
     .filter((c) => type === "all" || (c.temperature ?? "Hot") === type)
-    .filter((c) => !project || c.project === project)
+    .filter((c) => !project || (project === RESALE ? isResale(c.project) : c.project === project))
     .filter((c) => when === "all" || (when === "week" ? c.expectedDate >= today && c.expectedDate <= weekEnd
       : when === "overdue" ? c.status === "Active" && c.expectedDate < today : c.expectedDate.slice(0, 7) === today.slice(0, 7)))
     .sort(byTemp),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, person, project, when, show, type]);
-  const projects = Array.from(new Set(all.map((c) => c.project).filter(Boolean))).sort();
+  const projects = Array.from(new Set(all.map((c) => c.project).filter((p) => p && !isResale(p)))).sort();
   const peopleList = (people.data ?? []).filter((p) => p.status === "Active").map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
 
   const save = async (input: HotClientInput, msg: string) => {
@@ -381,19 +285,15 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
     reload();
     if (open?.id === saved.id) setOpen(saved);
   };
-  const switchTemp = async (c: HotClient) => {
-    const t: HotTemp = c.temperature === "Warm" ? "Hot" : "Warm";
-    try { await save({ id: c.id, temperature: t }, `${c.name} is now ${t === "Hot" ? "🔥 Hot" : "🌤 Warm"}.`); } catch (e) { toast(errorMessage(e), "error"); }
-  };
   const mark = async (c: HotClient, status: HotStatus) => {
-    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked closed. 🎉` : status === "Lost" ? `${c.name} marked lost.` : `${c.name} is active again.`); }
+    try { await save({ id: c.id, status }, status === "Closed-Won" ? `${c.name} marked Booked.` : status === "Lost" ? `${c.name} marked Not interested.` : `${c.name} is active again.`); }
     catch (e) { toast(errorMessage(e), "error"); }
   };
   const exportXlsx = async () => {
     const XLSX = await import("xlsx");
     const sheet = XLSX.utils.json_to_sheet(rows.map((c) => ({
       ...(isManager ? { Employee: c.employeeName } : {}), Type: c.temperature ?? "Hot", Customer: c.name, Contact: c.phone, Project: c.project,
-      "Expected closure": c.expectedDate, Remarks: c.remarks, Status: STATUS_LABEL[c.status], Added: c.createdAt.slice(0, 10), Closed: c.closedOn ?? "",
+      "Expected closure": c.expectedDate, Remarks: c.remarks, Status: STATUS_LABEL[c.status], Added: c.createdAt.slice(0, 10), "Booked / not interested on": c.closedOn ?? "",
     })));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, sheet, "Hot clients");
     XLSX.writeFile(wb, `Y2B_Hot_Warm_Clients_${today}.xlsx`);
@@ -402,24 +302,24 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <Count label="🔥 Hot" n={counts.hot} onClick={() => { setShow("Active"); setWhen("all"); setType("Hot"); }} />
-        <Count label="🌤 Warm" n={counts.warm} onClick={() => { setShow("Active"); setWhen("all"); setType("Warm"); }} />
+        <Count label={<><TempIcon t="Hot" />Hot</>} n={counts.hot} onClick={() => { setShow("Active"); setWhen("all"); setType("Hot"); }} />
+        <Count label={<><TempIcon t="Warm" />Warm</>} n={counts.warm} onClick={() => { setShow("Active"); setWhen("all"); setType("Warm"); }} />
         <Count label="Closing this week" n={counts.week} onClick={() => { setShow("Active"); setWhen("week"); }} />
         <Count label="Overdue" n={counts.overdue} tone={counts.overdue ? "warn" : undefined} onClick={() => { setShow("Active"); setWhen("overdue"); }} />
-        <Count label="Won this month" n={counts.won} tone="ok" onClick={() => { setShow("Closed-Won"); setWhen("all"); }} />
+        <Count label="Booked this month" n={counts.won} tone="ok" onClick={() => { setShow("Closed-Won"); setWhen("all"); }} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {isManager && <Select ariaLabel="Person" value={person} onChange={setPerson} placeholder="Everyone"
           options={[{ value: "", label: "Everyone" }, ...peopleList.map((p) => ({ value: p.id, label: p.name }))]} />}
         <Select ariaLabel="Project" value={project} onChange={setProject} placeholder="All projects"
-          options={[{ value: "", label: "All projects" }, ...projects.map((p) => ({ value: p, label: p }))]} />
+          options={[{ value: "", label: "All projects" }, { value: RESALE, label: RESALE }, ...projects.map((p) => ({ value: p, label: p }))]} />
         <Select ariaLabel="When" value={when} onChange={(v) => setWhen(v as When)}
           options={[{ value: "all", label: "Any date" }, { value: "week", label: "Closing this week" }, { value: "overdue", label: "Overdue" }, { value: "month", label: "This month" }]} />
         <Select ariaLabel="Type" value={type} onChange={(v) => setType(v as TypeF)}
-          options={[{ value: "all", label: "Type: All" }, { value: "Hot", label: "🔥 Hot" }, { value: "Warm", label: "🌤 Warm" }]} />
+          options={[{ value: "all", label: "Type: All" }, { value: "Hot", label: "Hot" }, { value: "Warm", label: "Warm" }]} />
         <Select ariaLabel="Status" value={show} onChange={(v) => setShow(v as Show)}
-          options={[{ value: "Active", label: "Active" }, { value: "Closed-Won", label: "Won" }, { value: "Lost", label: "Lost" }, { value: "all", label: "All statuses" }]} />
+          options={[{ value: "Active", label: "Active" }, { value: "Closed-Won", label: "Booked" }, { value: "Lost", label: "Not interested" }, { value: "all", label: "All statuses" }]} />
         <div className="ml-auto flex gap-2">
           <SecondaryButton onClick={exportXlsx} disabled={!rows.length}><Download className="h-4 w-4" /> Excel</SecondaryButton>
           <PrimaryButton onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Add client</PrimaryButton>
@@ -446,7 +346,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
                         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_CLS[c.status])}>{STATUS_LABEL[c.status]}</span>
                         {late && <span className="text-xs font-medium text-status-warning">Date passed, update it</span>}
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-ink-muted">
+                      <p className="mt-0.5 break-words text-xs text-ink-muted">
                         {[isManager && c.employeeName, c.project, c.remarks].filter(Boolean).join(" · ") || "—"}
                       </p>
                     </div>
@@ -455,12 +355,6 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
                       <p className="text-[11px] text-ink-faint">{c.status === "Active" ? "close by" : c.closedOn ? `on ${dayMonth(c.closedOn)}` : ""}</p>
                     </div>
                   </button>
-                  {c.status === "Active" && (
-                    <button onClick={() => switchTemp(c)} aria-label={`Make ${c.name} ${c.temperature === "Warm" ? "hot" : "warm"}`} title={c.temperature === "Warm" ? "Make it Hot" : "Make it Warm"}
-                      className="flex w-12 shrink-0 items-center justify-center border-l border-surface-border text-lg hover:bg-surface">
-                      {c.temperature === "Warm" ? "🔥" : "🌤"}
-                    </button>
-                  )}
                 </li>
               );
             })}
@@ -468,7 +362,7 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
         </Card>
       )}
 
-      {open && <HotDetails c={open} isManager={isManager} onClose={() => setOpen(null)} onEdit={() => setEditing(open)} onMark={(s) => mark(open, s)} onSwitch={() => switchTemp(open)} />}
+      {open && <HotDetails c={open} isManager={isManager} onClose={() => setOpen(null)} onEdit={() => setEditing(open)} onMark={(s) => mark(open, s)} />}
       <HotClientDialog open={!!editing} client={editing && editing !== "new" ? editing : null} onClose={() => setEditing(null)}
         people={isManager && editing === "new" ? peopleList : undefined}
         onDone={(input) => save(input, editing === "new" ? "Hot client added." : "Hot client updated.")} />
@@ -476,31 +370,34 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
   );
 }
 
-function Count({ label, n, tone, onClick }: { label: string; n: number; tone?: "warn" | "ok"; onClick: () => void }) {
+function Count({ label, n, tone, onClick }: { label: React.ReactNode; n: number; tone?: "warn" | "ok"; onClick: () => void }) {
   return (
     <button onClick={onClick} className="rounded-card border border-surface-border bg-white p-3 text-left shadow-card hover:border-brand/40">
-      <p className="text-xs text-ink-muted">{label}</p>
+      <p className="flex items-center gap-1 text-xs text-ink-muted">{label}</p>
       <p className={cn("mt-0.5 text-2xl font-semibold", tone === "warn" ? "text-status-warning" : tone === "ok" ? "text-status-success" : "text-ink")}>{n}</p>
     </button>
   );
 }
 
-function HotDetails({ c, isManager, onClose, onEdit, onMark, onSwitch }: {
-  c: HotClient; isManager: boolean; onClose: () => void; onEdit: () => void; onMark: (s: HotStatus) => void; onSwitch: () => void;
+function HotDetails({ c, isManager, onClose, onEdit, onMark }: {
+  c: HotClient; isManager: boolean; onClose: () => void; onEdit: () => void; onMark: (s: HotStatus) => void;
 }) {
   const history = useApi(() => api.hotClientHistory(c.id), [c.id, c.updatedAt]);
   const late = c.status === "Active" && c.expectedDate < todayISO();
+  const [confirm, setConfirm] = useState<HotStatus | null>(null);
+  const word = (v: string | null) => (v && v in STATUS_LABEL ? STATUS_LABEL[v as HotStatus] : v);
   return (
     <Modal open onClose={onClose} title={c.name} subtitle={isManager ? c.employeeName : undefined} size="sm" largeTitle
       footer={c.status === "Active" ? (
-        <div className="grid grid-cols-3 gap-2">
-          <SecondaryButton onClick={onEdit} className="justify-center"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
-          <SecondaryButton onClick={() => onMark("Closed-Won")} className="justify-center text-status-success"><Check className="h-4 w-4" /> Closed ✓</SecondaryButton>
-          <SecondaryButton onClick={() => onMark("Lost")} className="justify-center"><X className="h-4 w-4" /> Lost</SecondaryButton>
+        <div className="flex items-stretch gap-2">
+          <SecondaryButton onClick={onEdit} className="flex-1 justify-center px-2"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>
+          <HelpTip text={HELP.Booked} className="flex-1"><SecondaryButton onClick={() => setConfirm("Closed-Won")} className="w-full justify-center px-2 text-status-success"><Check className="h-4 w-4" /> Booked</SecondaryButton></HelpTip>
+          <HelpTip text={HELP.NotInterested} className="flex-[1.4]"><SecondaryButton onClick={() => setConfirm("Lost")} className="w-full justify-center whitespace-nowrap px-2"><X className="h-4 w-4" /> Not interested</SecondaryButton></HelpTip>
+          <InfoTip label="What do Booked and Not interested mean?" text={<>Booked: {HELP.Booked}<br />Not interested: {HELP.NotInterested}</>} />
         </div>
       ) : <SecondaryButton onClick={() => onMark("Active")} className="w-full justify-center"><Undo2 className="h-4 w-4" /> Make active again</SecondaryButton>}>
       <dl className="space-y-2 text-sm">
-        <Row k="Type"><TempChip t={c.temperature ?? "Hot"} />{c.status === "Active" && <button onClick={onSwitch} className="ml-2 text-xs font-medium text-brand underline">Make it {c.temperature === "Warm" ? "Hot" : "Warm"}</button>}</Row>
+        <Row k="Type"><TempChip t={c.temperature ?? "Hot"} /></Row>
         <Row k="Status"><span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_CLS[c.status])}>{STATUS_LABEL[c.status]}</span>{c.closedOn && <span className="ml-2 text-ink-muted">on {dayMonth(c.closedOn)}</span>}</Row>
         <Row k="Contact"><a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-brand"><Phone className="h-3.5 w-3.5" /> {c.phone}</a></Row>
         <Row k="Project">{c.project || "—"}</Row>
@@ -514,12 +411,23 @@ function HotDetails({ c, isManager, onClose, onEdit, onMark, onSwitch }: {
             {(history.data ?? []).map((h, i) => (
               <li key={i} className="border-l-2 border-brand pl-3 text-sm">
                 <p className="text-xs text-ink-faint">{formatDateTime(h.at)} · {h.by ?? "—"}</p>
-                <p className="text-ink">{h.field === "Added" ? "Added" : <>{h.field}: <span className="text-ink-muted line-through">{h.old ?? "—"}</span> → {h.new ?? "—"}</>}</p>
+                <p className="text-ink">{h.field === "Added" ? "Added" : h.field === "Status"
+                  ? <>{h.field}: <span className="text-ink-muted line-through">{word(h.old) ?? "—"}</span> → {word(h.new) ?? "—"}</>
+                  : <>{h.field}: <span className="text-ink-muted line-through">{h.old ?? "—"}</span> → {h.new ?? "—"}</>}</p>
               </li>
             ))}
           </ul>
         )}
       </div>
+      <Modal open={!!confirm} onClose={() => setConfirm(null)} title={`Mark ${c.name} as ${confirm === "Lost" ? "Not interested" : "Booked"}?`} size="sm"
+        footer={<div className="grid grid-cols-2 gap-2">
+          <SecondaryButton onClick={() => setConfirm(null)} className="justify-center">Cancel</SecondaryButton>
+          <PrimaryButton onClick={() => { const s = confirm!; setConfirm(null); onMark(s); }} className="justify-center">
+            {confirm === "Lost" ? "Not interested" : "Booked"}
+          </PrimaryButton>
+        </div>}>
+        <p className="text-sm text-ink-muted">{confirm === "Lost" ? HELP.NotInterested : HELP.Booked}</p>
+      </Modal>
     </Modal>
   );
 }

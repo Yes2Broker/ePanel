@@ -261,36 +261,103 @@ begin
   delete from hot_client_report_snaps where report_id = p_report;
 end $$;
 
--- The "🔥 Hot clients" block of a report: active that day, closed / lost that day.
+-- The hot & warm block of a report: clients active that day, and clients closed /
+-- lost that day. No phone numbers (the summary is shared; phones stay in the panel).
+-- Only the report's owner and HR/Admin can call this.
+-- The hot & warm block of a report as of p_as_of: clients that existed then and
+-- weren't booked / not interested before it (with their CURRENT details), and
+-- the ones booked / not interested on the report day itself. No phone numbers.
+create or replace function private.hc_block(r sales_reports, p_as_of timestamptz) returns jsonb
+language sql stable set search_path = public, private as $$
+  with day as (select (r.report_date::timestamp at time zone private.tz()) as s,
+                      ((r.report_date + 1)::timestamp at time zone private.tz()) as e)
+  select jsonb_build_object(
+    'active', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
+        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, ''),
+        'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'temperature', h.temperature)
+        order by h.temperature <> 'Hot', h.expected_closure_date, h.customer_name)
+      from hot_clients h where h.employee_id = r.employee_id and h.created_at < p_as_of
+        and (h.status = 'Active' or h.closed_at >= p_as_of)), '[]'::jsonb),
+    'won', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
+        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
+      from hot_clients h, day where h.employee_id = r.employee_id and h.status = 'Closed-Won'
+        and h.closed_at >= day.s and h.closed_at < least(day.e, p_as_of)), '[]'::jsonb),
+    'lost', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
+        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
+      from hot_clients h, day where h.employee_id = r.employee_id and h.status = 'Lost'
+        and h.closed_at >= day.s and h.closed_at < least(day.e, p_as_of)), '[]'::jsonb))
+$$;
+
+-- Frozen copy of the block once the report's day is over, so later edits never
+-- change old reports. Late reports (filed after their day) freeze at filing.
+alter table sales_reports add column if not exists hot_snapshot jsonb;
+alter table sales_reports add column if not exists hot_snapshot_at timestamptz;
+
+create or replace function private.hc_snapshot(p_report uuid, p_as_of timestamptz) returns jsonb
+language plpgsql volatile set search_path = public, private as $$
+declare
+  r sales_reports;
+  v jsonb;
+begin
+  select * into r from sales_reports where id = p_report for update;
+  if not found then return null; end if;
+  if r.hot_snapshot is not null then return r.hot_snapshot; end if;
+  v := private.hc_block(r, p_as_of);
+  update sales_reports set hot_snapshot = v, hot_snapshot_at = now() where id = p_report;
+  return v;
+end $$;
+
+-- Every live report whose day has ended and has no snapshot yet (the 30-minute
+-- cron calls this; also the one-time backfill below). Returns how many.
+create or replace function private.hc_snapshot_due() returns int
+language plpgsql volatile set search_path = public, private as $$
+declare
+  r record;
+  n int := 0;
+begin
+  for r in select id, report_date from sales_reports
+           where deleted_at is null and hot_snapshot is null and report_date < private.today() loop
+    perform private.hc_snapshot(r.id, (r.report_date + 1)::timestamp at time zone private.tz());
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- Filed after its day was over (a late / past-date report): freeze the list as it is now.
+create or replace function private.hc_snapshot_late() returns trigger
+language plpgsql security definer set search_path = public, private as $$
+begin
+  if new.report_date < private.today() and new.hot_snapshot is null then
+    new.hot_snapshot := private.hc_block(new, now());
+    new.hot_snapshot_at := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists sales_reports_hot_snapshot on sales_reports;
+create trigger sales_reports_hot_snapshot before insert on sales_reports
+  for each row execute function private.hc_snapshot_late();
+
+-- Summary block: live during the report's day; frozen afterwards.
 create or replace function public.hot_clients_for_report(p_token text, p_report_id uuid) returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
+language plpgsql volatile security definer set search_path = public, private as $$
 declare
   v_me employees := private.session_employee(p_token);
   r sales_reports;
-  v_end timestamptz;
-  v_start timestamptz;
 begin
   select * into r from sales_reports where id = p_report_id and deleted_at is null;
   if not found or (r.employee_id <> v_me.id and not private.is_manager(v_me)) then
     raise exception 'Report not found.' using errcode = 'P0002';
   end if;
-  v_start := r.report_date::timestamp at time zone private.tz();
-  v_end := (r.report_date + 1)::timestamp at time zone private.tz();
-  return jsonb_build_object(
-    'active', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
-        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, ''),
-        'expectedDate', h.expected_closure_date, 'remarks', coalesce(h.remarks, ''), 'temperature', h.temperature)
-        order by h.temperature <> 'Hot', h.expected_closure_date, h.customer_name)
-      from hot_clients h where h.employee_id = r.employee_id and h.created_at < v_end
-        and (h.status = 'Active' or h.closed_at >= v_end)), '[]'::jsonb),
-    'won', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
-        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
-      from hot_clients h where h.employee_id = r.employee_id and h.status = 'Closed-Won' and h.closed_at >= v_start and h.closed_at < v_end), '[]'::jsonb),
-    'lost', coalesce((select jsonb_agg(jsonb_build_object('name', h.customer_name,
-        'project', coalesce((select name from builder_projects where id = h.project_id), h.project_name, '')) order by h.closed_at)
-      from hot_clients h where h.employee_id = r.employee_id and h.status = 'Lost' and h.closed_at >= v_start and h.closed_at < v_end), '[]'::jsonb)
-  );
+  if r.hot_snapshot is not null then return r.hot_snapshot; end if;
+  if r.report_date < private.today() then
+    -- Day over but the cron hasn't run yet: freeze it now (as of the end of that day).
+    return private.hc_snapshot(r.id, (r.report_date + 1)::timestamp at time zone private.tz());
+  end if;
+  return private.hc_block(r, now());
 end $$;
+
+-- One-time backfill: every existing past report gets a snapshot of the current list.
+select private.hc_snapshot_due();
 
 revoke execute on all functions in schema private from public, anon, authenticated;
 do $$
