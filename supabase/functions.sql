@@ -45,7 +45,7 @@ language sql stable as $$ select (now() at time zone private.tz())::date $$;
 
 create or replace function private.modules() returns text[]
 language sql immutable as $$
-  select array['attendance','tasks','normalReport','soleSelling','builderData','builderManage','analytics','leave','assist']
+  select array['attendance','tasks','normalReport','soleSelling','builderData','builderManage','analytics','leave','assist','leaderboard']
 $$;
 
 -- Salary is never in here: only an Admin sees it (see private.with_salary).
@@ -78,6 +78,8 @@ language sql stable as $$
     when 'analytics' then e.role = 'Admin'
     when 'leave' then true
     when 'assist' then true
+    -- Leaderboard: off for everyone (incl. new people) until switched on (leaderboard.sql turns it on for EMP001).
+    when 'leaderboard' then false
     else false
   end
 $$;

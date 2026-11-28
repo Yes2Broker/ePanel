@@ -24,10 +24,10 @@ async function load() {
   if (!token) return;
   try {
     const r = await fetch("/api/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, action: "urls" }) });
-    if (!r.ok) return;
-    const j = await r.json() as { photos?: Photos };
-    photos = j.photos ?? {}; loadedAt = Date.now(); emit();
+    if (r.ok) { const j = await r.json() as { photos?: Photos }; photos = j.photos ?? {}; }
   } catch { /* offline: keep what we have */ }
+  // Loaded, or failed (photos not set up / offline): either way, stop waiting (initials show).
+  loadedAt = Date.now(); emit();
 }
 
 /** Reload everyone's photos (after an upload / removal). */
@@ -46,6 +46,9 @@ export function usePhotos(): Photos {
   useEffect(() => { ensure(); }, []);
   return snap;
 }
+
+/** True once the photos have loaded at least once (so "no photo" is known, not just "not loaded yet"). */
+export const photosLoaded = () => loadedAt > 0;
 
 /** Upload a processed photo (WebP blob) to a slot. */
 export async function uploadPhoto(employeeId: string, slot: "default" | "own", blob: Blob) {

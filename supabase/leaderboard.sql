@@ -62,7 +62,19 @@ language sql stable set search_path = public, private as $$
   from days
 $$;
 
--- Locks last month's winners and tells everyone, once per month.
+-- Who may see the leaderboard (the "Leaderboard" switch on the Permissions page;
+-- off by default). Everyone in Sales still races, with or without it.
+create or replace function private.lb_access(e employees) returns boolean
+language sql stable set search_path = public, private as $$
+  select e.status = 'Active' and coalesce((private.permissions_json(e) ->> 'leaderboard')::boolean, false)
+$$;
+
+-- For now only Admin Prateek Malhotra (EMP001) has it (re-running keeps any later changes).
+insert into employee_permissions (employee_id, module, enabled)
+select 'EMP001', 'leaderboard', true where exists (select 1 from employees where id = 'EMP001')
+on conflict (employee_id, module) do nothing;
+
+-- Locks last month's winners and tells the people with access, once per month.
 create or replace function private.lb_announce() returns void
 language plpgsql volatile set search_path = public, private as $$
 declare
@@ -90,7 +102,7 @@ begin
   if v_visits is null and v_closures is null then return; end if;
   v_body := concat_ws(' · ', 'Top visits: ' || v_visits, 'Top closures: ' || v_closures) || '. The new race is on!';
 
-  for e in select * from employees where status = 'Active' loop
+  for e in select * from employees where status = 'Active' and private.lb_access(employees) loop
     if exists (select 1 from leaderboard_winners where month = v_month and employee_id = e.id) then
       perform private.notify(e.id, 'lb_winner', 'You''re the ' || v_label || ' champion!', v_body, '/leaderboard?month=' || to_char(v_month, 'YYYY-MM'));
     else
@@ -117,8 +129,9 @@ declare
   v_to date := least(v_end, v_today);
   v_live boolean := v_end >= v_today;
 begin
-  if v_from > v_today then raise exception 'That month hasn''t started yet.' using errcode = '22023'; end if;
   perform private.lb_announce();
+  if not private.lb_access(v_me) then return null; end if;   -- no access: nothing
+  if v_from > v_today then raise exception 'That month hasn''t started yet.' using errcode = '22023'; end if;
   return jsonb_build_object(
     'month', to_char(v_from, 'YYYY-MM'),
     'live', v_live,
@@ -163,6 +176,7 @@ declare
   v_race jsonb;
 begin
   perform private.lb_announce();
+  if not private.lb_access(v_me) then return null; end if;   -- no access: no champions card / race line
   select * into v_m from leaderboard_months
   where (announced_at at time zone private.tz())::date >= v_today - 2 order by month desc limit 1;
 

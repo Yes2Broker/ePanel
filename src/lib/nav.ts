@@ -35,7 +35,8 @@ function itemsFor(user: Employee, permissions: Permissions | null) {
     reports: feature("reports", { href: "/reports", label: "Daily Reports", short: "Reports", icon: FileText }, pages.reports),
     leave: feature("leave", { href: "/leave", label: "Leave", icon: CalendarOff }, pages.leave),
     // Its own full-screen page, opened in a new tab (like Analytics).
-    leaderboard: { href: "/leaderboard", label: "Leaderboard", short: "Leaders", icon: Trophy, external: true } as NavItem,
+    // Only with the "Leaderboard" permission (off by default).
+    leaderboard: can("leaderboard") && ({ href: "/leaderboard", label: "Leaderboard", short: "Leaders", icon: Trophy, external: true } as NavItem),
     builderData: (can("builderData") || can("builderManage")) && ({ href: "/builder-data", label: "Builder Data", short: "Builder", icon: Building2 } as NavItem),
     analytics: user.role === "Admin" && can("analytics") && ({ href: ANALYTICS_URL, label: "Analytics", icon: BarChart3, external: true } as NavItem),
     permissions: isManager && ({ href: "/admin/permissions", label: "Permissions", icon: ShieldCheck } as NavItem),

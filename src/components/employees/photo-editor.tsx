@@ -97,7 +97,7 @@ export function PhotoButtons({ onSave, onRemove, hasPhoto, changeLabel = "Change
     <div className="flex flex-wrap gap-2">
       <input ref={input} type="file" accept="image/*" className="hidden" aria-label={changeLabel}
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; const bad = checkImageFile(f); if (bad) return toast(bad, "error"); setFile(f); }} />
-      <SecondaryButton type="button" onClick={() => input.current?.click()}><Camera className="h-4 w-4" aria-hidden /> {changeLabel}</SecondaryButton>
+      <SecondaryButton type="button" data-photo-change onClick={() => input.current?.click()}><Camera className="h-4 w-4" aria-hidden /> {changeLabel}</SecondaryButton>
       {hasPhoto && onRemove && (
         <SecondaryButton type="button" disabled={removing} onClick={async () => {
           setRemoving(true);

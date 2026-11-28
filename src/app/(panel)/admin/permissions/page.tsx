@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/pickers";
 import { Toggle } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
@@ -13,7 +14,7 @@ import { MODULES } from "@/lib/constants";
 import { MODULE_FEATURE, isFeatureEnabled } from "@/lib/features";
 import { ComingSoonBadge } from "@/components/feature/coming-soon";
 import { ModuleKey } from "@/types";
-import { initials, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { SoleSellingProjects } from "@/components/reports/sole-selling-projects";
 
 // A module can't be switched while its feature isn't launched. It shows as
@@ -76,9 +77,7 @@ export default function AdminPermissionsPage() {
                     onClick={() => setSelectedId(e.id)}
                     className={cn("flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm", selectedId === e.id ? "bg-ink text-white" : "text-ink hover:bg-surface")}
                   >
-                    <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium", selectedId === e.id ? "bg-white text-ink" : "bg-status-neutralBg text-ink-muted")}>
-                      {initials(e.name)}
-                    </div>
+                    <Avatar name={e.name} id={e.id} className={cn("h-7 w-7 text-xs", selectedId === e.id ? "bg-white text-ink" : "bg-status-neutralBg text-ink-muted")} />
                     <div className="min-w-0">
                       <p className="truncate font-medium">{e.name}</p>
                       <p className={cn("truncate text-xs", selectedId === e.id ? "text-white/70" : "text-ink-faint")}>{e.department} · {e.role}</p>
@@ -94,7 +93,7 @@ export default function AdminPermissionsPage() {
           {employee && (
             <>
               <div className="mb-5 flex items-center gap-3 border-b border-surface-border pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-ink text-sm font-medium text-white">{initials(employee.name)}</div>
+                <Avatar name={employee.name} id={employee.id} className="h-10 w-10 text-sm" />
                 <div>
                   <p className="text-sm font-semibold text-ink">{employee.name}</p>
                   <p className="text-xs text-ink-faint">{employee.department} · {employee.role}</p>
@@ -114,7 +113,7 @@ export default function AdminPermissionsPage() {
                           {isComingSoon(m) && <span className="ml-2"><ComingSoonBadge /></span>}
                           {adminOnly && <span className="ml-2 text-xs text-ink-faint">Admin only</span>}
                         </span>
-                        <Toggle checked={!isComingSoon(m) && !!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m) || adminOnly} onChange={(v) => toggle(m.key, v)} />
+                        <Toggle checked={!isComingSoon(m) && !!permissions.data?.[m.key]} disabled={permissions.loading || isComingSoon(m) || adminOnly} onChange={(v) => toggle(m.key, v)} label={m.label} />
                       </div>
                       {m.key === "soleSelling" && !isComingSoon(m) && permissions.data?.soleSelling && selectedId && (
                         <SoleSellingProjects employeeId={selectedId} />

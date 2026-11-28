@@ -11,6 +11,7 @@ import { PerformanceTable } from "@/components/dashboard/performance-table";
 import { ComingSoonCard } from "@/components/feature/coming-soon";
 import { InstallBanner } from "@/components/pwa/install-banner";
 import { WinnerBanner } from "@/components/leaderboard/winner-banner";
+import { ProfileNudge } from "@/components/employees/profile-nudge";
 import { Card } from "@/components/ui/card";
 import { ErrorBanner, Loading, PageHeader } from "@/components/ui/page";
 import { useSession } from "@/context/session-context";
@@ -107,6 +108,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="Dashboard" subtitle="Your team at a glance." actions={<CustomiseButton onClick={() => setCustomising(true)} />} />
       <InstallBanner />
+      <ProfileNudge />
       <WinnerBanner />
       <ComingSoonCard />
 

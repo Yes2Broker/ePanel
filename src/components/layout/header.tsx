@@ -7,6 +7,7 @@ import { LogOut, User, Settings, Download } from "lucide-react";
 import { Employee } from "@/types";
 import { formatDate, todayISO } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
+import { useNeedsOwnPhoto } from "@/components/employees/profile-nudge";
 import { pageTitle } from "@/lib/nav";
 import { LogoIcon } from "@/components/ui/logo";
 import { useSession } from "@/context/session-context";
@@ -23,6 +24,7 @@ export function Header({ user }: { user: Employee }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { logout } = useSession();
+  const needsPhoto = useNeedsOwnPhoto();
   const { canInstall, install } = usePwa();
   const router = useRouter();
   const pathname = usePathname();
@@ -63,7 +65,10 @@ export function Header({ user }: { user: Employee }) {
           aria-expanded={menuOpen}
           aria-label="Account menu"
         >
-          <Avatar name={user.name} id={user.id} className="h-9 w-9 md:h-8 md:w-8" />
+          <span className="relative">
+            <Avatar name={user.name} id={user.id} className="h-9 w-9 md:h-8 md:w-8" />
+            {needsPhoto && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-status-danger ring-2 ring-white" role="status" aria-label="Add your own photo" />}
+          </span>
           <span className="hidden text-left md:block">
             <span className="block text-sm font-medium leading-tight text-ink">{user.name}</span>
             <span className="block text-xs leading-tight text-ink-faint">{user.role} · {user.department}</span>

@@ -20,8 +20,9 @@ const monthOf = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("
  * month's race.
  */
 export function WinnerBanner() {
-  const { user } = useSession();
-  const { data } = useApi(() => api.leaderboardBanner().catch(() => null));
+  const { user, permissions } = useSession();
+  const allowed = !!permissions?.leaderboard;
+  const { data } = useApi(() => (allowed ? api.leaderboardBanner().catch(() => null) : Promise.resolve(null)), [allowed]);
   const [hidden, setHidden] = useState(false);
   const [fire, setFire] = useState(0);
   const champs = data?.champions;

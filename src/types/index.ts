@@ -26,6 +26,7 @@ export const MODULE_KEYS = [
   "analytics",
   "leave",
   "assist",
+  "leaderboard",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];

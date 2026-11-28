@@ -22,4 +22,5 @@ export const MODULES: { key: ModuleKey; label: string; comingSoon?: boolean; adm
   { key: "analytics", label: "Analytics", adminOnly: true },
   { key: "leave", label: "Leave" },
   { key: "assist", label: "Y2B Assist", comingSoon: !ASSIST_ENABLED },
+  { key: "leaderboard", label: "Leaderboard" },
 ];

@@ -13,7 +13,8 @@ import { api } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
 import { SalesReportDetail } from "@/types";
 import { shortDate, time12, visitStatusLabel } from "@/lib/report-format";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, initials } from "@/lib/utils";
+import { photosLoaded, usePhotos } from "@/lib/avatars";
 
 /** Today vs MTD popup — the same table and lists as the old forms. */
 export function ReportSummary({
@@ -24,7 +25,9 @@ export function ReportSummary({
   const sole = report.type === "Sole Selling";
   const toast = useToast();
   const hot = useApi(() => api.hotForReport(report.id).catch(() => null), [report.id, report.updatedAt]);
-  const image = useReportImage(captureRef, report, hot.loading ? undefined : (hot.data ?? "none"));
+  const photo = useInlinePhoto(report.employeeId);
+  // The image waits for the hot clients and the photo (part of the picture).
+  const image = useReportImage(captureRef, report, hot.loading || !photo.ready ? undefined : `${JSON.stringify(hot.data ?? "none")}|${photo.src ?? ""}`);
   const hotBlock = hotText(hot.data, report.date);
   const rows: [string, string | number, string | number][] = [
     ["Fresh Leads Received", report.today.leads, report.mtd.leads],
@@ -56,7 +59,7 @@ export function ReportSummary({
   const footer = (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <SecondaryButton onClick={image.save} disabled={image.busy || hot.loading} className="flex-1 justify-center py-2.5">
+        <SecondaryButton onClick={image.save} disabled={image.busy || hot.loading || !photo.ready} className="flex-1 justify-center py-2.5">
           <Download className="h-4 w-4" />
           {image.busy ? "Saving…" : <><span className="sm:hidden">Save image</span><span className="hidden sm:inline">Download image</span></>}
         </SecondaryButton>
@@ -83,9 +86,16 @@ export function ReportSummary({
     <>
       <Modal open onClose={onClose} title="Daily Report" subtitle={report.title} size="md" footer={footer} bodyClassName="p-0">
         <div ref={captureRef} className="space-y-4 bg-white px-5 py-4">
-          <div>
-            <p className="text-sm font-semibold text-ink">Name: {report.employeeName}<FiledLate r={report} /></p>
-            {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
+          <div className="flex items-center gap-3">
+            {/* The report's person (not the viewer): own photo, else default, else initials. Inlined so the image always has it. */}
+            {photo.src
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={photo.src} alt={report.employeeName} data-report-photo className="h-14 w-14 shrink-0 rounded-full object-cover" />
+              : <span data-report-photo className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-ink text-base font-medium text-white">{initials(report.employeeName)}</span>}
+            <div className="min-w-0">
+              <p className="text-sm text-ink-muted">Name: <b className="text-base font-semibold text-ink">{report.employeeName}</b><FiledLate r={report} /></p>
+              {sole && report.projectName && <p className="text-sm text-ink-muted">Project: {report.projectName}</p>}
+            </div>
           </div>
           <table className="w-full overflow-hidden rounded-xl border border-surface-border text-sm">
             <thead>
@@ -127,6 +137,32 @@ export function ReportSummary({
       {historyOpen && <HistoryPanel reportId={report.id} onClose={() => setHistoryOpen(false)} />}
     </>
   );
+}
+
+/**
+ * A person's photo as a data URL (fetched once), so the saved image always
+ * includes it (no cross-site image for the canvas). null = no photo: initials.
+ */
+function useInlinePhoto(employeeId: string) {
+  const photos = usePhotos();
+  const url = photos[employeeId]?.url ?? null;
+  const [state, setState] = useState<{ src: string | null; ready: boolean }>({ src: null, ready: false });
+  useEffect(() => {
+    let live = true;
+    if (!url) {
+      // Not loaded yet vs. really no photo: wait for the photo list, then show initials.
+      setState({ src: null, ready: photosLoaded() });
+      return;
+    }
+    setState((s) => ({ ...s, ready: false }));
+    fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject()))
+      .then((b) => new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(b); }))
+      .then((src) => new Promise<string>((res) => { const i = new Image(); i.onload = () => res(src); i.onerror = () => res(src); i.src = src; }))
+      .then((src) => { if (live) setState({ src, ready: true }); })
+      .catch(() => { if (live) setState({ src: null, ready: true }); });
+    return () => { live = false; };
+  }, [url, photos]);
+  return state;
 }
 
 const isPhone = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;

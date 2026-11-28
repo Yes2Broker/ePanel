@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Rocket, Sparkles, Star, Trophy } from "lucide-react";
+import { Lock, AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Rocket, Sparkles, Star, Trophy } from "lucide-react";
 import { LogoIcon } from "@/components/ui/logo";
 import { usePhotos } from "@/lib/avatars";
 import { MonthField } from "@/components/ui/pickers";
@@ -49,7 +49,7 @@ function Shell() {
 
 /** Same login as the panel; signed out → login → back here. */
 function Gate() {
-  const { user, loading } = useSession();
+  const { user, loading, permissions } = useSession();
   const router = useRouter();
   // Render the lobby only after mounting, so the server HTML (empty world) always matches.
   const [mounted, setMounted] = useState(false);
@@ -58,7 +58,23 @@ function Gate() {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   }, [loading, user, router]);
   if (!mounted || loading || !user) return <Shell />;
+  // The "Leaderboard" switch (Permissions page); the database checks it too.
+  if (!permissions?.leaderboard) return <NoAccess />;
   return <Lobby name={user.name} meId={user.id} />;
+}
+
+function NoAccess() {
+  return (
+    <div className="lb-world flex min-h-[100dvh] items-center justify-center p-6 text-center text-white">
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <div className="lb-glass max-w-sm space-y-3 p-6">
+        <Lock className="mx-auto h-8 w-8 text-[#F5C542]" aria-hidden />
+        <h1 className="text-xl font-semibold">No access</h1>
+        <p className="text-sm text-white/70">The Leaderboard isn&apos;t turned on for you yet. Ask Admin if you&apos;d like to see it.</p>
+        <Link href="/dashboard" className="lb-btn mx-auto">Back to ePanel</Link>
+      </div>
+    </div>
+  );
 }
 
 function Lobby({ name, meId }: { name: string; meId: string }) {

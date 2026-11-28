@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Lock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Camera, Lock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/pills";
 import { PrimaryButton } from "@/components/ui/button";
@@ -10,10 +10,11 @@ import { PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
-import { formatINR, formatDate } from "@/lib/utils";
+import { cn, formatINR, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { PhotoButtons } from "@/components/employees/photo-editor";
 import { removePhoto, uploadPhoto, usePhotos } from "@/lib/avatars";
+import { useNeedsOwnPhoto } from "@/components/employees/profile-nudge";
 import { weekOffLabel } from "@/lib/constants";
 import { PasswordInput } from "@/components/ui/password-input";
 
@@ -32,13 +33,28 @@ export default function ProfilePage() {
   const { user } = useSession();
   const toast = useToast();
   const photos = usePhotos();
+  const needsPhoto = useNeedsOwnPhoto();
+  // From the dashboard's "Add photo": bring the Change photo button into view, ready to tap.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("add") !== "photo") return;
+    const t = window.setTimeout(() => {
+      const b = document.querySelector<HTMLButtonElement>("[data-photo-change]");
+      b?.scrollIntoView({ block: "center" }); b?.focus();
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, []);
   if (!user) return null;
 
   return (
     <div className="max-w-3xl space-y-4 pt-1 md:space-y-6 md:pt-4">
       <PageHeader title="My Profile" subtitle="Contact HR or Admin to update these details." />
 
-      <Card className="p-4 sm:p-5">
+      <Card className={cn("p-4 sm:p-5", needsPhoto && "ring-2 ring-brand ring-offset-2 ring-offset-surface")}>
+        {needsPhoto && (
+          <p id="photo" className="mb-3 flex items-center gap-2 rounded-xl bg-brand-soft px-3 py-2 text-sm font-medium text-brand">
+            <Camera className="h-4 w-4 shrink-0" aria-hidden /> Make it yours — upload your own photo
+          </p>
+        )}
         <div className="flex items-center gap-3 sm:gap-4">
           <Avatar name={user.name} id={user.id} className="h-16 w-16 text-lg sm:h-20 sm:w-20 sm:text-xl" />
           <div className="min-w-0 space-y-2">
