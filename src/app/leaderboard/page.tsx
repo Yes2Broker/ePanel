@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Rocket, Sparkles, Star, Trophy } from "lucide-react";
 import { LogoIcon } from "@/components/ui/logo";
+import { usePhotos } from "@/lib/avatars";
 import { MonthField } from "@/components/ui/pickers";
 import { Fireworks } from "@/components/leaderboard/fireworks";
 import { SlotNumber, SlotReel } from "@/components/leaderboard/slot";
@@ -57,10 +58,10 @@ function Gate() {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   }, [loading, user, router]);
   if (!mounted || loading || !user) return <Shell />;
-  return <Lobby name={user.name} />;
+  return <Lobby name={user.name} meId={user.id} />;
 }
 
-function Lobby({ name }: { name: string }) {
+function Lobby({ name, meId }: { name: string; meId: string }) {
   const q = useSearchParams();
   const router = useRouter();
   const [month, setMonth] = useState(q.get("month") || thisMonth());
@@ -145,7 +146,7 @@ function Lobby({ name }: { name: string }) {
           </div>
           <div className="ml-auto flex items-center justify-end gap-2">
             <span className="flex items-center gap-2" aria-label={`Signed in as ${name}`}>
-              <Hex name={name} size={30} tone="plain" />
+              <Hex name={name} id={meId} size={30} tone="plain" />
               <span className="hidden max-w-[140px] truncate text-sm font-semibold xl:inline">{name}</span>
             </span>
             <Link href="/dashboard" className="lb-btn whitespace-nowrap">← <span className="hidden sm:inline">Back to </span>ePanel</Link>
@@ -218,7 +219,7 @@ function Lobby({ name }: { name: string }) {
                     return (
                       <li key={p.id} className={cn("lb-row flex items-center gap-3 px-4 py-3", mine && "lb-row-me")}>
                         <RankChip rank={r} />
-                        <Hex name={p.name} size={40} tone={r != null && r <= 3 ? MEDAL[Math.min(r, 3) - 1] : "plain"} />
+                        <Hex name={p.name} id={p.id} size={40} tone={r != null && r <= 3 ? MEDAL[Math.min(r, 3) - 1] : "plain"} />
                         <div className="min-w-0 flex-1">
                           <p className="flex items-center gap-1.5 text-[15px] font-semibold">
                             <span className="truncate">{p.name}</span>
@@ -290,7 +291,7 @@ function Podium({ groups, cat, val, rank, spin, pool }: {
           <div key={i} className="flex min-w-0 flex-col items-center" data-podium={i + 1}>
             {g ? (
               <>
-                <div className="flex -space-x-3">{g.slice(0, 3).map((p) => <Hex key={p.id} name={p.name} size={i === 0 ? 76 : 60} tone={tone} stars />)}</div>
+                <div className="flex -space-x-3">{g.slice(0, 3).map((p) => <Hex key={p.id} name={p.name} id={p.id} size={i === 0 ? 76 : 60} tone={tone} stars />)}</div>
                 <div className={cn("lb-reel mt-2 w-full max-w-[220px] text-sm sm:text-base", g.some((p) => p.me) && "lb-reel-me")}>
                   <SlotReel name={g.map((p) => first(p.name)).join(" & ")} pool={pool.map(first)} spin={spin} delay={[300, 0, 600][i]} />
                 </div>
@@ -363,7 +364,7 @@ function HallCard({ month, winners, revealed, onPull, onOpen }: {
         <div className="mt-2 space-y-2">
           {(["visits", "closures"] as Cat[]).map((c) => by(c).length > 0 && (
             <div key={c} className="flex items-center gap-2.5 rounded-xl bg-white/5 px-2.5 py-2">
-              <Hex name={by(c)[0].name} size={34} tone="gold" />
+              <Hex name={by(c)[0].name} id={by(c)[0].id} size={34} tone="gold" />
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] uppercase tracking-wider text-white/50">Top {c}</p>
                 <p className="truncate text-sm font-semibold">{by(c).map((w) => w.name).join(" & ")}</p>
@@ -396,12 +397,21 @@ function RankChip({ rank }: { rank: number | null }) {
 }
 
 /** Initials in a glowing hexagon frame (3 stars on the podium). */
-function Hex({ name, size, tone, stars }: { name: string; size: number; tone: "gold" | "silver" | "bronze" | "plain" | "empty"; stars?: boolean }) {
+function Hex({ name, id, size, tone, stars }: { name: string; id?: string; size: number; tone: "gold" | "silver" | "bronze" | "plain" | "empty"; stars?: boolean }) {
+  // Profile photo (own, else default) inside the frame, with the same glow; initials if none.
+  const photos = usePhotos();
+  const url = id ? photos[id]?.url : null;
+  const [broken, setBroken] = useState<string | null>(null);
   return (
     <div className="relative flex flex-col items-center" aria-hidden>
       {stars && <span className={cn("lb-stars inline-flex gap-0.5", `lb-stars-${tone}`)}>{[0, 1, 2].map((i) => <Star key={i} style={{ width: size / 5, height: size / 5 }} fill="currentColor" strokeWidth={0} />)}</span>}
       <div className={cn("lb-hex", `lb-hex-${tone}`)} style={{ width: size, height: size * 1.1 }}>
-        <div className="lb-hex-in lb-display" style={{ fontSize: size * 0.4 }}>{name === "?" ? "?" : initials(name)}</div>
+        <div className="lb-hex-in lb-display" style={{ fontSize: size * 0.4 }}>
+          {url && broken !== url
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={url} alt="" data-photo={id} draggable={false} className="h-full w-full object-cover" onError={() => setBroken(url)} />
+            : name === "?" ? "?" : initials(name)}
+        </div>
       </div>
     </div>
   );
