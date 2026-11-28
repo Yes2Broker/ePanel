@@ -117,6 +117,8 @@ export const api = {
   builderList: () => rpc<BuilderList>("builder_list"),
   leaderboard: (month: string | null) => rpc<Leaderboard>("leaderboard", { p_month: month ? `${month}-01` : null }),
   leaderboardBanner: () => rpc<LbBanner>("leaderboard_banner"),
+  leaderboardGoalSet: (month: string, category: "visits" | "closures", target: number | null) =>
+    rpc<void>("leaderboard_goal_set", { p_month: `${month}-01`, p_category: category, p_target: target }),
   builderSave: (id: string | null, data: Record<string, unknown>) => rpc<string>("builder_save", { p_id: id, p_data: data }),
   builderDelete: (id: string) => rpc<void>("builder_delete", { p_id: id }),
   builderSetAvailable: (unitId: string, available: number) => rpc<void>("builder_set_available", { p_unit: unitId, p_available: available }),

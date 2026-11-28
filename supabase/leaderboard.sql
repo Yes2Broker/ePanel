@@ -74,6 +74,68 @@ insert into employee_permissions (employee_id, module, enabled)
 select 'EMP001', 'leaderboard', true where exists (select 1 from employees where id = 'EMP001')
 on conflict (employee_id, module) do nothing;
 
+-- Streak in weeks: consecutive weeks (Mon-Sun, newest first) with a report on
+-- every working day. Days off (weekly off, leave, holidays), days before
+-- joining and today (until filed) don't count against it; this week counts once
+-- it has at least one working day so far.
+create or replace function private.lb_streak_weeks(p_emp text, p_today date) returns int
+language plpgsql stable set search_path = public, private as $$
+declare
+  e employees;
+  v_days date[];
+  wk date := p_today - (extract(isodow from p_today)::int - 1);
+  n int := 0; d date; ok boolean; counted int;
+begin
+  select * into e from employees where id = p_emp;
+  v_days := array(select distinct report_date from sales_reports
+                  where employee_id = p_emp and deleted_at is null and report_date between p_today - 380 and p_today);
+  for i in 0..52 loop
+    ok := true; counted := 0;
+    for d in select g::date from generate_series(wk, least(wk + 6, p_today), interval '1 day') g loop
+      if not private.is_working_day(d, e.week_off) or private.day_off(e, d) is not null then continue; end if;
+      if e.joining_date is not null and d < e.joining_date then continue; end if;
+      if d = p_today and not (d = any (v_days)) then continue; end if;
+      counted := counted + 1;
+      if not (d = any (v_days)) then ok := false; exit; end if;
+    end loop;
+    exit when not ok;
+    if counted = 0 then
+      exit when i > 0;          -- nothing to check in an older week: stop
+      wk := wk - 7; continue;   -- this week hasn't started yet (e.g. Monday morning)
+    end if;
+    n := n + 1; wk := wk - 7;
+  end loop;
+  return n;
+end $$;
+
+-- Monthly team goals (Admin sets them on the leaderboard page). No goal = no card.
+create table if not exists leaderboard_goals (
+  month date not null,
+  category text not null check (category in ('visits','closures')),
+  target int not null check (target > 0),
+  set_by text references employees(id) on update cascade,
+  set_at timestamptz not null default now(),
+  primary key (month, category)
+);
+alter table leaderboard_goals enable row level security;
+revoke all on leaderboard_goals from anon, authenticated;
+
+create or replace function public.leaderboard_goal_set(p_token text, p_month date, p_category text, p_target int) returns void
+language plpgsql volatile security definer set search_path = public, private as $$
+declare
+  v_me employees := private.session_employee(p_token);
+  v_month date := date_trunc('month', coalesce(p_month, private.today()))::date;
+begin
+  if v_me.role <> 'Admin' or not private.lb_access(v_me) then raise exception 'Only Admin can set the team goal.' using errcode = '42501'; end if;
+  if p_category not in ('visits','closures') then raise exception 'Unknown goal.' using errcode = '22023'; end if;
+  if p_target is null or p_target <= 0 then
+    delete from leaderboard_goals where month = v_month and category = p_category;
+  else
+    insert into leaderboard_goals (month, category, target, set_by) values (v_month, p_category, p_target, v_me.id)
+    on conflict (month, category) do update set target = excluded.target, set_by = excluded.set_by, set_at = now();
+  end if;
+end $$;
+
 -- Locks last month's winners and tells the people with access, once per month.
 create or replace function private.lb_announce() returns void
 language plpgsql volatile set search_path = public, private as $$
@@ -143,14 +205,23 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id', r.id, 'name', r.name, 'designation', r.designation,
         'visits', r.visits, 'closures', r.closures, 'rankVisits', r.rank_visits, 'rankClosures', r.rank_closures,
-        -- Yesterday's rank, for the up / down arrows (this month only, from the 2nd).
+        -- Yesterday's rank (kept for the dashboard / compatibility).
         'prevVisits', y.rank_visits, 'prevClosures', y.rank_closures,
+        -- The same day last week (this month only; null in the first week): rank and count.
+        'weekRankVisits', w.rank_visits, 'weekRankClosures', w.rank_closures,
+        'weekVisits', w.visits, 'weekClosures', w.closures,
         'titles', (select count(*) from leaderboard_winners w where w.employee_id = r.id),
         'streak', v_live and private.lb_streak(r.id, e.week_off, v_today),
+        'streakWeeks', case when v_live then private.lb_streak_weeks(r.id, v_today) else 0 end,
         'me', r.id = v_me.id) order by r.name)
       from private.lb_ranked(v_from, v_to) r
       join employees e on e.id = r.id
-      left join private.lb_ranked(v_from, v_today - 1) y on y.id = r.id and v_live and v_today > v_from), '[]'::jsonb),
+      left join private.lb_ranked(v_from, v_today - 1) y on y.id = r.id and v_live and v_today > v_from
+      left join private.lb_ranked(v_from, v_to - 7) w on w.id = r.id and v_to - 7 >= v_from), '[]'::jsonb),
+    'goals', jsonb_build_object(
+      'visits', (select target from leaderboard_goals where month = v_from and category = 'visits'),
+      'closures', (select target from leaderboard_goals where month = v_from and category = 'closures')),
+    'canSetGoal', v_me.role = 'Admin',
     'winners', private.lb_winners_json(v_from, v_me.id),
     'racing', v_me.department = 'Sales',
     -- Hall of fame: the last 12 announced months.
@@ -212,7 +283,7 @@ begin
   for f in
     select p.oid::regprocedure as sig
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('leaderboard','leaderboard_banner')
+    where n.nspname = 'public' and p.proname in ('leaderboard','leaderboard_banner','leaderboard_goal_set')
   loop
     execute format('revoke execute on function %s from public', f.sig);
     execute format('grant execute on function %s to anon, authenticated', f.sig);

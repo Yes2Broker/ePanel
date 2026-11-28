@@ -430,11 +430,15 @@ export interface LbPlayer {
   id: string; name: string; designation: string; visits: number; closures: number;
   rankVisits: number | null; rankClosures: number | null; prevVisits: number | null; prevClosures: number | null;
   titles: number; streak: boolean; me: boolean;
+  /** The same day last week (null in the month's first week). */
+  weekRankVisits: number | null; weekRankClosures: number | null; weekVisits: number | null; weekClosures: number | null;
+  /** Consecutive weeks with a report on every working day. */ streakWeeks: number;
 }
 export interface LbWinner { category: "visits" | "closures"; id: string; name: string; designation: string; value: number; me: boolean }
 export interface Leaderboard {
   month: string; live: boolean; daysLeft: number; endsAt: string; minMonth: string; racing: boolean;
   players: LbPlayer[]; winners: LbWinner[]; hall: { month: string; winners: LbWinner[] }[];
+  goals: { visits: number | null; closures: number | null }; canSetGoal: boolean;
 }
 export interface LbBanner {
   champions: { month: string; winners: LbWinner[] } | null;
