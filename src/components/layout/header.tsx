@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, User, Settings, Download } from "lucide-react";
 import { Employee } from "@/types";
-import { initials, formatDate, todayISO } from "@/lib/utils";
+import { formatDate, todayISO } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
 import { pageTitle } from "@/lib/nav";
 import { LogoIcon } from "@/components/ui/logo";
 import { useSession } from "@/context/session-context";
@@ -62,7 +63,7 @@ export function Header({ user }: { user: Employee }) {
           aria-expanded={menuOpen}
           aria-label="Account menu"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-xs font-medium text-white md:h-8 md:w-8">{initials(user.name)}</span>
+          <Avatar name={user.name} id={user.id} className="h-9 w-9 md:h-8 md:w-8" />
           <span className="hidden text-left md:block">
             <span className="block text-sm font-medium leading-tight text-ink">{user.name}</span>
             <span className="block text-xs leading-tight text-ink-faint">{user.role} · {user.department}</span>

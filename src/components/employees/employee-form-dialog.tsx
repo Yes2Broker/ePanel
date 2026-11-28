@@ -9,6 +9,7 @@ import { DEPARTMENTS, ROLES, WEEKDAYS } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { SuggestInput } from "@/components/employees/suggest-input";
 import { cn } from "@/lib/utils";
+import { DefaultPhotoField } from "@/components/employees/default-photo";
 
 export interface EmployeeFormValues {
   id: string; name: string; email: string; mobile: string; salary: number | "";
@@ -16,6 +17,8 @@ export interface EmployeeFormValues {
   manager: string; status: EmploymentStatus; weekOff: number | null; password?: string;
   /** The idle company SIM / email picked in Mobile / Email: assigned in the same save (SIMs & Emails). */
   simId?: string; emailId?: string;
+  /** Add Employee: a cropped default photo to upload once the employee exists. */
+  photo?: Blob | null;
 }
 
 type FormState = Omit<EmployeeFormValues, "salary"> & { salary: string };
@@ -30,6 +33,8 @@ export function EmployeeFormDialog({
 }: { open: boolean; onClose: () => void; onSave: (data: EmployeeFormValues) => void; initial: Employee | null; saving?: boolean; canAssignAdmin: boolean;
   /** For the Reporting Manager suggestions. */ employees?: Employee[] }) {
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  useEffect(() => { if (open) setPhoto(null); }, [open]);
 
   useEffect(() => {
     setForm(initial ? { ...initial, salary: initial.salary ? String(initial.salary) : "", password: "" } : EMPTY);
@@ -59,10 +64,11 @@ export function EmployeeFormDialog({
         onSubmit={(e) => {
           e.preventDefault();
           if (!initial && !idValid) return;
-          onSave({ ...form, id: form.id.trim().toUpperCase(), salary: form.salary.trim() === "" ? "" : Number(form.salary), simId: pickedSim?.id ?? "", emailId: pickedEmail?.id ?? "" });
+          onSave({ ...form, id: form.id.trim().toUpperCase(), salary: form.salary.trim() === "" ? "" : Number(form.salary), simId: pickedSim?.id ?? "", emailId: pickedEmail?.id ?? "", photo });
         }}
         className="space-y-4"
       >
+        <DefaultPhotoField employee={initial ? { id: initial.id, name: initial.name } : null} name={form.name} pending={photo} onPending={setPhoto} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full Name"><input required value={form.name} onChange={(e) => set("name", e.target.value)} className={inputCls} /></Field>
           <Field label="Employee ID">

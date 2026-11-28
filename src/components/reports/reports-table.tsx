@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import { FiledLate } from "@/components/reports/filed-late";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -179,7 +180,8 @@ export function ReportsTable({ manager }: { manager: boolean }) {
             {rows.map((r) => (
               <Card key={r.id} className="p-3.5">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  {manager && <PersonAvatar name={r.employeeName} id={r.employeeId} />}
+                  <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-medium text-ink">{formatDate(r.date, { weekday: true })}{manager && <span className="font-normal text-ink-muted"> · {r.employeeName}</span>}<FiledLate r={r} /></p>
                     <p className="break-words text-xs text-ink-muted">{r.title}{r.source === "import" ? " · imported" : ""}</p>
                   </div>
@@ -203,7 +205,7 @@ export function ReportsTable({ manager }: { manager: boolean }) {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap px-3 py-2">{formatDate(r.date, { weekday: true })}<FiledLate r={r} /></td>
-                    {manager && <td className="whitespace-nowrap px-3 py-2">{r.employeeName}</td>}
+                    {manager && <td className="whitespace-nowrap px-3 py-2"><span className="flex items-center gap-2"><PersonAvatar name={r.employeeName} id={r.employeeId} className="h-6 w-6 text-[10px]" />{r.employeeName}</span></td>}
                     <td className="px-3 py-2">{r.title}{r.source === "import" && <span className="text-xs text-ink-faint"> · imported</span>}</td>
                     <td className="px-3 py-2 text-right">{r.leads}</td>
                     <td className="px-3 py-2 text-right">{r.calls}</td>

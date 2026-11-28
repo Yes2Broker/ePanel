@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, CalendarCheck, CalendarOff, Check, Copy, FileText, MapPin, Sparkles, SquarePen, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -218,6 +219,7 @@ function AssistChat({ open, onClose, side }: { open: boolean; onClose: () => voi
           <Avatar />
           <h2 className="text-[15px] font-semibold text-ink">Y2B Assist</h2>
           <span className="flex-1" />
+          {user && <PersonAvatar name={user.name} id={user.id} className="h-7 w-7 text-[10px]" />}
           <button onClick={newChat} disabled={busy} aria-label="New chat" title="New chat"
             className="flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface hover:text-ink disabled:opacity-40"><SquarePen className="h-[18px] w-[18px]" /></button>
           <button onClick={onClose} aria-label="Close" title="Close"

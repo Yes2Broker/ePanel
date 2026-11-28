@@ -10,7 +10,10 @@ import { PageHeader } from "@/components/ui/page";
 import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/context/session-context";
 import { api, errorMessage } from "@/lib/api";
-import { initials, formatINR, formatDate } from "@/lib/utils";
+import { formatINR, formatDate } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
+import { PhotoButtons } from "@/components/employees/photo-editor";
+import { removePhoto, uploadPhoto, usePhotos } from "@/lib/avatars";
 import { weekOffLabel } from "@/lib/constants";
 import { PasswordInput } from "@/components/ui/password-input";
 
@@ -27,6 +30,8 @@ function Row({ label, value, locked }: { label: string; value: React.ReactNode; 
 
 export default function ProfilePage() {
   const { user } = useSession();
+  const toast = useToast();
+  const photos = usePhotos();
   if (!user) return null;
 
   return (
@@ -35,12 +40,15 @@ export default function ProfilePage() {
 
       <Card className="p-4 sm:p-5">
         <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ink text-base font-medium text-white sm:h-16 sm:w-16 sm:text-lg">
-            {initials(user.name)}
-          </div>
-          <div className="min-w-0">
-            <p className="break-words text-base font-semibold text-ink">{user.name}</p>
-            <p className="text-sm text-ink-faint">{[user.designation, user.department].filter(Boolean).join(" · ")}</p>
+          <Avatar name={user.name} id={user.id} className="h-16 w-16 text-lg sm:h-20 sm:w-20 sm:text-xl" />
+          <div className="min-w-0 space-y-2">
+            <div>
+              <p className="break-words text-base font-semibold text-ink">{user.name}</p>
+              <p className="text-sm text-ink-faint">{[user.designation, user.department].filter(Boolean).join(" · ")}</p>
+            </div>
+            <PhotoButtons hasPhoto={!!photos[user.id]?.hasOwn} removeLabel="Remove my photo" cropTitle="Your photo"
+              onSave={async (b) => { await uploadPhoto(user.id, "own", b); toast("Photo updated."); }}
+              onRemove={async () => { await removePhoto(user.id, "own"); toast(photos[user.id]?.hasDefault ? "Your photo was removed. Your default photo shows again." : "Your photo was removed."); }} />
           </div>
         </div>
       </Card>

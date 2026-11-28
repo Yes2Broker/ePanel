@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import { useState } from "react";
 import { AlertTriangle, Paperclip, History, Check, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -71,8 +72,9 @@ export function LeaveCard({ a, showPerson, onChange }: { a: LeaveApplication; sh
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {showPerson && (
-            <p className="break-words text-sm font-semibold text-ink">
-              {a.employee.name} <span className="font-normal text-ink-faint">· {a.employee.department}</span>
+            <p className="flex items-center gap-2 break-words text-sm font-semibold text-ink">
+              <PersonAvatar name={a.employee.name} id={a.employee.id} className="h-7 w-7 text-[10px]" />
+              <span>{a.employee.name} <span className="font-normal text-ink-faint">· {a.employee.department}</span></span>
             </p>
           )}
           <p className={cn("break-words text-sm text-ink", !showPerson && "font-semibold")}>{rangeLabel(a)}</p>

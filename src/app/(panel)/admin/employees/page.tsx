@@ -19,6 +19,8 @@ import { Employee } from "@/types";
 import { formatINR, formatDate } from "@/lib/utils";
 import { api, errorMessage } from "@/lib/api";
 import { useApi } from "@/lib/use-api";
+import { uploadPhoto } from "@/lib/avatars";
+import { BulkPhotos, RemoveOwnPhoto } from "@/components/employees/default-photo";
 
 export default function AdminEmployeesPage() {
   const { user } = useSession();
@@ -51,7 +53,7 @@ export default function AdminEmployeesPage() {
   // HR can manage everyone except Admin accounts (the database enforces this too).
   const canManage = (e: Employee) => isAdmin || e.role !== "Admin";
 
-  const save = async ({ password, ...data }: EmployeeFormValues) => {
+  const save = async ({ password, photo, ...data }: EmployeeFormValues) => {
     setSaving(true);
     try {
       if (editing) {
@@ -61,6 +63,7 @@ export default function AdminEmployeesPage() {
         // A company SIM / email picked in the form is assigned in the same save.
         await api.createEmployee(data, password || "");
         toast(`${data.name} added. Share their password with them directly.`);
+        if (photo) await uploadPhoto(data.id, "default", photo).catch((e) => toast(`Saved, but the photo didn't upload: ${errorMessage(e)}`, "error"));
       }
       setDialogOpen(false);
       setEditing(null);
@@ -93,7 +96,10 @@ export default function AdminEmployeesPage() {
       <PageHeader
         title="Employees"
         subtitle={loading && !data ? "Loading…" : `${filtered.length} of ${employees.length} employees`}
-        actions={<PrimaryButton onClick={() => { setEditing(null); setDialogOpen(true); }}><Plus className="h-4 w-4" /> Add Employee</PrimaryButton>}
+        actions={<>
+          <BulkPhotos employees={data ?? []} />
+          <PrimaryButton onClick={() => { setEditing(null); setDialogOpen(true); }}><Plus className="h-4 w-4" /> Add Employee</PrimaryButton>
+        </>}
       />
 
       <ErrorBanner message={loadError && `Couldn't load employees: ${loadError}`} onRetry={reload} />
@@ -119,7 +125,7 @@ export default function AdminEmployeesPage() {
           <li key={e.id}>
             <Card className="h-full p-3">
               <button onClick={() => setViewing(e)} className="flex w-full items-center gap-3 text-left" aria-label={`View ${e.name}`}>
-                <Avatar name={e.name} />
+                <Avatar name={e.name} id={e.id} />
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium text-ink">{e.name}</p>
                   <p className="break-words text-xs text-ink-faint">{e.id} · {e.department}</p>
@@ -162,7 +168,7 @@ export default function AdminEmployeesPage() {
                 <tr key={e.id} className="border-b border-surface-border last:border-0 hover:bg-surface">
                   <td className="px-2 py-2.5">
                     <div className="flex items-center gap-2.5">
-                      <Avatar name={e.name} />
+                      <Avatar name={e.name} id={e.id} />
                       <div className="min-w-0">
                         <p className="font-medium text-ink">{e.name}</p>
                         <p className="max-w-[16rem] truncate text-xs text-ink-faint" title={e.email || undefined}>{e.id}{e.email && ` · ${e.email}`}</p>
@@ -205,6 +211,12 @@ export default function AdminEmployeesPage() {
             </SecondaryButton>
           </div>
         )}>
+        {viewing && (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <Avatar name={viewing.name} id={viewing.id} className="h-16 w-16 text-lg" />
+            <RemoveOwnPhoto employee={viewing} />
+          </div>
+        )}
         {viewing && (
           <div className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             {[["Full Name", viewing.name], ["Employee ID", viewing.id], ["Email", viewing.email], ["Mobile", viewing.mobile],

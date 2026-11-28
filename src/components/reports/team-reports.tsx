@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SlidersHorizontal, X, Info } from "lucide-react";
@@ -156,7 +157,7 @@ export function TeamSummary() {
                   return (
                     <li key={r.employeeId} className="space-y-2 px-4 py-3">
                       <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium text-ink">
-                        <span className="break-words">{r.employeeName}</span>
+                        <span className="flex items-center gap-2 break-words"><PersonAvatar name={r.employeeName} id={r.employeeId} className="h-6 w-6 text-[10px]" />{r.employeeName}</span>
                         {dim && <NotFiled off={r.off} />}
                       </p>
                       <TotalsGrid t={r[period]} cols={cols} dim={dim} />
@@ -185,7 +186,7 @@ export function TeamSummary() {
                       return (
                         <tr key={r.employeeId} className="border-t border-surface-border">
                           <td className="px-4 py-2 font-medium text-ink">
-                            {r.employeeName}{dim && <span className="ml-1.5"><NotFiled off={r.off} /></span>}
+                            <span className="inline-flex items-center gap-2"><PersonAvatar name={r.employeeName} id={r.employeeId} className="h-6 w-6 text-[10px]" />{r.employeeName}</span>{dim && <span className="ml-1.5"><NotFiled off={r.off} /></span>}
                           </td>
                           {cols.map((c) => <td key={c.key} className={cn("px-2 py-2 text-center", dim ? "text-ink-faint" : "text-ink")}>{t[c.key]}</td>)}
                         </tr>
