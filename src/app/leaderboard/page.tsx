@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Maximize, Rocket, Sparkles, Star, Trophy, Tv } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Crown, Flag, Flame, Footprints, Landmark, Rocket, Sparkles, Star, Trophy } from "lucide-react";
 import { LogoIcon } from "@/components/ui/logo";
 import { MonthField } from "@/components/ui/pickers";
 import { Fireworks } from "@/components/leaderboard/fireworks";
@@ -17,8 +17,6 @@ import type { LbPlayer, LbWinner } from "@/types";
 /*
  * A standalone, full-screen "game lobby" (opened in a new tab from the panel):
  * no sidebar, top bar or Assist, its own dark world, fonts and colours.
- * TV mode (?tv=1) is for a screen in the office: no personal bits, fullscreen,
- * Visits ↔ Closures every 20 s, fresh data every 2 minutes.
  */
 
 type Cat = "visits" | "closures";
@@ -38,7 +36,6 @@ const store = {
 };
 const MEDAL = ["gold", "silver", "bronze"] as const;
 const GOLD = ["#F5C542", "#FFE08A", "#FFB800", "#FFF3C4"];
-const SWITCH_MS = 20_000, REFRESH_MS = 120_000, IDLE_MS = 3000;
 
 export default function LeaderboardPage() {
   return <Suspense fallback={<Shell />}><Gate /></Suspense>;
@@ -68,13 +65,11 @@ function Lobby({ name }: { name: string }) {
   const router = useRouter();
   const [month, setMonth] = useState(q.get("month") || thisMonth());
   const [cat, setCat] = useState<Cat>(q.get("tab") === "closures" ? "closures" : "visits");
-  const [tv, setTv] = useState(q.get("tv") === "1");
   const { data, loading, error, reload } = useApi(() => api.leaderboard(month), [month]);
   const [spin, setSpin] = useState(0);
   const [fire, setFire] = useState(0);
   const [confetti, setConfetti] = useState(0);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [idle, setIdle] = useState(false);
   const [wide, setWide] = useState(false);
 
   const val = (p: LbPlayer) => (cat === "visits" ? p.visits : p.closures);
@@ -96,58 +91,28 @@ function Lobby({ name }: { name: string }) {
     return groups;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ranked.map((p) => p.id + rank(p)).join()]);
-  const me = tv ? undefined : rows.find((p) => p.me);
+  const me = rows.find((p) => p.me);
   const past = !!data && !data.live;
   // Hall of fame: only months that crowned someone (a skipped month has nothing to reveal).
   const hall = (data?.hall ?? []).filter((h) => h.winners.length > 0);
   const nextFirst = (() => { const d = new Date(); d.setMonth(d.getMonth() + 1, 1); return d.toLocaleDateString("en-IN", { day: "numeric", month: "long" }); })();
-  const isRevealed = (m: string) => tv || (revealed[m] ?? store.get(`y2b-lb-reveal-${m}`) === "1");
+  const isRevealed = (m: string) => revealed[m] ?? store.get(`y2b-lb-reveal-${m}`) === "1";
   const hidden = past && !!data?.winners.length && !isRevealed(data.month);
 
-  const url = (m: string, t: boolean) => `/leaderboard?${new URLSearchParams({ ...(m !== thisMonth() ? { month: m } : {}), ...(t ? { tv: "1" } : {}) })}`;
-  const pick = (m: string) => { setMonth(m); router.replace(url(m, tv)); };
+  const pick = (m: string) => { setMonth(m); router.replace(m !== thisMonth() ? `/leaderboard?month=${m}` : "/leaderboard"); };
   const reveal = (m: string) => {
     store.set(`y2b-lb-reveal-${m}`, "1"); setRevealed((r) => ({ ...r, [m]: true }));
     setFire((f) => f + 1);
     if (data?.month === m) setSpin((s) => s + 1);
   };
 
-  // TV mode: fullscreen (when the browser allows it), Esc / leaving fullscreen exits.
-  const enterTv = useCallback(() => {
-    setTv(true); router.replace(url(month, true));
-    document.documentElement.requestFullscreen?.().catch(() => { /* not allowed: the page is already full-window */ });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
-  const exitTv = useCallback(() => {
-    setTv(false); router.replace(url(month, false));
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
-  const wasFull = useRef(false);
-  useEffect(() => {
-    if (!tv) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitTv(); };
-    const onFull = () => { if (document.fullscreenElement) wasFull.current = true; else if (wasFull.current) { wasFull.current = false; exitTv(); } };
-    addEventListener("keydown", onKey); document.addEventListener("fullscreenchange", onFull);
-    const sw = setInterval(() => setCat((c) => (c === "visits" ? "closures" : "visits")), SWITCH_MS);
-    const rf = setInterval(() => reload(), REFRESH_MS);
-    return () => { removeEventListener("keydown", onKey); document.removeEventListener("fullscreenchange", onFull); clearInterval(sw); clearInterval(rf); };
-  }, [tv, exitTv, reload]);
-  // TV mode: hide the cursor after 3 s without moving the mouse.
-  useEffect(() => {
-    if (!tv) { setIdle(false); return; }
-    let t = setTimeout(() => setIdle(true), IDLE_MS);
-    const move = () => { setIdle(false); clearTimeout(t); t = setTimeout(() => setIdle(true), IDLE_MS); };
-    addEventListener("mousemove", move);
-    return () => { clearTimeout(t); removeEventListener("mousemove", move); };
-  }, [tv]);
-  // Big screens scale everything up (and TV mode a bit more).
+  // Big screens scale everything up.
   useEffect(() => {
     const mq = matchMedia("(min-width: 1600px)");
     const on = () => setWide(mq.matches); on(); mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  const zoom = tv ? (wide ? 1.45 : 1.15) : wide ? 1.2 : 1;
+  const zoom = wide ? 1.2 : 1;
 
   // Reels spin on load and on every category switch; gold confetti once a day.
   useEffect(() => { if (data) setSpin((s) => s + 1); }, [data?.month, cat]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,7 +124,7 @@ function Lobby({ name }: { name: string }) {
   }, [data]);
 
   return (
-    <div className={cn("lb-world relative min-h-[100dvh] w-full text-white [overflow-x:clip]", tv && "lb-tv", idle && "cursor-none")} data-tv={tv || undefined}>
+    <div className="lb-world relative min-h-[100dvh] w-full text-white [overflow-x:clip]">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" />
@@ -179,23 +144,11 @@ function Lobby({ name }: { name: string }) {
             {data?.live ? <Countdown endsAt={data.endsAt} /> : data && <span className="lb-pill"><Flag className="h-4 w-4" aria-hidden /> Final results</span>}
           </div>
           <div className="ml-auto flex items-center justify-end gap-2">
-            {!tv && (
-              <span className="flex items-center gap-2" aria-label={`Signed in as ${name}`}>
-                <Hex name={name} size={30} tone="plain" />
-                <span className="hidden max-w-[140px] truncate text-sm font-semibold xl:inline">{name}</span>
-              </span>
-            )}
-            {tv ? (
-              <>
-                {!idle && <button onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="lb-btn"><Maximize className="h-4 w-4" aria-hidden /> Fullscreen</button>}
-                <button onClick={exitTv} className="lb-btn">Exit TV</button>
-              </>
-            ) : (
-              <>
-                <button onClick={enterTv} className="lb-btn"><Tv className="h-4 w-4" aria-hidden /> TV mode</button>
-                <Link href="/dashboard" className="lb-btn whitespace-nowrap">← <span className="hidden sm:inline">Back to </span>ePanel</Link>
-              </>
-            )}
+            <span className="flex items-center gap-2" aria-label={`Signed in as ${name}`}>
+              <Hex name={name} size={30} tone="plain" />
+              <span className="hidden max-w-[140px] truncate text-sm font-semibold xl:inline">{name}</span>
+            </span>
+            <Link href="/dashboard" className="lb-btn whitespace-nowrap">← <span className="hidden sm:inline">Back to </span>ePanel</Link>
           </div>
         </header>
 
@@ -211,11 +164,10 @@ function Lobby({ name }: { name: string }) {
               <button key={c} role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
                 className={cn("lb-display relative min-h-12 overflow-hidden rounded-xl text-2xl tracking-wider transition", cat === c ? "lb-tab-on" : "text-white/60 hover:text-white")}>
                 {(() => { const I = TAB_ICON[c]; return <span className="inline-flex items-center justify-center gap-2"><I className="h-5 w-5" aria-hidden />{TAB[c]}</span>; })()}
-                {tv && cat === c && <span key={`${cat}-${spin}`} className="lb-timer" aria-hidden />}
               </button>
             ))}
           </div>
-          {!tv && <div className="lb-month"><MonthField ariaLabel="Month" value={month} onChange={pick} min={data?.minMonth} max={thisMonth()} /></div>}
+          <div className="lb-month"><MonthField ariaLabel="Month" value={month} onChange={pick} min={data?.minMonth} max={thisMonth()} /></div>
         </div>
 
         {error && (
@@ -233,7 +185,7 @@ function Lobby({ name }: { name: string }) {
             ) : hidden ? (
               <Lever month={data!.month} onPull={() => reveal(data!.month)} big />
             ) : (
-              <Podium groups={podium} cat={cat} val={val} rank={rank} spin={spin} pool={rows.map((p) => p.name)} tv={tv} />
+              <Podium groups={podium} cat={cat} val={val} rank={rank} spin={spin} pool={rows.map((p) => p.name)} />
             )}
             {!hidden && !loading && !podium.length && (
               <p className="relative mt-3 text-center text-base font-semibold text-[#F5C542]">
@@ -244,7 +196,7 @@ function Lobby({ name }: { name: string }) {
 
           <div className="mt-5 text-center">
             <p className="lb-display text-3xl tracking-wide text-[#FF3B5C] sm:text-4xl">CLIMB THE BOARD. BE THE CHAMPION.</p>
-            {!tv && <p className="mt-1 text-xs text-white/55">Visits = site visits done · Closures = tokens, from the daily reports · Champions are crowned on the 1st · Ties share the title</p>}
+            <p className="mt-1 text-xs text-white/55">Visits = site visits done · Closures = tokens, from the daily reports · Champions are crowned on the 1st · Ties share the title</p>
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
@@ -262,7 +214,7 @@ function Lobby({ name }: { name: string }) {
                 <ol aria-label={`${cat === "visits" ? "Visits" : "Closures"} ranking`}>
                   {rows.map((p) => {
                     const r = rank(p), was = prev(p), moved = r == null || was == null ? 0 : was - r;
-                    const mine = p.me && !tv;
+                    const mine = p.me;
                     return (
                       <li key={p.id} className={cn("lb-row flex items-center gap-3 px-4 py-3", mine && "lb-row-me")}>
                         <RankChip rank={r} />
@@ -297,9 +249,9 @@ function Lobby({ name }: { name: string }) {
                 <h2 className="lb-display flex items-center gap-2 text-3xl tracking-wide text-[#F5C542]"><Landmark className="h-7 w-7" aria-hidden /> Hall of fame</h2>
                 {!hall.length ? (
                   <div className="lb-glass p-4 text-sm text-white/60">First champions crowned on {nextFirst}. Could it be you?</div>
-                ) : hall.slice(0, tv ? 3 : 12).map((h) => (
+                ) : hall.slice(0, 12).map((h) => (
                   <HallCard key={h.month} month={h.month} winners={h.winners} revealed={isRevealed(h.month)}
-                    onPull={() => reveal(h.month)} onOpen={tv ? undefined : () => pick(h.month)} />
+                    onPull={() => reveal(h.month)} onOpen={() => pick(h.month)} />
                 ))}
               </aside>
             </div>
@@ -323,8 +275,8 @@ function Countdown({ endsAt }: { endsAt: string }) {
   );
 }
 
-function Podium({ groups, cat, val, rank, spin, pool, tv }: {
-  groups: LbPlayer[][]; cat: Cat; val: (p: LbPlayer) => number; rank: (p: LbPlayer) => number | null; spin: number; pool: string[]; tv?: boolean;
+function Podium({ groups, cat, val, rank, spin, pool }: {
+  groups: LbPlayer[][]; cat: Cat; val: (p: LbPlayer) => number; rank: (p: LbPlayer) => number | null; spin: number; pool: string[];
 }) {
   // Left #2, centre #1, right #3.
   const spots = [1, 0, 2];
@@ -339,7 +291,7 @@ function Podium({ groups, cat, val, rank, spin, pool, tv }: {
             {g ? (
               <>
                 <div className="flex -space-x-3">{g.slice(0, 3).map((p) => <Hex key={p.id} name={p.name} size={i === 0 ? 76 : 60} tone={tone} stars />)}</div>
-                <div className={cn("lb-reel mt-2 w-full max-w-[220px] text-sm sm:text-base", !tv && g.some((p) => p.me) && "lb-reel-me")}>
+                <div className={cn("lb-reel mt-2 w-full max-w-[220px] text-sm sm:text-base", g.some((p) => p.me) && "lb-reel-me")}>
                   <SlotReel name={g.map((p) => first(p.name)).join(" & ")} pool={pool.map(first)} spin={spin} delay={[300, 0, 600][i]} />
                 </div>
                 <SlotNumber value={val(g[0])} spin={spin} delay={[300, 0, 600][i]}
@@ -521,12 +473,7 @@ const CSS = `
 .lb-btn{display:inline-flex;align-items:center;gap:.3rem;min-height:40px;padding:0 .9rem;border-radius:999px;font-size:.85rem;font-weight:700;background:rgba(255,255,255,.08);border:1px solid rgba(160,140,255,.35);color:#fff;transition:background .2s,box-shadow .2s}
 .lb-btn:hover{background:rgba(124,58,237,.3);box-shadow:0 0 16px rgba(124,58,237,.45)}
 .lb-fade{animation:lbFade .6s ease-out}
-.lb-timer{position:absolute;left:0;bottom:0;height:3px;width:100%;background:rgba(255,255,255,.85);transform-origin:left;animation:lbTimer 20s linear forwards}
-.lb-tv .lb-row{padding-top:1rem;padding-bottom:1rem}
-.lb-tv .lb-row .text-\[15px\]{font-size:1.25rem}
-.lb-tv .lb-row .text-xl{font-size:1.75rem}
 @keyframes lbFade{from{opacity:0}to{opacity:1}}
-@keyframes lbTimer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @keyframes lbSpin{to{transform:rotate(360deg)}}
 @keyframes lbFloat{0%{opacity:0;transform:translateY(10px) scale(.6)}50%{opacity:.9}100%{opacity:0;transform:translateY(-40px) scale(1)}}
 @keyframes lbSweep{0%,55%{left:-60%}100%{left:130%}}
