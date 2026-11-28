@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Download, Users, Check } from "lucide-react";
@@ -125,7 +126,7 @@ function ChecksCard({ month, emp }: { month: string; emp: string }) {
         <ul className="divide-y divide-surface-border border-t border-surface-border">
           {data.map((c) => (
             <li key={c.employee.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-              <span className="text-sm text-ink">{c.employee.name}</span>
+              <span className="flex items-center gap-2 text-sm text-ink"><PersonAvatar name={c.employee.name} id={c.employee.id} className="h-7 w-7 text-[10px]" />{c.employee.name}</span>
               {badge(c.checkedAt)}
             </li>
           ))}
@@ -174,7 +175,7 @@ function DayTable({ rows, showName, onPick }: { rows: Row[]; showName: boolean; 
               return (
                 <tr key={`${r.employee.id}${d.date}`} onClick={onPick ? () => onPick(r) : undefined} className={cn(onPick && "cursor-pointer hover:bg-surface")}>
                   <td className="whitespace-nowrap px-2 py-2">{formatDate(d.date, { weekday: true })}</td>
-                  {showName && <td className="whitespace-nowrap px-2 py-2">{r.employee.name}</td>}
+                  {showName && <td className="whitespace-nowrap px-2 py-2"><span className="flex items-center gap-2"><PersonAvatar name={r.employee.name} id={r.employee.id} className="h-6 w-6 text-[10px]" />{r.employee.name}</span></td>}
                   <td className="whitespace-nowrap px-2 py-2">{time12(d.in)}</td>
                   <td className="whitespace-nowrap px-2 py-2">{time12(d.out)}</td>
                   <td className="px-2 py-2">{d.minutes != null ? hours(d.minutes) : "—"}</td>
@@ -297,6 +298,7 @@ export function SalarySheet() {
             {(data ?? []).map((r) => (
               <button key={r.employee.id} onClick={() => setOpen(r)} aria-label={`${r.employee.name}: more details`}
                 className="flex w-full items-center gap-3 rounded-card bg-white p-3.5 text-left shadow-card active:bg-surface">
+                <PersonAvatar name={r.employee.name} id={r.employee.id} />
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium text-ink">{r.employee.name}</p>
                   <p className="text-xs text-ink-muted">Net {n1(r.summary.netPayable)} / {r.summary.daysInMonth} days</p>

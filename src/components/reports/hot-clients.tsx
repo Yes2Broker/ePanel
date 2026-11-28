@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar as PersonAvatar } from "@/components/ui/avatar";
 import { useEffect, useMemo, useState } from "react";
 import { Check, CheckCircle2, CloudSun, Download, Flame, History, Pencil, Phone, Plus, Undo2, X, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -346,8 +347,9 @@ export function HotClientsTab({ isManager }: { isManager: boolean }) {
                         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_CLS[c.status])}>{STATUS_LABEL[c.status]}</span>
                         {late && <span className="text-xs font-medium text-status-warning">Date passed, update it</span>}
                       </p>
-                      <p className="mt-0.5 break-words text-xs text-ink-muted">
-                        {[isManager && c.employeeName, c.project, c.remarks].filter(Boolean).join(" · ") || "—"}
+                      <p className="mt-0.5 flex items-center gap-1.5 break-words text-xs text-ink-muted">
+                        {isManager && <PersonAvatar name={c.employeeName} id={c.employeeId} className="h-5 w-5 text-[9px]" />}
+                        <span>{[isManager && c.employeeName, c.project, c.remarks].filter(Boolean).join(" · ") || "—"}</span>
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -387,7 +389,7 @@ function HotDetails({ c, isManager, onClose, onEdit, onMark }: {
   const [confirm, setConfirm] = useState<HotStatus | null>(null);
   const word = (v: string | null) => (v && v in STATUS_LABEL ? STATUS_LABEL[v as HotStatus] : v);
   return (
-    <Modal open onClose={onClose} title={c.name} subtitle={isManager ? c.employeeName : undefined} size="sm" largeTitle
+    <Modal open onClose={onClose} title={c.name} subtitle={isManager ? <span className="inline-flex items-center gap-1.5"><PersonAvatar name={c.employeeName} id={c.employeeId} className="h-5 w-5 text-[9px]" />{c.employeeName}</span> : undefined} size="sm" largeTitle
       footer={c.status === "Active" ? (
         <div className="flex items-stretch gap-2">
           <SecondaryButton onClick={onEdit} className="flex-1 justify-center px-2"><Pencil className="h-4 w-4" /> Edit</SecondaryButton>

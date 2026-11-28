@@ -42,7 +42,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
           const s = byId.get(e.id);
           return (
             <li key={e.id} className="flex items-center gap-3 py-2.5">
-              <Avatar name={e.name} />
+              <Avatar name={e.name} id={e.id} />
               <div className="min-w-0 flex-1">
                 <p className="break-words text-sm font-medium text-ink">{e.name}</p>
                 <p className="break-words text-xs text-ink-faint">{e.id} · {e.department}</p>
@@ -76,7 +76,7 @@ export function PerformanceTable({ employees, stats }: { employees: Employee[]; 
                 <tr key={e.id} className="border-t border-surface-border">
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-2.5">
-                      <Avatar name={e.name} />
+                      <Avatar name={e.name} id={e.id} />
                       <div className="min-w-0">
                         <p className="truncate font-medium text-ink">{e.name}</p>
                         <p className="truncate text-xs text-ink-faint">{e.id} · {e.department}</p>
